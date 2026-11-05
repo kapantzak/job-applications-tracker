@@ -87,6 +87,20 @@ describe('ApplicationsPage', () => {
     expect(await screen.findByText('Beta')).toBeInTheDocument();
   });
 
+  it('omits applied_at when no date is given so the server default applies', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.createApplication).mockResolvedValue({ ...app, id: 'a3', company: 'Gamma' } as never);
+    renderPage();
+    await screen.findByText('Acme');
+    await user.type(screen.getByLabelText('Company'), 'Gamma');
+    await user.type(screen.getByLabelText('Role'), 'Dev');
+    await user.click(screen.getByRole('button', { name: 'Add application' }));
+    const payload = vi.mocked(client.createApplication).mock.calls[0]![0];
+    expect(payload).toMatchObject({ company: 'Gamma', role: 'Dev', status: 'applied' });
+    expect(payload).not.toHaveProperty('applied_at');
+    expect(await screen.findByText('Gamma')).toBeInTheDocument();
+  });
+
   it('starts a sync and navigates to the run', async () => {
     const user = userEvent.setup();
     vi.mocked(client.startSync).mockResolvedValue({ id: 'r9' } as never);

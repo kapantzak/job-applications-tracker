@@ -96,4 +96,16 @@ describe('JobsPage', () => {
     expect(await screen.findByText(/Fill in your profile first/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /profile/i })).toHaveAttribute('href', '/profile');
   });
+
+  it('shows other 422 errors from discovery as they are, without the profile prompt', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.startDiscovery).mockRejectedValue(
+      new client.ApiError(422, 'Agent "claude" is not installed: Not found on PATH'),
+    );
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
+    expect(await screen.findByText('Agent "claude" is not installed: Not found on PATH')).toBeInTheDocument();
+    expect(screen.queryByText(/Fill in your profile/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /profile/i })).not.toBeInTheDocument();
+  });
 });

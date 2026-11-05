@@ -23,8 +23,9 @@ export function AddApplicationForm({ onCreated }: { onCreated: (app: Application
         role,
         url: url || null,
         status,
-        // Date inputs carry no time zone; pin to midnight UTC for a stable value.
-        applied_at: appliedDate ? new Date(`${appliedDate}T00:00:00Z`).toISOString() : null,
+        // Date inputs carry no time zone; pin to midnight UTC for a stable value. Without a date the key
+        // is omitted so the server's default (applied means now) applies.
+        ...(appliedDate ? { applied_at: new Date(`${appliedDate}T00:00:00Z`).toISOString() } : {}),
         notes,
       });
       onCreated(created);

@@ -55,7 +55,8 @@ export function JobsPage() {
       const started = await startDiscovery();
       navigate(`/runs/${started.id}`);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 422) setNeedsProfile(true);
+      // Other 422s (e.g. agent not installed) carry their own message and must be shown as is.
+      if (e instanceof ApiError && e.status === 422 && e.message === 'Profile is not set') setNeedsProfile(true);
       else setError(e instanceof Error ? e.message : String(e));
     }
   };
