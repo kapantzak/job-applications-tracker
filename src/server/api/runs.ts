@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import type { Run, RunStatus } from '../domain/types.js';
+import type { AgentAdapter } from '../agents/index.js';
+import type { Run, RunKind, RunStatus } from '../domain/types.js';
 import { HttpError, parseWith } from './errors.js';
 
 const DEFAULT_SSE_POLL_MS = 1000;
@@ -33,18 +34,37 @@ export function createRunsRouter(deps: AppDeps): Hono {
     return status ?? 'unknown';
   }
 
+  // Fails fast with a 422 the UI can show, instead of queueing a run that can only fail.
+  async function requireUsableAdapter(kind: RunKind): Promise<void> {
+    let adapter: AgentAdapter;
+    try {
+      adapter = deps.adapterFactory(deps.settingsRepo.getAll(), kind);
+    } catch (err) {
+      throw new HttpError(422, `Agent command is invalid: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const health = await adapter.check();
+    if (!health.installed) {
+      const detail = health.message ? `: ${health.message}` : '';
+      throw new HttpError(422, `Agent "${health.id}" is not installed${detail}`);
+    }
+  }
+
   router.get('/', (c) => {
     const raw = c.req.query('limit');
     const limit = raw === undefined ? 50 : parseWith(LimitQuery, raw);
     return c.json(deps.runsRepo.list(limit));
   });
 
-  router.post('/discover', (c) => {
+  router.post('/discover', async (c) => {
     if (!deps.profileRepo.get()) throw new HttpError(422, 'Profile is not set');
+    await requireUsableAdapter('discover_jobs');
     return c.json(deps.queue.enqueue('discover_jobs'), 202);
   });
 
-  router.post('/sync', (c) => c.json(deps.queue.enqueue('sync_mail'), 202));
+  router.post('/sync', async (c) => {
+    await requireUsableAdapter('sync_mail');
+    return c.json(deps.queue.enqueue('sync_mail'), 202);
+  });
 
   router.delete('/logs', (c) => {
     // The repo has no "all active runs" query; this read-only one keeps live logs intact.

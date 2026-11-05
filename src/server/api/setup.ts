@@ -12,12 +12,15 @@ export function createSetupRouter(deps: AppDeps): Hono {
 
   router.get('/setup/adapters', async (c) => {
     const settings = deps.settingsRepo.getAll();
-    const ids: AdapterId[] = ['claude', 'codex'];
-    if (settings.custom_command.trim() !== '') ids.push('custom');
+    const ids: AdapterId[] = ['claude', 'codex', 'custom'];
     const results = await Promise.all(
       ids.map(async (id): Promise<AdapterStatus> => {
         // Only Claude Code has a built-in Gmail connector; the others need the setup guide.
         const gmail_guide = id !== 'claude';
+        // Always listed so it can be selected; there is nothing to check until a command is entered.
+        if (id === 'custom' && settings.custom_command.trim() === '') {
+          return { id, installed: false, message: 'Enter a command', gmail_guide };
+        }
         try {
           const health = await deps.adapterFactory({ ...settings, adapter_id: id }, 'discover_jobs').check();
           return { ...health, gmail_guide };

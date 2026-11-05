@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, getAdapters, getSettings, patchSettings, type AdapterStatus } from '../api/client.js';
 import { AdapterChooser } from '../components/AdapterChooser.js';
 
@@ -59,6 +60,7 @@ export function SetupPage() {
       />
       <button type="submit">Save</button>
       {status && <p role="status">{status}</p>}
+      {status === 'Saved' && <Link to="/profile">Continue to Profile</Link>}
       {error && <p role="alert">{error}</p>}
     </form>
   );

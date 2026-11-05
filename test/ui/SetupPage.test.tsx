@@ -59,4 +59,28 @@ describe('SetupPage', () => {
     expect(client.patchSettings).toHaveBeenCalledWith({ adapter_id: 'custom', custom_command: 'my-agent' });
     expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
+
+  it('offers the custom adapter from a fresh server list and shows its command input once selected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getAdapters).mockResolvedValue([
+      { id: 'claude', installed: true, version: '1.2.3', gmail_guide: false },
+      { id: 'codex', installed: false, message: 'codex not found', gmail_guide: true },
+      { id: 'custom', installed: false, message: 'Enter a command', gmail_guide: true },
+    ]);
+    renderPage();
+    const radio = await screen.findByRole('radio', { name: /custom/i });
+    expect(screen.queryByLabelText('Custom command')).not.toBeInTheDocument();
+    await user.click(radio);
+    expect(radio).toBeChecked();
+    expect(screen.getByLabelText('Custom command')).toBeInTheDocument();
+  });
+
+  it('links to the profile screen after a successful save', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('radio', { name: /claude/i });
+    expect(screen.queryByRole('link', { name: 'Continue to Profile' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('link', { name: 'Continue to Profile' })).toHaveAttribute('href', '/profile');
+  });
 });

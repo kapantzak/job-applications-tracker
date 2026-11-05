@@ -28,11 +28,24 @@ describe('setup adapters', () => {
     expect(await res.json()).toEqual([
       { id: 'claude', installed: true, version: '0.0.1-test', gmail_guide: false },
       { id: 'codex', installed: false, message: 'not on PATH', gmail_guide: true },
+      { id: 'custom', installed: false, message: 'Enter a command', gmail_guide: true },
     ]);
     expect(h.factoryCalls.map((c) => [c.settings.adapter_id, c.kind])).toEqual([
       ['claude', 'discover_jobs'],
       ['codex', 'discover_jobs'],
     ]);
+  });
+
+  it('lists custom as not installed on a fresh database without checking it', async () => {
+    expect(h.deps.settingsRepo.getAll().custom_command).toBe('');
+    const body = (await (await h.app.request('/api/setup/adapters')).json()) as { id: string }[];
+    expect(body.find((a) => a.id === 'custom')).toEqual({
+      id: 'custom',
+      installed: false,
+      message: 'Enter a command',
+      gmail_guide: true,
+    });
+    expect(h.factoryCalls.some((c) => c.settings.adapter_id === 'custom')).toBe(false);
   });
 
   it('includes custom when a custom command is set and turns a throwing check into not installed', async () => {

@@ -72,6 +72,41 @@ describe('runs: enqueue', () => {
     expect(((await res.json()) as Run).kind).toBe('sync_mail');
   });
 
+  it('checks the adapter for the run kind before enqueueing', async () => {
+    h.deps.profileRepo.save(SAMPLE_PROFILE);
+    h.deps.settingsRepo.set({ adapter_id: 'codex' });
+    expect((await h.app.request('/api/runs/discover', { method: 'POST' })).status).toBe(202);
+    expect((await h.app.request('/api/runs/sync', { method: 'POST' })).status).toBe(202);
+    expect(h.factoryCalls.map((c) => [c.settings.adapter_id, c.kind])).toEqual([
+      ['codex', 'discover_jobs'],
+      ['codex', 'sync_mail'],
+    ]);
+  });
+
+  it('POST discover and sync with an adapter that is not installed are 422 and enqueue nothing', async () => {
+    h.deps.profileRepo.save(SAMPLE_PROFILE);
+    h.healthFor.claude = { id: 'claude', installed: false, message: 'Not found on PATH' };
+    for (const path of ['/api/runs/discover', '/api/runs/sync']) {
+      const res = await h.app.request(path, { method: 'POST' });
+      expect(res.status, path).toBe(422);
+      expect(await res.json()).toEqual({ error: 'Agent "claude" is not installed: Not found on PATH' });
+    }
+    expect(h.deps.runsRepo.list()).toEqual([]);
+  });
+
+  it('POST discover and sync with an invalid agent command are 422 and enqueue nothing', async () => {
+    h.deps.profileRepo.save(SAMPLE_PROFILE);
+    h.deps.adapterFactory = () => {
+      throw new Error('Custom command is empty');
+    };
+    for (const path of ['/api/runs/discover', '/api/runs/sync']) {
+      const res = await h.app.request(path, { method: 'POST' });
+      expect(res.status, path).toBe(422);
+      expect(await res.json()).toEqual({ error: 'Agent command is invalid: Custom command is empty' });
+    }
+    expect(h.deps.runsRepo.list()).toEqual([]);
+  });
+
   it('maps a "Profile is not set" error from below to 422', async () => {
     h.deps.profileRepo.save(SAMPLE_PROFILE);
     vi.spyOn(h.deps.queue, 'enqueue').mockImplementation(() => {
