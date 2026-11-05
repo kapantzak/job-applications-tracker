@@ -156,3 +156,28 @@ button.secondary {
   padding: 0 6px;
   border-radius: 10px;
 }
+
+.badge-ok {
+  background: #16a34a;
+}
+
+.badge-redirected {
+  background: #2563eb;
+}
+
+.badge-unverified {
+  background: #d97706;
+}
+
+.badge-dead {
+  background: #6b7280;
+}
+
+.log-view {
+  max-height: 24rem;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  white-space: pre-wrap;
+}

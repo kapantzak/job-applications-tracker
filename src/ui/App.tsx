@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { getAdapters, getProfile, getSettings } from './api/client.js';
 import { Layout } from './components/Layout.js';
+import { JobsPage } from './pages/JobsPage.js';
 import { ProfilePage } from './pages/ProfilePage.js';
+import { RunPage } from './pages/RunPage.js';
+import { RunsPage } from './pages/RunsPage.js';
 import { SetupPage } from './pages/SetupPage.js';
 
 function Placeholder({ name }: { name: string }) {
@@ -41,10 +44,11 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<StartupRedirect />} />
-        <Route path="jobs" element={<Placeholder name="Jobs" />} />
+        <Route path="jobs" element={<JobsPage />} />
         <Route path="applications" element={<Placeholder name="Applications" />} />
         <Route path="review" element={<Placeholder name="Review" />} />
-        <Route path="runs" element={<Placeholder name="Runs" />} />
+        <Route path="runs" element={<RunsPage />} />
+        <Route path="runs/:id" element={<RunPage />} />
         <Route path="settings" element={<Placeholder name="Settings" />} />
         <Route path="setup" element={<SetupPage />} />
         <Route path="profile" element={<ProfilePage />} />
