@@ -5,11 +5,23 @@ import type { ApplicationPatch, NewApplication } from '../db/applications-repo.j
 import { APPLICATION_STATUSES, type Application } from '../domain/types.js';
 import { HttpError, readJson } from './errors.js';
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// The UI renders url as a link, so javascript: and similar schemes must never be stored.
+const HttpUrl = z.string().refine(isHttpUrl, 'Must be an http(s) URL');
+
 const NewApplicationBody = z
   .object({
     company: z.string().min(1),
     role: z.string().min(1),
-    url: z.string().nullable().optional(),
+    url: HttpUrl.nullable().optional(),
     status: z.enum(APPLICATION_STATUSES).optional(),
     applied_at: z.string().nullable().optional(),
     notes: z.string().optional(),
@@ -21,7 +33,7 @@ const ApplicationPatchBody = z
   .object({
     company: z.string().min(1),
     role: z.string().min(1),
-    url: z.string().nullable(),
+    url: HttpUrl.nullable(),
     notes: z.string().nullable(),
     sender_domains: z.array(z.string()),
     applied_at: z.string().nullable(),

@@ -45,6 +45,22 @@ describe('applications', () => {
     expect(bogus.status).toBe(400);
   });
 
+  it('rejects non-http(s) url values on create and PATCH', async () => {
+    for (const url of ['javascript:alert(1)', 'ftp://files.example/x', 'not a url']) {
+      const res = await h.app.request('/api/applications', json('POST', { company: 'V', role: 'R', url }));
+      expect(res.status, url).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe('url: Must be an http(s) URL');
+    }
+    const app = seed();
+    const patch = await h.app.request(`/api/applications/${app.id}`, json('PATCH', { url: 'javascript:alert(1)' }));
+    expect(patch.status).toBe(400);
+    const ok = await h.app.request(`/api/applications/${app.id}`, json('PATCH', { url: 'http://initrode.example/j/1' }));
+    expect(ok.status).toBe(200);
+    const cleared = await h.app.request(`/api/applications/${app.id}`, json('PATCH', { url: null }));
+    expect(((await cleared.json()) as Application).url).toBeNull();
+    expect(h.deps.applicationsRepo.list()).toHaveLength(1);
+  });
+
   it('GET by id includes the status history; unknown id is 404', async () => {
     const app = seed('applied');
     h.deps.applicationsRepo.setStatus(app.id, 'screening', 'user');

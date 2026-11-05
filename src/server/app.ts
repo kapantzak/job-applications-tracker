@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import type { AgentAdapter } from './agents/index.js';
 import { createApplicationsRouter } from './api/applications.js';
 import { onError } from './api/errors.js';
+import { createRequestGuard } from './api/guard.js';
 import { createJobsRouter } from './api/jobs.js';
 import { createProfileRouter } from './api/profile.js';
 import { createProposalsRouter } from './api/proposals.js';
@@ -41,6 +42,8 @@ export interface AppDeps {
   uiDir: string | null;
   // How often the SSE endpoint re-checks run status; tests shorten it.
   ssePollMs?: number;
+  // Hostnames accepted in addition to the loopback defaults for Host and Origin checks.
+  allowedHosts?: string[];
 }
 
 function isApiPath(path: string): boolean {
@@ -64,6 +67,9 @@ export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   app.onError(onError);
   app.notFound((c) => c.json({ error: 'Not found' }, 404));
+
+  // Registered before the routers so it runs first for every /api request.
+  app.use('/api/*', createRequestGuard(deps.allowedHosts));
 
   app.route('/api', createSetupRouter(deps));
   app.route('/api/profile', createProfileRouter(deps));

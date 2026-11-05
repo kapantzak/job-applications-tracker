@@ -17,8 +17,17 @@ import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.
 import { createSyncScheduler } from '../../../src/server/runs/scheduler.js';
 import { createProposalService } from '../../../src/server/services/proposals.js';
 
+export const TEST_HOST = '127.0.0.1:4173';
+
+export interface TestClient {
+  // Adds the loopback Host header unless the test sets its own; app.request sends none.
+  request(path: string, init?: RequestInit): Promise<Response>;
+}
+
 export interface Harness {
-  app: Hono;
+  app: TestClient;
+  // The bare Hono app, for requests that must omit Host.
+  raw: Hono;
   deps: AppDeps;
   // Swap per test to control how runs behave.
   handlers: Record<RunKind, RunHandler>;
@@ -37,7 +46,7 @@ export const SAMPLE_PROFILE: ProfileInput = {
   notes: 'invented profile',
 };
 
-export function makeHarness(opts: { uiDir?: string | null } = {}): Harness {
+export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string[] } = {}): Harness {
   const db = openDatabase(':memory:');
   migrate(db);
   const runsDir = mkdtempSync(join(tmpdir(), 'jobtrack-api-runs-'));
@@ -99,10 +108,19 @@ export function makeHarness(opts: { uiDir?: string | null } = {}): Harness {
     adapterFactory,
     uiDir: opts.uiDir ?? null,
     ssePollMs: 20,
+    allowedHosts: opts.allowedHosts,
   };
-  const app = createApp(deps);
+  const raw = createApp(deps);
+  const app: TestClient = {
+    async request(path, init = {}) {
+      const headers = new Headers(init.headers);
+      if (!headers.has('host')) headers.set('host', TEST_HOST);
+      return raw.request(path, { ...init, headers });
+    },
+  };
   return {
     app,
+    raw,
     deps,
     handlers,
     factoryCalls,

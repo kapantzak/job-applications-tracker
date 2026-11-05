@@ -27,6 +27,11 @@ export function parseWith<T extends z.ZodType>(schema: T, value: unknown): z.inf
 }
 
 export async function readJson<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
+  // Requiring JSON rules out form posts, which browsers send cross-site without a preflight.
+  const type = c.req.header('content-type')?.trim().toLowerCase() ?? '';
+  if (!type.startsWith('application/json')) {
+    throw new HttpError(415, 'Content-Type must be application/json');
+  }
   let body: unknown;
   try {
     body = await c.req.json();
