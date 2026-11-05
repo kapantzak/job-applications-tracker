@@ -1,4 +1,5 @@
 // Stand-in for an agent CLI in adapter tests. Behaviour is selected by FAKE_AGENT_MODE.
+import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
 const mode = process.env.FAKE_AGENT_MODE ?? 'ok';
@@ -6,6 +7,11 @@ const output = process.env.FAKE_AGENT_OUTPUT ?? '{}';
 
 // Written first so tests can find the pid even when startup is slow; lets them confirm the process is gone.
 if (mode === 'hang') writeFileSync('fake-agent.pid', String(process.pid));
+// Stands in for an agent that starts its own helper processes: the pid file lists the agent, then the helper.
+if (mode === 'hang-tree') {
+  const helper = spawn(process.execPath, ['-e', 'setTimeout(()=>{},60000)'], { stdio: 'ignore' });
+  writeFileSync('fake-agent.pid', `${process.pid}\n${helper.pid}\n`);
+}
 
 function readStdin() {
   return new Promise((resolve) => {
@@ -52,6 +58,7 @@ switch (mode) {
     process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }) + '\n');
     break;
   case 'hang':
+  case 'hang-tree':
     setTimeout(() => {}, 60_000);
     break;
   default:

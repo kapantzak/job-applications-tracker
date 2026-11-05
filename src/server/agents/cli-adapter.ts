@@ -42,10 +42,21 @@ function terminate(child: ChildProcess): NodeJS.Timeout | undefined {
     );
     return undefined;
   }
-  child.kill('SIGTERM');
+  signalTree(child, 'SIGTERM');
   return setTimeout(() => {
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    if (child.exitCode === null && child.signalCode === null) signalTree(child, 'SIGKILL');
   }, KILL_GRACE_MS);
+}
+
+// Run children are spawned detached on POSIX, so their pid is also their process group id and a
+// negative pid reaches helpers the agent started. Falls back to the direct child when there is no
+// such group (ESRCH), e.g. a child spawned without detached.
+function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-child.pid!, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
 
 function streamLines(stream: Readable, sink: (chunk: string) => void, onLine: (line: string) => void): () => void {
@@ -175,6 +186,8 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
           env: process.env,
           stdio: [config.promptVia === 'stdin' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
           windowsHide: true,
+          // Own process group on POSIX so terminate() can kill the agent's whole tree; Windows uses taskkill /T.
+          detached: process.platform !== 'win32',
         });
       } catch (err) {
         // spawn throws synchronously for invalid argv (empty command, NUL byte, E2BIG); no timers are armed yet.

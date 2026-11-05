@@ -33,6 +33,29 @@ async function waitForPid(dir: string, timeoutMs = 2000): Promise<number> {
   throw new Error('fake agent did not write its pid file');
 }
 
+// Polls for the two-line pid file the hang-tree fixture writes: the agent, then its helper.
+async function waitForPids(dir: string, timeoutMs = 2000): Promise<number[]> {
+  const file = join(dir, 'fake-agent.pid');
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(file)) {
+      const pids = readFileSync(file, 'utf8').split('\n').filter(Boolean).map(Number);
+      if (pids.length === 2 && pids.every((p) => p > 0)) return pids;
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('fake agent did not write its pid file');
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), 'jat-agent-'));
   process.env.FAKE_AGENT_OUTPUT = JSON.stringify(OUTPUT);
@@ -101,6 +124,22 @@ describe('createCliAdapter run', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toBe('Aborted');
     expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it.skipIf(process.platform === 'win32')('kills the whole process tree on timeout', async () => {
+    process.env.FAKE_AGENT_MODE = 'hang-tree';
+    const running = createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 500, cwd });
+    const [r, pids] = await Promise.all([running, waitForPids(cwd)]);
+    try {
+      expect(r.error).toBe('Timed out after 500 ms');
+      // The orphaned helper is reaped by init asynchronously, so allow it a moment to disappear.
+      const deadline = Date.now() + 2000;
+      while (pids.some(isAlive) && Date.now() < deadline) await new Promise((res) => setTimeout(res, 20));
+      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      // Never leave a 60 s sleeper behind if the assertion above fails.
+      for (const pid of pids.filter(isAlive)) process.kill(pid, 'SIGKILL');
+    }
   });
 
   it('parses claude stream-json from stdin input', async () => {
