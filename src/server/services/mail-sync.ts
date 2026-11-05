@@ -42,12 +42,21 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
     const known = new Set(open.map((a) => a.id));
     const collected: NewProposal[] = [];
     let skipped = 0;
+    // hasPending only sees stored rows, so track repeats within this response too.
+    const seen = new Set<string>();
     for (const f of findings.findings) {
       if (f.proposed_status === 'no_change') continue;
       if (!known.has(f.application_id)) {
         ctx.log(`Dropping finding for unknown application ${f.application_id}`);
         continue;
       }
+      const key = `${f.application_id}|${f.proposed_status}`;
+      if (seen.has(key)) {
+        ctx.log(`Skipping duplicate finding for ${f.application_id} (${f.proposed_status})`);
+        skipped++;
+        continue;
+      }
+      seen.add(key);
       if (proposalsRepo.hasPending(f.application_id, f.proposed_status)) {
         skipped++;
         continue;

@@ -101,6 +101,22 @@ describe('mail sync handler', () => {
     expect(proposalsRepo.listPending()).toHaveLength(1);
   });
 
+  it('skips duplicate findings within one response', async () => {
+    const app = applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
+    const res = await returning([finding(app.id, 'interview'), finding(app.id, 'interview', 'msg-002')])(ctx());
+    expect(res.summary).toBe('1 proposals created, 1 skipped');
+    expect(proposalsRepo.listPending()).toHaveLength(1);
+  });
+
+  it('passes the source promptVersion through', async () => {
+    const app = applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
+    const h = handlerFor({
+      sync: async () =>
+        ({ mail_access: true, findings: [finding(app.id, 'interview')], notes: '', promptVersion: 'v7' }) as MailSyncFindings,
+    });
+    expect((await h(ctx())).promptVersion).toBe('v7');
+  });
+
   it('does not call the source when there are no open applications', async () => {
     const res = await returning([])(ctx());
     expect(res.summary).toBe('no open applications');
