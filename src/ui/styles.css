@@ -133,3 +133,26 @@ button.secondary {
   font-size: 0.75rem;
   text-align: center;
 }
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.tag button {
+  padding: 0 6px;
+  border-radius: 10px;
+}
