@@ -6,13 +6,13 @@
 
 **Architecture:** One Node process. A Hono API and a bundled React SPA share the process; SQLite (better-sqlite3) holds all state under `~/.job-applications-tracker/`. Agent work runs through an `AgentAdapter` (CLI presets for Claude Code and Codex, plus a custom command) inside a persisted, single-worker run queue whose logs stream to the UI over SSE. Discovery results pass through link verification and dedupe before display; mail findings become proposals in a review queue.
 
-**Tech Stack:** Node >= 20, TypeScript (ESM), Hono 4 + @hono/node-server 2, better-sqlite3 13, zod 4 (`z.toJSONSchema`), tsup 9 (server bundle), Vite 8 + React 19 (UI), vitest 5, `open` 11.
+**Tech Stack:** Node >= 22 (ruling 2026-11-05, see Global Constraints), TypeScript (ESM), Hono 4 + @hono/node-server 2, better-sqlite3 13, zod 4 (`z.toJSONSchema`), tsup 9 (server bundle), Vite 8 + React 19 (UI), vitest 5, `open` 11.
 
 **Spec:** `docs/superpowers/specs/2026-11-05-job-applications-tracker-design.md`
 
 ## Global Constraints
 
-- Node.js 20 or newer (`"engines": { "node": ">=20" }`). ESM only (`"type": "module"`).
+- Node.js 22 or newer (`"engines": { "node": ">=22" }`). ESM only (`"type": "module"`). Amended from 20 on 2026-11-05: Node 20 reached end of life in April 2026, and better-sqlite3 13, vitest 5 and tsup 9 all require Node 22.
 - No native build step on install: `better-sqlite3` is the only native dependency and ships prebuilt binaries.
 - Package name `job-applications-tracker`, binary `jobtrack`, default port `4173`, server binds `127.0.0.1` only, never `0.0.0.0`.
 - Data directory `~/.job-applications-tracker/` holding `data.db` and `runs/`; overridable via `--data-dir` or `JOBTRACK_DATA_DIR`. Plan-level deviation from the spec default: no `config.json` is written in v1; `port` lives in the `settings` table like every other setting.

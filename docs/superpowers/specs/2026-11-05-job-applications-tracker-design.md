@@ -41,7 +41,7 @@ Anti-goals (failure even if it "works")
 
 ## 3. Constraints
 
-- Node.js 20 or newer. Must install cleanly with `npm install -g` and run with `npx`.
+- Node.js 22 or newer. Must install cleanly with `npm install -g` and run with `npx`. (Amended 2026-11-05 during implementation: originally 20. Node 20 reached end of life in April 2026 and the chosen SQLite binding requires 22.)
 - No native build step on install. Native dependencies must ship prebuilt binaries for the three platforms.
 - The agent runs as a child process of the server. The user has already authenticated that CLI; the app never handles credentials.
 - Agent runs can take seconds to minutes. Nothing in the HTTP layer may block on them.

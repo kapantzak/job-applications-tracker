@@ -6,7 +6,7 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 
 ## Runtime
 
-- Package `job-applications-tracker`, binary `jobtrack`, Node >= 20, ESM.
+- Package `job-applications-tracker`, binary `jobtrack`, Node >= 22, ESM.
 - Server binds `127.0.0.1` only, default port 4173, falls back to the next free port (up to 10 attempts).
 - Data directory `~/.job-applications-tracker/` (override `--data-dir`, `JOBTRACK_DATA_DIR`) holding `data.db` and `runs/`.
 - No authentication on the local API; documented in README.

@@ -134,6 +134,8 @@ Author calls recorded in the design doc: 403/429/999/5xx/timeout classified `unv
 
 Execution approach chosen by the user: subagent-driven (fresh implementer and reviewer per task).
 
+Implementation ruling (assistant, 2026-11-05, Task 1 review): Node floor raised from 20 to 22. Evidence: `npm view better-sqlite3@13.0.3 engines.node` is `>=22`; vitest 5 and tsup 9 require 22+; Node 20 reached end of life in April 2026. Alternative rejected: pinning better-sqlite3 12 and older toolchains to keep an end-of-life runtime. Cost if wrong: users on Node 20 must upgrade Node. Design doc, plan, and spec amended with the same note; user to confirm or revert.
+
 ## Plan
 
 Follows `docs/superpowers/plans/2026-11-05-job-applications-tracker.md` task by task. Task status is tracked by the plan's checkboxes and by the Execution Log below.
@@ -142,6 +144,7 @@ Follows `docs/superpowers/plans/2026-11-05-job-applications-tracker.md` task by 
 
 ### 2026-11-05
 
+- Task 1 (scaffold) implemented and reviewed; reviewer found the Node 20 / better-sqlite3 13 engine conflict; ruling above.
 - Bootstrapped SOW framework: `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` symlinks, `.agents/sow/` layout, `.agents/sow/specs/product-v1.md`, this SOW.
 - Decision recorded: no runtime project skills yet (empty project, no observed conventions); create at retrospection.
 
