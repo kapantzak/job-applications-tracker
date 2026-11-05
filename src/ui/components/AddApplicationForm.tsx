@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '../../server/domain/types.js';
+import type { Application, ApplicationStatus } from '../../server/domain/types.js';
 import { createApplication } from '../api/client.js';
 import { StatusSelect } from './StatusSelect.js';
 
@@ -7,7 +7,7 @@ export function AddApplicationForm({ onCreated }: { onCreated: (app: Application
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
   const [url, setUrl] = useState('');
-  const [status, setStatus] = useState<ApplicationStatus>(APPLICATION_STATUSES[0]);
+  const [status, setStatus] = useState<ApplicationStatus>('applied');
   const [appliedDate, setAppliedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);

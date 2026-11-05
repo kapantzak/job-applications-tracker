@@ -80,6 +80,7 @@ describe('ApplicationsPage', () => {
       expect.objectContaining({
         company: 'Beta',
         role: 'Lead',
+        status: 'applied',
         applied_at: '2026-03-04T00:00:00.000Z',
       }),
     );
