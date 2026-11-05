@@ -55,10 +55,10 @@ export interface Run {
   id: string;
   kind: RunKind;
   status: RunStatus;
-  started_at: string;
+  started_at: string | null;
   finished_at: string | null;
   adapter_id: string;
-  prompt_version: string;
+  prompt_version: string | null;
   summary: string | null;
   error: string | null;
   created_at: string;

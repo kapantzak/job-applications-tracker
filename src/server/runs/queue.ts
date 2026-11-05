@@ -1,0 +1,183 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import type { RunPatch, RunsRepo } from '../db/runs-repo.js';
+import type { Run, RunKind } from '../domain/types.js';
+import type { LogStore } from './log-store.js';
+
+export interface RunContext {
+  run: Run;
+  log: (line: string) => void;
+  signal: AbortSignal;
+  runDir: string;
+}
+
+export interface RunResult {
+  summary: string;
+  promptVersion?: string;
+}
+
+export type RunHandler = (ctx: RunContext) => Promise<RunResult>;
+
+export interface RunQueueOptions {
+  runsRepo: RunsRepo;
+  logStore: LogStore;
+  runsDir: string;
+  handlers: Record<RunKind, RunHandler>;
+  // Test seam; production uses the 10 s default.
+  stopTimeoutMs?: number;
+}
+
+const DEFAULT_STOP_TIMEOUT_MS = 10_000;
+
+type Outcome = Required<Pick<RunPatch, 'status'>> & RunPatch;
+
+interface InFlight {
+  id: string;
+  controller: AbortController;
+  // Set once the terminal status is written so a late settle cannot overwrite it.
+  finalized: boolean;
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export function createRunQueue(opts: RunQueueOptions) {
+  const { runsRepo, logStore, runsDir, handlers } = opts;
+  const stopTimeoutMs = opts.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
+  let started = false;
+  let stopping = false;
+  let draining = false;
+  let drainDone: Promise<void> = Promise.resolve();
+  let current: InFlight | null = null;
+
+  function now(): string {
+    return new Date().toISOString();
+  }
+
+  function safeLog(runId: string, line: string): void {
+    try {
+      logStore.append(runId, line);
+    } catch (err) {
+      console.error(`run ${runId}: failed to write log line: ${messageOf(err)}`);
+    }
+  }
+
+  function finish(entry: InFlight, outcome: Outcome): void {
+    if (entry.finalized) return;
+    entry.finalized = true;
+    try {
+      runsRepo.update(entry.id, { ...outcome, finished_at: now() });
+    } catch (err) {
+      console.error(`run ${entry.id}: failed to record ${outcome.status}: ${messageOf(err)}`);
+    }
+    safeLog(entry.id, `Run ${entry.id} ${outcome.status}: ${outcome.summary ?? outcome.error ?? ''}`);
+  }
+
+  async function execute(queued: Run): Promise<void> {
+    const entry: InFlight = { id: queued.id, controller: new AbortController(), finalized: false };
+    current = entry;
+    try {
+      const run = runsRepo.update(queued.id, { status: 'running', started_at: now() });
+      safeLog(run.id, `Run ${run.id} (${run.kind}) started`);
+      let outcome: Outcome;
+      try {
+        const runDir = join(runsDir, run.id);
+        mkdirSync(runDir, { recursive: true });
+        const handler = handlers[run.kind];
+        if (typeof handler !== 'function') throw new Error(`No handler for run kind: ${run.kind}`);
+        const result = await handler({
+          run,
+          log: (line) => logStore.append(run.id, line),
+          signal: entry.controller.signal,
+          runDir,
+        });
+        outcome = {
+          status: 'succeeded',
+          summary: result.summary,
+          prompt_version: result.promptVersion ?? run.prompt_version,
+        };
+      } catch (err) {
+        outcome = entry.controller.signal.aborted
+          ? { status: 'aborted', error: 'Aborted' }
+          : { status: 'failed', error: messageOf(err) };
+      }
+      finish(entry, outcome);
+    } catch (err) {
+      // Repository failures outside the handler: record what we can and keep the loop alive.
+      finish(entry, { status: 'failed', error: messageOf(err) });
+    } finally {
+      if (current === entry) current = null;
+    }
+  }
+
+  async function drain(): Promise<void> {
+    // Defer so enqueue() never runs handler code on the caller's stack.
+    await Promise.resolve();
+    try {
+      let previous: string | null = null;
+      while (!stopping) {
+        const next = runsRepo.nextQueued();
+        if (!next) break;
+        // The same row twice means its status could not be written; stop rather than spin.
+        if (next.id === previous) {
+          console.error(`run queue: run ${next.id} is stuck in queued; draining paused`);
+          break;
+        }
+        previous = next.id;
+        await execute(next);
+      }
+    } catch (err) {
+      console.error(`run queue: drain stopped: ${messageOf(err)}`);
+    } finally {
+      // Cleared in the same tick the loop exits, so a concurrent enqueue always re-kicks.
+      draining = false;
+    }
+  }
+
+  function kick(): void {
+    if (!started || stopping || draining) return;
+    draining = true;
+    drainDone = drain();
+  }
+
+  function enqueue(kind: RunKind): Run {
+    const active = runsRepo.findActive(kind);
+    if (active) return active;
+    const run = runsRepo.create(kind, { adapter_id: '', prompt_version: null });
+    kick();
+    return run;
+  }
+
+  function start(): void {
+    if (started) return;
+    started = true;
+    runsRepo.markInterrupted();
+    kick();
+  }
+
+  async function stop(): Promise<void> {
+    stopping = true;
+    const entry = current;
+    if (!entry) {
+      await drainDone;
+      return;
+    }
+    entry.controller.abort();
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), stopTimeoutMs);
+    });
+    const gaveUp = await Promise.race([drainDone.then(() => false), timedOut]);
+    clearTimeout(timer);
+    if (gaveUp) finish(entry, { status: 'aborted', error: 'Aborted' });
+  }
+
+  function isRunning(): boolean {
+    return current !== null;
+  }
+
+  return { enqueue, start, stop, isRunning };
+}
+
+export type RunQueue = ReturnType<typeof createRunQueue>;

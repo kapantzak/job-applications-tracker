@@ -27,10 +27,10 @@ CREATE TABLE runs (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('discover_jobs','sync_mail')),
   status TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed','aborted')),
-  started_at TEXT NOT NULL,
+  started_at TEXT,
   finished_at TEXT,
   adapter_id TEXT NOT NULL DEFAULT '',
-  prompt_version TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT,
   summary TEXT,
   error TEXT,
   created_at TEXT NOT NULL
