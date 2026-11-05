@@ -82,7 +82,18 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const res = await fetch(path, init);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError(res.status, 'Invalid JSON response');
+  }
+}
+
+// The log endpoint returns plain text, so it bypasses the JSON helper.
+export async function getRunLog(id: string): Promise<string> {
+  const res = await fetch(`/api/runs/${encodeURIComponent(id)}/log`);
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return res.text();
 }
 
 const enc = encodeURIComponent;
@@ -122,9 +133,9 @@ export const setApplicationStatus = (id: string, status: ApplicationStatus): Pro
   request('POST', `/api/applications/${enc(id)}/status`, { status });
 
 export const listProposals = (): Promise<ProposalWithApplication[]> => request('GET', '/api/proposals');
-export const acceptProposal = (id: string): Promise<Application> =>
+export const acceptProposal = (id: string): Promise<{ proposal: Proposal; application: Application }> =>
   request('POST', `/api/proposals/${enc(id)}/accept`);
-export const rejectProposal = (id: string): Promise<Proposal> =>
+export const rejectProposal = (id: string): Promise<{ proposal: Proposal }> =>
   request('POST', `/api/proposals/${enc(id)}/reject`);
 
 export const listRuns = (limit?: number): Promise<Run[]> =>
@@ -144,8 +155,9 @@ export function subscribeRunEvents(
   source.addEventListener('line', (event) => onLine((event as MessageEvent<string>).data));
   source.addEventListener('done', (event) => {
     finished = true;
-    onDone((event as MessageEvent<string>).data as RunStatus | 'unknown');
+    // Close first so a throwing callback cannot leave the stream open.
     source.close();
+    onDone((event as MessageEvent<string>).data as RunStatus | 'unknown');
   });
   // The server ends the stream after `done`; closing here stops the browser's auto-reconnect.
   source.addEventListener('error', () => {
