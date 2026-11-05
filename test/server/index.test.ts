@@ -45,6 +45,7 @@ describe('startApp', () => {
     const app = await start({ dataDir: tmp(), port: 0, uiDir: null });
     expect(app.url.startsWith('http://127.0.0.1:')).toBe(true);
     expect(app.url).toBe(`http://127.0.0.1:${app.port}`);
+    expect(app.dataDir).toBeTruthy();
   });
 
   it('falls back to the next port when the requested one is taken', async () => {

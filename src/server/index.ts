@@ -22,6 +22,8 @@ import { createDiscoveryHandler } from './services/discovery.js';
 import { createMailSyncHandler } from './services/mail-sync.js';
 import { createProposalService } from './services/proposals.js';
 
+export { APP_VERSION } from './version.js';
+
 const PACKAGE_NAME = 'job-applications-tracker';
 const HOST = '127.0.0.1';
 const PORT_ATTEMPTS = 10;
@@ -38,6 +40,7 @@ export interface StartAppOptions {
 export interface RunningApp {
   url: string;
   port: number;
+  dataDir: string;
   close(): Promise<void>;
 }
 
@@ -183,5 +186,5 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     return closing;
   };
 
-  return { url: `http://${HOST}:${port}`, port, close };
+  return { url: `http://${HOST}:${port}`, port, dataDir, close };
 }
