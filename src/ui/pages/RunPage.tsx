@@ -76,8 +76,8 @@ export function RunPage() {
       {succeeded && run.summary && <p>{run.summary}</p>}
       {!succeeded && terminal && run.error && <p role="alert">{run.error}</p>}
       {error && <p role="alert">{error}</p>}
-      {terminal && succeeded && run.kind === 'discover_jobs' && <Link to="/jobs">View jobs</Link>}
-      {terminal && succeeded && run.kind === 'sync_mail' && <Link to="/review">Review proposals</Link>}
+      {terminal && run.kind === 'discover_jobs' && <Link to="/jobs">View jobs</Link>}
+      {terminal && run.kind === 'sync_mail' && <Link to="/review">Review proposals</Link>}
       {terminal && run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && (
         <Link to="/settings">Open settings</Link>
       )}

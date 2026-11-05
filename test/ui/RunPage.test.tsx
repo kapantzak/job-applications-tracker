@@ -81,4 +81,11 @@ describe('RunPage', () => {
     expect(client.subscribeRunEvents).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute('href', '/settings');
   });
+
+  it('offers the follow-up link for failed discovery runs too', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/jobs');
+  });
 });

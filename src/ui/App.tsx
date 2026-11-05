@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { getAdapters, getProfile, getSettings } from './api/client.js';
 import { Layout } from './components/Layout.js';
+import { ApplicationDetailPage } from './pages/ApplicationDetailPage.js';
+import { ApplicationsPage } from './pages/ApplicationsPage.js';
+import { DashboardPage } from './pages/DashboardPage.js';
 import { JobsPage } from './pages/JobsPage.js';
 import { ProfilePage } from './pages/ProfilePage.js';
+import { ReviewPage } from './pages/ReviewPage.js';
 import { RunPage } from './pages/RunPage.js';
 import { RunsPage } from './pages/RunsPage.js';
+import { SettingsPage } from './pages/SettingsPage.js';
 import { SetupPage } from './pages/SetupPage.js';
-
-function Placeholder({ name }: { name: string }) {
-  return <h1>{name}</h1>;
-}
 
 // Only guards the root route; every other page stays directly reachable.
 function StartupRedirect() {
@@ -36,7 +37,7 @@ function StartupRedirect() {
 
   if (target === undefined) return <p>Loading...</p>;
   if (target) return <Navigate to={target} replace />;
-  return <Placeholder name="Dashboard" />;
+  return <DashboardPage />;
 }
 
 export function App() {
@@ -45,11 +46,12 @@ export function App() {
       <Route element={<Layout />}>
         <Route index element={<StartupRedirect />} />
         <Route path="jobs" element={<JobsPage />} />
-        <Route path="applications" element={<Placeholder name="Applications" />} />
-        <Route path="review" element={<Placeholder name="Review" />} />
+        <Route path="applications" element={<ApplicationsPage />} />
+        <Route path="applications/:id" element={<ApplicationDetailPage />} />
+        <Route path="review" element={<ReviewPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:id" element={<RunPage />} />
-        <Route path="settings" element={<Placeholder name="Settings" />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="setup" element={<SetupPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>

@@ -34,6 +34,7 @@ export function TagInput({ label, value, onChange, placeholder }: TagInputProps)
           placeholder={placeholder}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
+          onBlur={commit}
         />
       </label>
       <ul className="tags">

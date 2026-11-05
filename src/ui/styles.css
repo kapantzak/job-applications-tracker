@@ -181,3 +181,20 @@ button.secondary {
   background: var(--panel);
   white-space: pre-wrap;
 }
+
+.card {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.stat {
+  font-size: 1.5rem;
+}
