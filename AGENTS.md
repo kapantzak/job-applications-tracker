@@ -272,7 +272,17 @@ Skills must be updated during retrospection when:
 
 ### Project Skills Index
 
-No runtime project skills exist yet. This is a deliberate decision recorded in SOW-0001: the project is empty, so there is no observed convention to capture. SOW-0001's retrospection must create `project-*` skills for the lessons it produces (expected candidates: agent adapter and fake-agent testing, run queue and SSE, link verification).
+Runtime input skills (load every one whose trigger matches before non-trivial work):
+
+- `.agents/skills/project-agent-adapter/`
+  Trigger: mandatory when changing how the app spawns or parses the user's agent CLI (`src/server/agents/*`, `prompts/*.md`, `src/server/tasks/*`, run handlers), or before claiming an agent integration works.
+  Enforces: no-shell spawning, placeholder rules, never-reject contract, last-JSON-object extraction, prompt version bumps, fake-agent testing, process-group kill.
+- `.agents/skills/project-testing/`
+  Trigger: mandatory when adding or changing tests, touching vitest config or harnesses, or before claiming the suite passes.
+  Enforces: two vitest projects, in-memory DB with FK rows, harness Host header and JSON content type, mocked UI client, invented data, pristine output, bounded polling.
+- `.agents/skills/project-local-api/`
+  Trigger: mandatory when changing routes, the request guard, static serving, SSE, or server bootstrap/shutdown.
+  Enforces: loopback-only binding, Host/Origin/Content-Type guard, zod allow-lists, error mapping, SSE ends on run status, shutdown order.
 
 Legacy runtime skills: none.
 
@@ -280,18 +290,18 @@ Output/reference skills: none.
 
 ### Project-specific commands
 
-Defined by SOW-0001 Task 1 and kept current here once they exist:
-
-- `npm test` runs vitest for server and UI projects.
-- `npm run typecheck` runs the TypeScript server check.
-- `npm run build` bundles the server (tsup) and the UI (vite).
-- `node bin/jobtrack.js --no-open --data-dir .tmp/dev` runs the app from source build output for manual checks.
+- `npm test` runs vitest for the `server` (node) and `ui` (jsdom) projects, including the end-to-end test under `test/e2e/`.
+- `npm run typecheck` runs the TypeScript checks for server and UI.
+- `npm run build` bundles the server (tsup → `dist/server`) and the UI (vite → `dist/ui`).
+- `npm run dev:server` runs the server from source with tsx; `npm run dev:ui` runs the Vite dev server with `/api` proxied to port 4173.
+- `node bin/jobtrack.js --no-open --port 0 --data-dir .tmp/dev` runs the built app for manual checks (run `npm run build` first).
+- `npm pack --pack-destination .tmp/` then install the tarball in an empty directory to verify packaging.
 - `bash .agents/sow/audit.sh` audits the SOW setup.
 
 ### Project-specific overrides
 
 - The design document and the implementation plan under `docs/superpowers/` are the product and build authority for v1. Deviations from either must be recorded in the active SOW with the reason before code is written.
-- Implementation runs task-by-task from the plan with a fresh reviewer per task (user-chosen subagent-driven execution, 2026-11-05).
+- Implementation runs task-by-task from the plan with an independent reviewer per task (user's choice, 2026-11-05).
 - The server binds to `127.0.0.1` only. Never change that without an explicit user decision.
 - Agent child processes are spawned without a shell. Never build command lines by string concatenation.
 - Temporary files go under project-local `.tmp/` (git-ignored).

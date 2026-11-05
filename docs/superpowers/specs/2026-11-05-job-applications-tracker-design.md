@@ -220,7 +220,8 @@ The prompts explicitly tell the agent: do not apply to anything, do not send or 
 
 ## 8. Security and privacy
 
-- Server binds to loopback only. No authentication is added because the only client is the same machine's browser; this is stated in the README.
+- Server binds to loopback only. No authentication is added; this is stated in the README.
+- Amended 2026-11-06 during implementation: "the only client is the same machine's browser" was a wrong premise, because the same browser runs every other website's scripts. The API therefore allow-lists the `Host` header (`127.0.0.1`, `localhost`, `[::1]`), checks `Origin` on state-changing requests, and requires `Content-Type: application/json` for JSON bodies, so other sites and DNS-rebinding pages cannot drive it.
 - The app never sees Gmail credentials or tokens.
 - The sync prompt is scoped by sender and date; the agent is told to return snippets, not bodies. Raw agent logs may still contain more than that and live only in `runs/`, which the user can purge from Settings.
 - Agent permission settings are visible and editable; presets use the narrowest mode that still allows web search (discovery) and the Gmail tool (sync). The builder must determine the exact tool names per CLI.
