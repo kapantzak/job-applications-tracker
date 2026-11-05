@@ -46,7 +46,13 @@ export function AdapterChooser({
           <h2>Gmail access</h2>
           <p>
             This agent needs a Gmail MCP server configured to read your mailbox.{' '}
-            <a href="README.md#gmail-access-for-other-agents">Gmail setup guide</a>
+            <a
+              href="https://www.npmjs.com/package/job-applications-tracker#gmail-access-for-other-agents"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Gmail setup guide
+            </a>
           </p>
         </section>
       )}

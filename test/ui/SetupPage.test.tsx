@@ -46,7 +46,7 @@ describe('SetupPage', () => {
     expect(screen.getByText('Gmail access')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /gmail/i })).toHaveAttribute(
       'href',
-      'README.md#gmail-access-for-other-agents',
+      'https://www.npmjs.com/package/job-applications-tracker#gmail-access-for-other-agents',
     );
   });
 
