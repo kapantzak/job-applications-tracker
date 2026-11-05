@@ -132,6 +132,14 @@ describe('run queue', () => {
     expect(text).toContain(`Run ${run.id} succeeded: done`);
   });
 
+  it('records the adapter id the handler reports', async () => {
+    const q = makeQueue({ sync_mail: async () => ({ summary: 'ok', adapterId: 'custom' }) });
+    const run = q.enqueue('sync_mail');
+    expect(run.adapter_id).toBe('');
+    q.start();
+    expect((await waitForTerminal(run.id)).adapter_id).toBe('custom');
+  });
+
   it('marks a run failed with the error message when the handler throws', async () => {
     const q = makeQueue({
       discover_jobs: async () => {
@@ -268,17 +276,23 @@ describe('log store', () => {
     expect(logStore.read(randomUUID())).toBe('');
   });
 
-  it('purge deletes log files except kept runs and leaves run directories', () => {
+  it('purge deletes log files and run directories except kept runs', () => {
     const keep = randomUUID();
     const drop = randomUUID();
     logStore.append(keep, 'k');
     logStore.append(drop, 'd');
     writeFileSync(join(runsDir, 'notes.txt'), 'x');
+    mkdirSync(join(runsDir, keep));
+    writeFileSync(join(runsDir, keep, 'prompt.md'), 'p');
     mkdirSync(join(runsDir, drop));
-    writeFileSync(join(runsDir, drop, 'raw.txt'), 'r');
-    expect(logStore.purge(new Set([keep]))).toBe(1);
-    expect(readdirSync(runsDir).sort()).toEqual([`${keep}.log`, drop, 'notes.txt'].sort());
-    expect(existsSync(join(runsDir, drop, 'raw.txt'))).toBe(true);
+    writeFileSync(join(runsDir, drop, 'prompt.md'), 'r');
+    // Not a run id, so it is not ours to delete.
+    mkdirSync(join(runsDir, 'not.a.run'));
+    // One log file plus one run directory.
+    expect(logStore.purge(new Set([keep]))).toBe(2);
+    expect(readdirSync(runsDir).sort()).toEqual([`${keep}.log`, keep, 'not.a.run', 'notes.txt'].sort());
+    expect(existsSync(join(runsDir, drop))).toBe(false);
+    expect(existsSync(join(runsDir, keep, 'prompt.md'))).toBe(true);
     expect(logStore.read(drop)).toBe('');
   });
 });

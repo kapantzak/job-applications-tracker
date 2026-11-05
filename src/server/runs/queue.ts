@@ -14,6 +14,8 @@ export interface RunContext {
 export interface RunResult {
   summary: string;
   promptVersion?: string;
+  // The adapter that actually ran; runs are created before one is chosen.
+  adapterId?: string;
 }
 
 export type RunHandler = (ctx: RunContext) => Promise<RunResult>;
@@ -96,6 +98,7 @@ export function createRunQueue(opts: RunQueueOptions) {
           status: 'succeeded',
           summary: result.summary,
           prompt_version: result.promptVersion ?? run.prompt_version,
+          adapter_id: result.adapterId,
         };
       } catch (err) {
         outcome = entry.controller.signal.aborted

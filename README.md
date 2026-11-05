@@ -21,7 +21,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 
 ## First run
 
-1. Setup: pick the agent CLI the app should use (Claude Code, Codex, or a custom command). The app checks that it is installed and signed in.
+1. Setup: pick the agent CLI the app should use (Claude Code, Codex, or a custom command). The app checks that it is installed.
 2. Profile: enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
 3. Find jobs: start a discovery run from the Jobs screen and follow its progress.
 
@@ -63,8 +63,8 @@ Sync needs a Gmail tool in your agent.
 
 - Data lives in `~/.job-applications-tracker/`:
   - `data.db`: profile, jobs, applications, proposals, settings.
-  - `runs/`: one log per run.
-- Purge run logs from Settings.
+  - `runs/`: one log per run, plus a folder per run with the prompt, schema and agent output files.
+- Purge run logs from Settings. This deletes the run logs and the per-run prompt and output files of every run that is not queued or running.
 - Run logs can contain agent output, including mail snippets. Do not share them.
 
 ## Command line

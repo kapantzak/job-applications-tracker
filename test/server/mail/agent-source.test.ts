@@ -57,6 +57,7 @@ describe('agent mail source', () => {
     const res = await source.sync(req, c);
     expect(res.findings).toEqual([]);
     expect(res.promptVersion).toBeTruthy();
+    expect(res.adapterId).toBe('custom');
     expect(tasks[0]?.kind).toBe('sync_mail');
     expect(tasks[0]?.prompt).toContain('msg-001, msg-002');
     expect(tasks[0]?.prompt).toContain(

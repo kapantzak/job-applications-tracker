@@ -73,6 +73,6 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
 
     const summary = `${collected.length} proposals created, ${skipped} skipped`;
     ctx.log(summary);
-    return { summary, promptVersion: findings.promptVersion };
+    return { summary, promptVersion: findings.promptVersion, adapterId: findings.adapterId ?? settings.adapter_id };
   };
 }

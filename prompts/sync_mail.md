@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 ---
 # Task: check email for application updates
 
@@ -32,5 +32,7 @@ Skip every message id listed here:
 - Allowed `proposed_status` values: `screening`, `interview`, `offer`, `rejected`, `no_change`.
 - Set `confidence` between 0 and 1.
 - Quote at most a two-sentence snippet from the message as evidence.
+- `application_id` must be copied exactly from the `id` field of the applications list above.
+- `evidence.message_id` must be the Gmail message id as returned by your Gmail tool (the id used in Gmail URLs), not the RFC Message-ID header.
 
 Respond with a single JSON object matching the required schema and nothing else.

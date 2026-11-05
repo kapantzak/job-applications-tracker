@@ -1,4 +1,4 @@
-import { appendFileSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { appendFileSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 export type LogListener = (line: string) => void;
@@ -52,7 +52,9 @@ export function createLogStore(runsDir: string) {
     };
   }
 
-  // Deletes only top-level *.log files; per-run directories are left in place.
+  // Deletes top-level *.log files and per-run directories (prompt, schema, output files) for every
+  // run not in `keep`. Returns the number of log files plus directories removed. Directories whose
+  // name is not a run id are left alone.
   function purge(keep: Set<string>): number {
     let removed = 0;
     let entries;
@@ -63,6 +65,12 @@ export function createLogStore(runsDir: string) {
       throw err;
     }
     for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!SAFE_ID.test(entry.name) || keep.has(entry.name)) continue;
+        rmSync(join(runsDir, entry.name), { recursive: true, force: true });
+        removed++;
+        continue;
+      }
       if (!entry.isFile() || !entry.name.endsWith('.log')) continue;
       if (keep.has(entry.name.slice(0, -'.log'.length))) continue;
       unlinkSync(join(runsDir, entry.name));

@@ -86,12 +86,22 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
     let duplicates = 0;
     const parseable: { job: (typeof parsed.data.jobs)[number]; canonical: string }[] = [];
     for (const job of parsed.data.jobs) {
+      let canonical: string;
       try {
-        parseable.push({ job, canonical: canonicalUrl(job.url) });
+        canonical = canonicalUrl(job.url);
       } catch {
         ctx.log(`Skipping unparseable url: ${job.url}`);
         dead++;
+        continue;
       }
+      // Only web links are fetched and shown; anything else (javascript:, file:, ...) is unusable.
+      const { protocol } = new URL(canonical);
+      if (protocol !== 'http:' && protocol !== 'https:') {
+        ctx.log(`Skipping unsupported url: ${job.url}`);
+        dead++;
+        continue;
+      }
+      parseable.push({ job, canonical });
     }
 
     const verified = await mapLimit(parseable, VERIFY_CONCURRENCY, async (entry) => ({
@@ -142,6 +152,6 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
 
     const summary = `${inserted.length} new, ${duplicates} duplicates, ${dead} dead, ${unverified} unverified`;
     ctx.log(summary);
-    return { summary, promptVersion: version };
+    return { summary, promptVersion: version, adapterId: adapter.id };
   };
 }

@@ -3,7 +3,7 @@ import type { Run, RunKind } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type RunPatch = Partial<
-  Pick<Run, 'status' | 'started_at' | 'finished_at' | 'summary' | 'error' | 'prompt_version'>
+  Pick<Run, 'status' | 'started_at' | 'finished_at' | 'summary' | 'error' | 'prompt_version' | 'adapter_id'>
 >;
 
 // Runtime allow-list: patch keys become column names in the UPDATE.
@@ -14,6 +14,7 @@ const PATCHABLE = new Set<string>([
   'summary',
   'error',
   'prompt_version',
+  'adapter_id',
 ]);
 
 export function createRunsRepo(db: Db) {

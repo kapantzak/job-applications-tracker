@@ -85,6 +85,7 @@ describe('discovery handler', () => {
     const res = await makeHandler(okResult([job(1), job(2)]))(ctx());
     expect(res.summary).toBe('2 new, 0 duplicates, 0 dead, 0 unverified');
     expect(res.promptVersion).toBeTruthy();
+    expect(res.adapterId).toBe('custom');
     expect(jobsRepo.list()).toHaveLength(2);
     expect(logs).toContain('Using adapter custom');
     expect(logs).toContain(res.summary);
@@ -134,6 +135,26 @@ describe('discovery handler', () => {
     const res = await makeHandler(okResult([job(1, { url: 'not a url' }), job(2)]))(ctx());
     expect(res.summary).toBe('1 new, 0 duplicates, 1 dead, 0 unverified');
     expect(logs).toContain('Skipping unparseable url: not a url');
+  });
+
+  it('skips non-http urls without verifying them and counts them as dead', async () => {
+    saveProfile();
+    const verified: string[] = [];
+    const adapter: AgentAdapter = {
+      id: 'custom',
+      check: async () => ({ id: 'custom', installed: true }),
+      run: async () => okResult([job(1, { url: 'javascript:alert(1)' }), job(2)]),
+    };
+    const verify = (async (url: string) => {
+      verified.push(url);
+      return { status: 'ok', finalUrl: url, httpStatus: 200 };
+    }) as typeof verifyLink;
+    const h = createDiscoveryHandler({ profileRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
+    const res = await h(ctx());
+    expect(res.summary).toBe('1 new, 0 duplicates, 1 dead, 0 unverified');
+    expect(logs).toContain('Skipping unsupported url: javascript:alert(1)');
+    expect(verified).toEqual(['https://jobs.example.com/2']);
+    expect(jobsRepo.list({ includeDead: true }).map((j) => j.url)).toEqual(['https://jobs.example.com/2']);
   });
 
   it('throws when output does not match the schema', async () => {

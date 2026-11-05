@@ -11,8 +11,9 @@ export interface MailSyncRequest {
   reviewed_message_ids: string[];
 }
 
-// promptVersion is optional so non-agent sources can omit it; the handler passes it to the run record.
-export type MailSyncFindings = SyncMailResult & { promptVersion?: string };
+// promptVersion and adapterId are optional so non-agent sources can omit them; the handler passes them
+// to the run record.
+export type MailSyncFindings = SyncMailResult & { promptVersion?: string; adapterId?: string };
 
 export interface MailSyncContext {
   log: (line: string) => void;

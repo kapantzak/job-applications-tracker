@@ -40,7 +40,7 @@ export function createAgentMailSource(adapter: AgentAdapter): MailSource {
         );
       }
       if (!parsed.data.mail_access) throw new MailAccessError();
-      return { ...parsed.data, promptVersion: version };
+      return { ...parsed.data, promptVersion: version, adapterId: adapter.id };
     },
   };
 }

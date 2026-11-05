@@ -51,7 +51,7 @@ describe('discovery and sync flow over HTTP', () => {
     const deadline = Date.now() + 20_000;
     for (;;) {
       const { body: run } = await api('GET', `/api/runs/${id}`);
-      if (['succeeded', 'failed', 'cancelled', 'timed_out'].includes(run.status)) {
+      if (['succeeded', 'failed', 'aborted'].includes(run.status)) {
         expect(run.status, `run error: ${run.error}`).toBe('succeeded');
         return run;
       }
@@ -93,7 +93,7 @@ describe('discovery and sync flow over HTTP', () => {
 
     const discover = await api('POST', '/api/runs/discover');
     expect(discover.status).toBe(202);
-    await waitForRun(discover.body.id);
+    expect((await waitForRun(discover.body.id)).adapter_id).toBe('custom');
 
     const jobs = await api<any[]>('GET', '/api/jobs');
     expect(jobs.body).toHaveLength(2);

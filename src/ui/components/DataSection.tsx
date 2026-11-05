@@ -12,7 +12,7 @@ export function DataSection({ dataDir }: { dataDir: string | null }) {
     setError(null);
     try {
       const { deleted } = await purgeRunLogs();
-      setResult(`Deleted ${deleted} log files`);
+      setResult(`Deleted ${deleted} run logs and directories`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

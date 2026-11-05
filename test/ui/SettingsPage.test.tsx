@@ -71,7 +71,7 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('/data/jt')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Purge run logs' }));
     expect(client.purgeRunLogs).toHaveBeenCalled();
-    expect(await screen.findByText('Deleted 3 log files')).toBeInTheDocument();
+    expect(await screen.findByText('Deleted 3 run logs and directories')).toBeInTheDocument();
   });
 
   it('surfaces a validation error in its own section', async () => {

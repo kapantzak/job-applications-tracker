@@ -14,7 +14,10 @@ describe('renderPrompt', () => {
 
   it('renders sync_mail with the no-mail-tool instruction', () => {
     const r = renderPrompt('sync_mail', { applications: 'A', reviewed_message_ids: 'R', ats_domains: 'D' });
+    expect(r.version).toBe('2');
     expect(r.text).toContain('set `mail_access` to false and return an empty `findings` array.');
+    expect(r.text).toContain('Gmail message id');
+    expect(r.text).not.toContain('version: 2');
     expect(r.text.toLowerCase()).toContain('read only');
   });
 

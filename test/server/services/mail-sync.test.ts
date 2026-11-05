@@ -117,6 +117,16 @@ describe('mail sync handler', () => {
     expect((await h(ctx())).promptVersion).toBe('v7');
   });
 
+  it('reports the source adapter id, falling back to the configured adapter', async () => {
+    const app = applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
+    const fromSource = handlerFor({
+      sync: async () => ({ mail_access: true, findings: [], notes: '', adapterId: 'codex' }) as MailSyncFindings,
+    });
+    expect((await fromSource(ctx())).adapterId).toBe('codex');
+    settingsRepo.set({ adapter_id: 'custom' });
+    expect((await returning([finding(app.id, 'no_change')])(ctx())).adapterId).toBe('custom');
+  });
+
   it('does not call the source when there are no open applications', async () => {
     const res = await returning([])(ctx());
     expect(res.summary).toBe('no open applications');
