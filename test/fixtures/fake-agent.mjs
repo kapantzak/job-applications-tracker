@@ -4,6 +4,9 @@ import { writeFileSync } from 'node:fs';
 const mode = process.env.FAKE_AGENT_MODE ?? 'ok';
 const output = process.env.FAKE_AGENT_OUTPUT ?? '{}';
 
+// Written first so tests can find the pid even when startup is slow; lets them confirm the process is gone.
+if (mode === 'hang') writeFileSync('fake-agent.pid', String(process.pid));
+
 function readStdin() {
   return new Promise((resolve) => {
     let data = '';
@@ -45,9 +48,10 @@ switch (mode) {
     process.stderr.write('boom\n');
     process.exit(2);
     break;
+  case 'echo-argv':
+    process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }) + '\n');
+    break;
   case 'hang':
-    // The pid file lets tests confirm the process is gone after a timeout.
-    writeFileSync('fake-agent.pid', String(process.pid));
     setTimeout(() => {}, 60_000);
     break;
   default:

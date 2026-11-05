@@ -30,6 +30,10 @@ function findObjectEnd(text: string, start: number): number {
   return -1;
 }
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function extractLastJsonObject(text: string): unknown {
   const cleaned = stripFences(text);
   const candidates: string[] = [];
@@ -44,14 +48,14 @@ export function extractLastJsonObject(text: string): unknown {
       i = cleaned.indexOf('{', end + 1);
     }
   }
-  for (let c = candidates.length - 1; c >= 0; c--) {
-    try {
-      return JSON.parse(candidates[c]!);
-    } catch {
-      // Prose in braces; try the previous candidate.
-    }
+  const last = candidates.at(-1);
+  if (last === undefined) throw new NoJsonFoundError();
+  // No fallback to earlier candidates: those may be a schema or example echoed in the agent's prose.
+  try {
+    return JSON.parse(last);
+  } catch (err) {
+    throw new NoJsonFoundError(`Last JSON object in agent output does not parse: ${errorText(err)}`);
   }
-  throw new NoJsonFoundError();
 }
 
 export function extractClaudeStructuredOutput(ndjson: string): unknown {

@@ -34,8 +34,8 @@ describe('extractLastJsonObject', () => {
     expect(extractLastJsonObject('use {placeholder syntax then {"a":1}')).toEqual({ a: 1 });
   });
 
-  it('falls back to an earlier object when the last one does not parse', () => {
-    expect(extractLastJsonObject('{"a":1} and {not json}')).toEqual({ a: 1 });
+  it('does not fall back to an earlier object when the last one does not parse', () => {
+    expect(() => extractLastJsonObject('{"a":1} and {not json}')).toThrow(NoJsonFoundError);
   });
 });
 

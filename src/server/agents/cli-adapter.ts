@@ -83,12 +83,20 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
         clearTimeout(timer);
         done({ id: config.id, ...h });
       };
-      const child = spawn(argv[0]!, argv.slice(1), {
-        shell: false,
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+      let child: ChildProcess;
+      try {
+        child = spawn(argv[0]!, argv.slice(1), {
+          shell: false,
+          env: process.env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+      } catch (err) {
+        // spawn throws synchronously for invalid argv (empty command, NUL byte, E2BIG).
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') return done({ id: config.id, installed: false, message: 'Not found on PATH' });
+        return done({ id: config.id, installed: true, message: `Failed to start: ${errorMessage(err)}` });
+      }
       const timer = setTimeout(() => {
         killTimer = terminate(child);
         finish({ installed: true, message: `Timed out after ${CHECK_TIMEOUT_MS} ms` });
@@ -159,19 +167,26 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       let killTimer: NodeJS.Timeout | undefined;
       let closeTimer: NodeJS.Timeout | undefined;
 
-      const child = spawn(argv[0]!, argv.slice(1), {
-        cwd,
-        shell: false,
-        env: process.env,
-        stdio: [config.promptVia === 'stdin' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+      let child: ChildProcess;
+      try {
+        child = spawn(argv[0]!, argv.slice(1), {
+          cwd,
+          shell: false,
+          env: process.env,
+          stdio: [config.promptVia === 'stdin' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+      } catch (err) {
+        // spawn throws synchronously for invalid argv (empty command, NUL byte, E2BIG); no timers are armed yet.
+        return done(fail(`Failed to start: ${errorMessage(err)}`));
+      }
 
       const flushOut = streamLines(child.stdout!, (c) => (rawStdout += c), log);
       const flushErr = streamLines(child.stderr!, (c) => (rawStderr += c), (l) => log(`[stderr] ${l}`));
 
       const stop = (reason: string) => {
-        if (settled || stopReason) return;
+        // An agent that already exited and is only waiting for its pipes to close is not timed out or aborted.
+        if (settled || stopReason || child.exitCode !== null || child.signalCode !== null) return;
         stopReason = reason;
         killTimer = terminate(child);
       };
@@ -192,6 +207,8 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       };
 
       const complete = (code: number | null, signal: NodeJS.Signals | null) => {
+        // Destroyed streams can still emit close after the grace timer already completed the run.
+        if (settled) return;
         if (stopReason) return finish(fail(stopReason, code));
         if (code !== 0) return finish(fail(code === null ? `Killed by signal ${signal}` : `Exited with code ${code}`, code));
         try {

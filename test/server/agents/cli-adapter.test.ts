@@ -19,6 +19,20 @@ function fakeConfig(overrides: Partial<CliAdapterConfig> = {}): CliAdapterConfig
 
 let cwd: string;
 
+// Polls for the pid file the hang fixture writes on startup.
+async function waitForPid(dir: string, timeoutMs = 2000): Promise<number> {
+  const file = join(dir, 'fake-agent.pid');
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(file)) {
+      const pid = Number(readFileSync(file, 'utf8'));
+      if (pid > 0) return pid;
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('fake agent did not write its pid file');
+}
+
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), 'jat-agent-'));
   process.env.FAKE_AGENT_OUTPUT = JSON.stringify(OUTPUT);
@@ -66,23 +80,26 @@ describe('createCliAdapter run', () => {
   it('kills a hanging agent on timeout', async () => {
     process.env.FAKE_AGENT_MODE = 'hang';
     const started = Date.now();
-    const r = await createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 500, cwd });
+    const running = createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 500, cwd });
+    const [r, pid] = await Promise.all([running, waitForPid(cwd)]);
     expect(Date.now() - started).toBeLessThan(3000);
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/timed out/i);
     expect(r.error).toBe('Timed out after 500 ms');
-    const pid = Number(readFileSync(join(cwd, 'fake-agent.pid'), 'utf8'));
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
   it('kills the agent when the signal aborts', async () => {
     process.env.FAKE_AGENT_MODE = 'hang';
     const ac = new AbortController();
-    setTimeout(() => ac.abort(), 300);
-    const r = await createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 10_000, cwd, signal: ac.signal });
+    const running = createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 10_000, cwd, signal: ac.signal });
+    // Abort only once the agent is known to be running.
+    const pid = await waitForPid(cwd);
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    ac.abort();
+    const r = await running;
     expect(r.ok).toBe(false);
     expect(r.error).toBe('Aborted');
-    const pid = Number(readFileSync(join(cwd, 'fake-agent.pid'), 'utf8'));
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
@@ -124,6 +141,27 @@ describe('createCliAdapter run', () => {
     expect(r.rawStdout).toContain('nothing useful');
   });
 
+  it('expands vars and file placeholders into the spawned argv', async () => {
+    process.env.FAKE_AGENT_MODE = 'echo-argv';
+    const r = await createCliAdapter(
+      fakeConfig({
+        argv: [process.execPath, FIXTURE, '--mode', '{permission_mode}', '--prompt={prompt_file}', '{schema}', 'x{schema}'],
+        vars: { permission_mode: 'xyz' },
+      }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.error).toBeUndefined();
+    expect(r.output).toEqual({
+      argv: ['--mode', 'xyz', `--prompt=${join(cwd, 'prompt.md')}`, JSON.stringify(TASK.outputSchema), 'x{schema}'],
+    });
+  });
+
+  it('resolves instead of rejecting when spawn throws synchronously', async () => {
+    const r = await createCliAdapter(fakeConfig({ argv: [''] })).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(false);
+    expect(r.exitCode).toBeNull();
+    expect(r.error).toMatch(/^Failed to start: /);
+  });
+
   it('reports a missing command', async () => {
     const r = await createCliAdapter(fakeConfig({ argv: ['definitely-not-a-binary-xyz'] })).run(TASK, {
       timeoutMs: 10_000,
@@ -142,6 +180,13 @@ describe('createCliAdapter check', () => {
     ).check();
     expect(h.installed).toBe(false);
     expect(h.message).toBe('Not found on PATH');
+  });
+
+  it('resolves instead of rejecting when spawn throws synchronously', async () => {
+    const h = await createCliAdapter(fakeConfig({ argv: [''] })).check();
+    expect(h.installed).toBe(true);
+    expect(h.version).toBeUndefined();
+    expect(h.message).toMatch(/^Failed to start: /);
   });
 
   it('reports the version of an installed binary', async () => {
