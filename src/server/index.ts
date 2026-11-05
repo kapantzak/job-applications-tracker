@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getRequestListener } from '@hono/node-server';
 import { createAdapter } from './agents/index.js';
@@ -62,13 +62,12 @@ function findPackageRoot(from: string): string | null {
   return null;
 }
 
-// dist/server/index.js finds dist/ui beside it; src/server/index.ts falls back to <root>/dist/ui.
+// Only the built bundle is served; src/ui/index.html is an unbuilt Vite entry and must not be picked up.
 function defaultUiDir(): string | null {
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const candidates = [resolve(moduleDir, '../ui')];
-  const root = findPackageRoot(moduleDir);
-  if (root) candidates.push(join(root, 'dist', 'ui'));
-  return candidates.find((d) => existsSync(join(d, 'index.html'))) ?? null;
+  const root = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+  if (!root) return null;
+  const dir = join(root, 'dist', 'ui');
+  return existsSync(join(dir, 'index.html')) ? dir : null;
 }
 
 function listenOnce(server: Server, port: number): Promise<void> {
