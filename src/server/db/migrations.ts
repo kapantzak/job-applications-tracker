@@ -24,7 +24,7 @@ CREATE TABLE settings (
 );
 
 CREATE TABLE runs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('discover_jobs','sync_mail')),
   status TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed','aborted')),
   started_at TEXT NOT NULL,
@@ -38,8 +38,8 @@ CREATE TABLE runs (
 CREATE INDEX idx_runs_status ON runs (status);
 
 CREATE TABLE jobs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id INTEGER NOT NULL REFERENCES runs (id),
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES runs (id),
   company TEXT NOT NULL,
   title TEXT NOT NULL,
   location TEXT,
@@ -62,8 +62,8 @@ CREATE UNIQUE INDEX idx_jobs_dedupe_key ON jobs (dedupe_key);
 CREATE INDEX idx_jobs_run_id ON jobs (run_id);
 
 CREATE TABLE applications (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  job_id INTEGER REFERENCES jobs (id),
+  id TEXT PRIMARY KEY,
+  job_id TEXT REFERENCES jobs (id),
   company TEXT NOT NULL,
   role TEXT NOT NULL,
   url TEXT,
@@ -77,9 +77,9 @@ CREATE TABLE applications (
 CREATE INDEX idx_applications_status ON applications (status);
 
 CREATE TABLE proposals (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id INTEGER NOT NULL REFERENCES runs (id),
-  application_id INTEGER NOT NULL REFERENCES applications (id),
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES runs (id),
+  application_id TEXT NOT NULL REFERENCES applications (id),
   proposed_status TEXT NOT NULL CHECK (proposed_status IN ${APP_STATUS}),
   confidence REAL NOT NULL,
   reason TEXT NOT NULL,
@@ -92,13 +92,13 @@ CREATE INDEX idx_proposals_state ON proposals (state);
 CREATE INDEX idx_proposals_application_id ON proposals (application_id);
 
 CREATE TABLE status_history (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  application_id INTEGER NOT NULL REFERENCES applications (id),
+  id TEXT PRIMARY KEY,
+  application_id TEXT NOT NULL REFERENCES applications (id),
   from_status TEXT CHECK (from_status IS NULL OR from_status IN ${APP_STATUS}),
   to_status TEXT NOT NULL CHECK (to_status IN ${APP_STATUS}),
   changed_at TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('user','proposal')),
-  proposal_id INTEGER REFERENCES proposals (id),
+  proposal_id TEXT REFERENCES proposals (id),
   created_at TEXT NOT NULL
 );
 CREATE INDEX idx_status_history_application_id ON status_history (application_id);

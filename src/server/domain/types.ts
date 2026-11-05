@@ -52,7 +52,7 @@ export interface Settings {
 }
 
 export interface Run {
-  id: number;
+  id: string;
   kind: RunKind;
   status: RunStatus;
   started_at: string;
@@ -65,8 +65,8 @@ export interface Run {
 }
 
 export interface Job {
-  id: number;
-  run_id: number;
+  id: string;
+  run_id: string;
   company: string;
   title: string;
   location: string | null;
@@ -86,8 +86,8 @@ export interface Job {
 }
 
 export interface Application {
-  id: number;
-  job_id: number | null;
+  id: string;
+  job_id: string | null;
   company: string;
   role: string;
   url: string | null;
@@ -100,13 +100,13 @@ export interface Application {
 }
 
 export interface StatusHistoryEntry {
-  id: number;
-  application_id: number;
+  id: string;
+  application_id: string;
   from_status: ApplicationStatus | null;
   to_status: ApplicationStatus;
   changed_at: string;
   source: HistorySource;
-  proposal_id: number | null;
+  proposal_id: string | null;
   created_at: string;
 }
 
@@ -119,9 +119,9 @@ export interface ProposalEvidence {
 }
 
 export interface Proposal {
-  id: number;
-  run_id: number;
-  application_id: number;
+  id: string;
+  run_id: string;
+  application_id: string;
   proposed_status: ApplicationStatus;
   confidence: number;
   reason: string;

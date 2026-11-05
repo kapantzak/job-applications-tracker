@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Job } from '../domain/types.js';
 import type { Db } from './connection.js';
 
@@ -10,10 +11,10 @@ export interface ListJobsOptions {
 
 export function createJobsRepo(db: Db) {
   const insert = db.prepare(
-    `INSERT INTO jobs (run_id, company, title, location, remote, url, canonical_url, source_site,
+    `INSERT INTO jobs (id, run_id, company, title, location, remote, url, canonical_url, source_site,
        posted_at, salary, description_excerpt, match_reason, verification_status, verified_at,
        dedupe_key, created_at)
-     VALUES (@run_id, @company, @title, @location, @remote, @url, @canonical_url, @source_site,
+     VALUES (@id, @run_id, @company, @title, @location, @remote, @url, @canonical_url, @source_site,
        @posted_at, @salary, @description_excerpt, @match_reason, @verification_status, @verified_at,
        @dedupe_key, @created_at)`,
   );
@@ -26,22 +27,24 @@ export function createJobsRepo(db: Db) {
      GROUP BY canonical_url ORDER BY MAX(created_at) DESC, MAX(rowid) DESC LIMIT ?`,
   );
 
-  function get(id: number): Job | null {
+  function get(id: string): Job | null {
     return (selectById.get(id) as Job | undefined) ?? null;
   }
 
-  function insertMany(runId: number, jobs: NewJob[]): Job[] {
+  function insertMany(runId: string, jobs: NewJob[]): Job[] {
     return db.transaction(() => {
       const inserted: Job[] = [];
       for (const job of jobs) {
         // Explicit check (also covers duplicates inside one batch) instead of catching UNIQUE errors.
         if (keyExists.get(job.dedupe_key)) continue;
-        const info = insert.run({
+        const id = randomUUID();
+        insert.run({
           ...job,
+          id,
           run_id: runId,
           created_at: new Date().toISOString(),
         });
-        inserted.push(get(Number(info.lastInsertRowid)) as Job);
+        inserted.push(get(id) as Job);
       }
       return inserted;
     })();
@@ -58,7 +61,7 @@ export function createJobsRepo(db: Db) {
       .all() as Job[];
   }
 
-  function dismiss(id: number): void {
+  function dismiss(id: string): void {
     dismissStmt.run(new Date().toISOString(), id);
   }
 

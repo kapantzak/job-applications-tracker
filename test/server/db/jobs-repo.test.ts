@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../../src/server/db/jobs-repo.js';
@@ -7,13 +8,10 @@ function setup() {
   migrate(db);
   // jobs.run_id is a foreign key; there is no runs repo yet.
   const now = new Date().toISOString();
-  const runId = Number(
-    db
-      .prepare(
-        "INSERT INTO runs (kind, status, started_at, created_at) VALUES ('discover_jobs', 'succeeded', ?, ?)",
-      )
-      .run(now, now).lastInsertRowid,
-  );
+  const runId = randomUUID();
+  db.prepare(
+    "INSERT INTO runs (id, kind, status, started_at, created_at) VALUES (?, 'discover_jobs', 'succeeded', ?, ?)",
+  ).run(runId, now, now);
   return { db, runId, repo: createJobsRepo(db) };
 }
 
@@ -74,8 +72,8 @@ describe('jobs repo', () => {
     const { repo, runId } = setup();
     const [a] = repo.insertMany(runId, [newJob(1)]);
     expect(repo.get(a.id)).toEqual(a);
-    expect(repo.get(999)).toBeNull();
-    repo.dismiss(999);
+    expect(repo.get('missing')).toBeNull();
+    repo.dismiss('missing');
     repo.dismiss(a.id);
     expect(repo.get(a.id)?.dismissed_at).toEqual(expect.any(String));
   });
