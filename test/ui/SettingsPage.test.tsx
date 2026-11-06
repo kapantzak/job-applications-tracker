@@ -70,8 +70,23 @@ describe('SettingsPage', () => {
     renderPage();
     expect(await screen.findByText('/data/jt')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Purge run logs' }));
-    expect(client.purgeRunLogs).toHaveBeenCalled();
+    // Nothing is deleted until the confirmation dialog is accepted.
+    expect(client.purgeRunLogs).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog', { name: 'Purge run logs?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Purge logs' }));
+    expect(client.purgeRunLogs).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Deleted 3 run logs and directories')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps run logs when the purge confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Purge run logs' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Purge run logs?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(client.purgeRunLogs).not.toHaveBeenCalled();
   });
 
   it('surfaces a validation error in its own section', async () => {

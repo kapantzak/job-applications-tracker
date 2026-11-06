@@ -29,6 +29,9 @@ Do not use this skill for:
 - Process tests use `test/fixtures/fake-agent.mjs` via `process.execPath`; timeout tests wait for the fixture's pid file instead of sleeping. Evidence: `test/server/agents/cli-adapter.test.ts`.
 - Network tests start a local `http.createServer` on `127.0.0.1` port 0 and call `closeAllConnections()` in `afterAll`. Evidence: `test/server/verify/links.test.ts`.
 - Invented data only: companies like `Acme`, addresses at `example.com`, message ids like `msg-001`. Never paste real run logs. Evidence: `AGENTS.md` sensitive-data note.
+- The UI uses shadcn/ui (Radix). Sheets and confirmation dialogs render in a portal on `document.body`: open them through their trigger, then scope queries with `within(await screen.findByRole('dialog' | 'alertdialog', { name }))`. Assert the action did not run before confirmation and add a Cancel test. Evidence: `test/ui/SettingsPage.test.tsx` (purge), `test/ui/JobsPage.test.tsx` (dismiss), `test/ui/ApplicationsPage.test.tsx` (add sheet).
+- `test/ui/setup.ts` stubs `ResizeObserver`, which Radix radio and checkbox need and jsdom lacks. Selects stay native (`NativeSelect`), so `user.selectOptions` works; do not switch them to Radix `Select` without adding pointer-capture and `scrollIntoView` stubs.
+- The UI project resolves the `@/` alias to `src/ui` (`vitest.config.ts`). Tests import pages by relative path as before. Pages are tested without `Layout`, so the sidebar and `matchMedia` stay out of page tests; `test/ui/theme.test.ts` stubs `matchMedia` with `vi.stubGlobal` and restores it in `afterEach`.
 
 ## Best Practices
 

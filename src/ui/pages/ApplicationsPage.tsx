@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
+import { ExternalLinkIcon, MailIcon, PlusIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Application, ApplicationStatus } from '../../server/domain/types.js';
 import { listApplications, setApplicationStatus, startSync } from '../api/client.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
 import { StatusSelect } from '../components/StatusSelect.js';
 import { formatTime } from '../format.js';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Stored URLs are untrusted; never render javascript: and friends as links.
@@ -15,6 +30,7 @@ export function ApplicationsPage() {
   const [apps, setApps] = useState<Application[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,53 +72,103 @@ export function ApplicationsPage() {
     }
   };
 
+  const onCreated = (created: Application) => {
+    setApps((prev) => [created, ...(prev ?? [])]);
+    setAdding(false);
+  };
+
   return (
-    <section>
-      <h1>Applications</h1>
-      <button type="button" disabled={syncing} onClick={sync}>
-        Sync from Gmail
-      </button>
-      {error && <p role="alert">{error}</p>}
-      {!apps ? (
-        !error && <p>Loading...</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Applied</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {apps.map((a) => (
-              <tr key={a.id}>
-                <td>{a.company}</td>
-                <td>{a.role}</td>
-                <td>
-                  <StatusSelect
-                    value={a.status}
-                    disabled={busyId === a.id}
-                    onChange={(next) => changeStatus(a.id, next)}
-                  />
-                </td>
-                <td>{formatTime(a.applied_at)}</td>
-                <td>
-                  <Link to={`/applications/${a.id}`}>Details</Link>{' '}
-                  {isHttp(a.url) && (
-                    <a href={a.url} target="_blank" rel="noopener noreferrer">
-                      Open posting
-                    </a>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <AddApplicationForm onCreated={(created) => setApps((prev) => [created, ...(prev ?? [])])} />
-    </section>
+    <div>
+      <PageHeader
+        title="Applications"
+        description="Every application you are tracking. Mail sync proposes status changes for review."
+        actions={
+          <>
+            <Button type="button" variant="outline" disabled={syncing} onClick={sync}>
+              <MailIcon />
+              Sync from Gmail
+            </Button>
+            <Sheet open={adding} onOpenChange={setAdding}>
+              <SheetTrigger asChild>
+                <Button type="button">
+                  <PlusIcon />
+                  Add application
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+                <SheetHeader>
+                  <SheetTitle>Add application</SheetTitle>
+                  <SheetDescription>Track an application you made outside of discovery.</SheetDescription>
+                </SheetHeader>
+                <div className="px-4 pb-4">
+                  <AddApplicationForm onCreated={onCreated} />
+                </div>
+              </SheetContent>
+            </Sheet>
+          </>
+        }
+      />
+      <div className="flex flex-col gap-4">
+        {error && <ErrorAlert>{error}</ErrorAlert>}
+        {!apps ? (
+          !error && <LoadingState />
+        ) : apps.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyTitle>No applications yet</EmptyTitle>
+              <EmptyDescription>Save or mark a job applied, or add one by hand.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Card className="py-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Company</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Applied</TableHead>
+                  <TableHead className="pr-4">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {apps.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="pl-4 font-medium">{a.company}</TableCell>
+                    <TableCell>{a.role}</TableCell>
+                    <TableCell>
+                      <StatusSelect
+                        size="sm"
+                        value={a.status}
+                        disabled={busyId === a.id}
+                        onChange={(next) => changeStatus(a.id, next)}
+                      />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatTime(a.applied_at)}</TableCell>
+                    <TableCell className="pr-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button asChild variant="outline" size="sm">
+                          <Link to={`/applications/${a.id}`}>Details</Link>
+                        </Button>
+                        {isHttp(a.url) && (
+                          <Button asChild variant="ghost" size="sm">
+                            <a href={a.url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLinkIcon />
+                              Open posting
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </div>
+    </div>
   );
 }

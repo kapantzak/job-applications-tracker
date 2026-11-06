@@ -10,8 +10,12 @@ export function LogView({ lines }: { lines: string[] }) {
   }, [lines]);
 
   return (
-    <pre ref={ref} className="log-view" aria-live="polite">
-      {lines.join('\n')}
+    <pre
+      ref={ref}
+      aria-live="polite"
+      className="max-h-[28rem] overflow-auto rounded-lg border bg-muted/40 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap"
+    >
+      {lines.length > 0 ? lines.join('\n') : <span className="text-muted-foreground">No output yet.</span>}
     </pre>
   );
 }

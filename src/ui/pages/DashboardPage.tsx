@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, type ReactNode } from 'react';
+import { BriefcaseIcon, FileTextIcon, InboxIcon, MailIcon, SearchIcon } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import type { Run, RunKind } from '../../server/domain/types.js';
 import {
   listApplications,
@@ -9,7 +10,11 @@ import {
   startDiscovery,
   startSync,
 } from '../api/client.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Stats {
   applications: number | null;
@@ -24,6 +29,35 @@ function lastSuccess(runs: Run[] | null, kind: RunKind): string {
   if (!runs) return '–';
   const run = runs.find((r) => r.kind === kind && r.status === 'succeeded');
   return run ? formatTime(run.finished_at ?? run.created_at) : 'never';
+}
+
+interface StatCardProps {
+  label: string;
+  value: number | null;
+  testId: string;
+  to: string;
+  icon: ReactNode;
+}
+
+function StatCard({ label, value, testId, to, icon }: StatCardProps) {
+  return (
+    <Card className="gap-2">
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardAction className="text-muted-foreground">{icon}</CardAction>
+        <CardTitle className="text-3xl tabular-nums">
+          <Link
+            to={to}
+            className="hover:underline"
+            data-testid={testId}
+            aria-label={`${label}: ${value === null ? 'unavailable' : value}`}
+          >
+            {value === null ? '–' : value}
+          </Link>
+        </CardTitle>
+      </CardHeader>
+    </Card>
+  );
 }
 
 export function DashboardPage() {
@@ -65,45 +99,64 @@ export function DashboardPage() {
     }
   };
 
-  if (!stats) return <p>Loading...</p>;
-  const show = (n: number | null) => (n === null ? '–' : n);
+  if (!stats) return <LoadingState />;
 
   return (
-    <section>
-      <h1>Dashboard</h1>
-      {errors.map((e) => (
-        <p key={e} role="alert">
-          {e}
-        </p>
-      ))}
-      <div className="stats">
-        <p>
-          Open applications{' '}
-          <strong className="stat" data-testid="count-applications">
-            {show(stats.applications)}
-          </strong>
-        </p>
-        <p>
-          Pending proposals{' '}
-          <strong className="stat" data-testid="count-proposals">
-            {show(stats.proposals)}
-          </strong>
-        </p>
-        <p>
-          Jobs{' '}
-          <strong className="stat" data-testid="count-jobs">
-            {show(stats.jobs)}
-          </strong>
-        </p>
+    <div>
+      <PageHeader
+        title="Dashboard"
+        actions={
+          <>
+            <Button type="button" disabled={busy} onClick={() => start(startDiscovery)}>
+              <SearchIcon />
+              Find jobs
+            </Button>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => start(startSync)}>
+              <MailIcon />
+              Sync from Gmail
+            </Button>
+          </>
+        }
+      />
+      <div className="flex flex-col gap-6">
+        {errors.map((e) => (
+          <ErrorAlert key={e}>{e}</ErrorAlert>
+        ))}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Open applications"
+            value={stats.applications}
+            testId="count-applications"
+            to="/applications"
+            icon={<FileTextIcon className="size-4" />}
+          />
+          <StatCard
+            label="Pending proposals"
+            value={stats.proposals}
+            testId="count-proposals"
+            to="/review"
+            icon={<InboxIcon className="size-4" />}
+          />
+          <StatCard
+            label="Jobs"
+            value={stats.jobs}
+            testId="count-jobs"
+            to="/jobs"
+            icon={<BriefcaseIcon className="size-4" />}
+          />
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Last successful runs</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+            <p className="text-muted-foreground">Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}</p>
+            <p className="text-muted-foreground">Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
+          </CardContent>
+        </Card>
       </div>
-      <p>Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}</p>
-      <p>Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
-      <button type="button" disabled={busy} onClick={() => start(startDiscovery)}>
-        Find jobs
-      </button>{' '}
-      <button type="button" disabled={busy} onClick={() => start(startSync)}>
-        Sync from Gmail
-      </button>
-    </section>
+    </div>
   );
 }

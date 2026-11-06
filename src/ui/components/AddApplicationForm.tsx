@@ -1,9 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import type { Application, ApplicationStatus } from '../../server/domain/types.js';
 import { createApplication } from '../api/client.js';
+import { Button } from '@/components/ui/button';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { ErrorAlert } from './feedback.js';
 import { StatusSelect } from './StatusSelect.js';
 
 export function AddApplicationForm({ onCreated }: { onCreated: (app: Application) => void }) {
+  const id = useId();
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
   const [url, setUrl] = useState('');
@@ -42,36 +48,49 @@ export function AddApplicationForm({ onCreated }: { onCreated: (app: Application
   };
 
   return (
-    <form onSubmit={onSubmit}>
-      <h2>Add application</h2>
-      <label>
-        Company
-        <input value={company} onChange={(e) => setCompany(e.target.value)} required />
-      </label>
-      <label>
-        Role
-        <input value={role} onChange={(e) => setRole(e.target.value)} required />
-      </label>
-      <label>
-        URL
-        <input value={url} onChange={(e) => setUrl(e.target.value)} />
-      </label>
-      <label>
-        Status
-        <StatusSelect value={status} onChange={setStatus} />
-      </label>
-      <label>
-        Applied date
-        <input type="date" value={appliedDate} onChange={(e) => setAppliedDate(e.target.value)} />
-      </label>
-      <label>
-        Notes
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <button type="submit" disabled={busy}>
-        Add application
-      </button>
-      {error && <p role="alert">{error}</p>}
+    <form onSubmit={onSubmit} className="flex flex-col gap-6">
+      <FieldGroup className="gap-5">
+        <Field>
+          <FieldLabel htmlFor={`${id}-company`}>Company</FieldLabel>
+          <Input id={`${id}-company`} value={company} onChange={(e) => setCompany(e.target.value)} required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${id}-role`}>Role</FieldLabel>
+          <Input id={`${id}-role`} value={role} onChange={(e) => setRole(e.target.value)} required />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${id}-url`}>URL</FieldLabel>
+          <Input
+            id={`${id}-url`}
+            placeholder="https://"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field>
+            <FieldLabel htmlFor={`${id}-status`}>Status</FieldLabel>
+            <StatusSelect id={`${id}-status`} value={status} onChange={setStatus} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-applied`}>Applied date</FieldLabel>
+            <Input
+              id={`${id}-applied`}
+              type="date"
+              value={appliedDate}
+              onChange={(e) => setAppliedDate(e.target.value)}
+            />
+          </Field>
+        </div>
+        <Field>
+          <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
+          <Textarea id={`${id}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+      </FieldGroup>
+      {error && <ErrorAlert>{error}</ErrorAlert>}
+      <Button type="submit" disabled={busy} className="self-start">
+        Add
+      </Button>
     </form>
   );
 }

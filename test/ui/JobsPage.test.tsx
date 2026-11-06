@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,6 +107,29 @@ describe('JobsPage', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
     // Only the saved row may still be marked applied.
     expect(screen.getAllByRole('button', { name: 'Mark applied' })).toHaveLength(1);
+  });
+
+  it('dismisses a job only after confirmation and reloads the list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.dismissJob).mockResolvedValue(undefined);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    expect(client.dismissJob).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog', { name: 'Dismiss this job?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Dismiss job' }));
+    expect(client.dismissJob).toHaveBeenCalledWith('j1');
+    await vi.waitFor(() => expect(client.listJobs).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the job when the dismiss confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Dismiss this job?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(client.dismissJob).not.toHaveBeenCalled();
+    expect(screen.getByText('Acme')).toBeInTheDocument();
   });
 
   it('only renders the Open link for http(s) URLs', async () => {

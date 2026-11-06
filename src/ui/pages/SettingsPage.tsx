@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { Settings } from '../../server/domain/types.js';
 import { getAdapters, getHealth, getSettings, type AdapterStatus } from '../api/client.js';
 import { AdapterChooser } from '../components/AdapterChooser.js';
 import { DataSection } from '../components/DataSection.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
 import { SettingsSection } from '../components/SettingsSection.js';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 type TextKey =
   | 'permission_mode_discover'
@@ -23,6 +28,7 @@ const PERMISSION_FIELDS: Array<[TextKey, string]> = [
 ];
 
 export function SettingsPage() {
+  const id = useId();
   const [adapters, setAdapters] = useState<AdapterStatus[] | null>(null);
   const [values, setValues] = useState<Settings | null>(null);
   const [dataDir, setDataDir] = useState<string | null>(null);
@@ -45,77 +51,97 @@ export function SettingsPage() {
     };
   }, []);
 
-  if (!adapters || !values) return error ? <p role="alert">{error}</p> : <p>Loading...</p>;
+  if (!adapters || !values) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setValues((prev) => (prev ? { ...prev, [key]: value } : prev));
 
   return (
-    <div>
-      <h1>Settings</h1>
-      <SettingsSection
-        title="Agent"
-        getPatch={() => ({
-          adapter_id: values.adapter_id,
-          custom_command: values.custom_command,
-        })}
-      >
-        <AdapterChooser
-          adapters={adapters}
-          adapterId={values.adapter_id}
-          customCommand={values.custom_command}
-          onAdapterChange={(id) => set('adapter_id', id)}
-          onCustomCommandChange={(v) => set('custom_command', v)}
-        />
-      </SettingsSection>
-      <SettingsSection
-        title="Permissions"
-        getPatch={() => Object.fromEntries(PERMISSION_FIELDS.map(([key]) => [key, values[key]]))}
-      >
-        {PERMISSION_FIELDS.map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input value={values[key]} onChange={(e) => set(key, e.target.value)} />
-          </label>
-        ))}
-      </SettingsSection>
-      <SettingsSection
-        title="Runs"
-        getPatch={() => ({
-          run_timeout_ms: values.run_timeout_ms,
-          sync_interval: values.sync_interval,
-        })}
-      >
-        <label>
-          Run timeout (ms)
-          <input
-            type="number"
-            value={values.run_timeout_ms}
-            onChange={(e) => set('run_timeout_ms', Number(e.target.value))}
+    <div className="max-w-3xl">
+      <PageHeader title="Settings" description="Each section saves on its own." />
+      <div className="flex flex-col gap-6">
+        <SettingsSection
+          title="Agent"
+          description="The agent CLI the app runs for discovery and mail sync."
+          getPatch={() => ({
+            adapter_id: values.adapter_id,
+            custom_command: values.custom_command,
+          })}
+        >
+          <AdapterChooser
+            adapters={adapters}
+            adapterId={values.adapter_id}
+            customCommand={values.custom_command}
+            onAdapterChange={(adapter) => set('adapter_id', adapter)}
+            onCustomCommandChange={(v) => set('custom_command', v)}
           />
-        </label>
-        <label>
-          Sync interval
-          <select
-            value={values.sync_interval}
-            onChange={(e) => set('sync_interval', e.target.value as Settings['sync_interval'])}
-          >
-            {['off', '1h', '6h', '24h'].map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
+        </SettingsSection>
+        <SettingsSection
+          title="Permissions"
+          description="What the agent is allowed to do in each kind of run."
+          getPatch={() => Object.fromEntries(PERMISSION_FIELDS.map(([key]) => [key, values[key]]))}
+        >
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+            {PERMISSION_FIELDS.map(([key, label]) => (
+              <Field key={key}>
+                <FieldLabel htmlFor={`${id}-${key}`}>{label}</FieldLabel>
+                <Input
+                  id={`${id}-${key}`}
+                  className="font-mono"
+                  value={values[key]}
+                  onChange={(e) => set(key, e.target.value)}
+                />
+              </Field>
             ))}
-          </select>
-        </label>
-      </SettingsSection>
-      <SettingsSection title="Server" getPatch={() => ({ port: values.port })}>
-        <label>
-          Port
-          <input type="number" value={values.port} onChange={(e) => set('port', Number(e.target.value))} />
-        </label>
-        <p>Port changes take effect on restart.</p>
-      </SettingsSection>
-      <DataSection dataDir={dataDir} />
+          </div>
+        </SettingsSection>
+        <SettingsSection
+          title="Runs"
+          getPatch={() => ({
+            run_timeout_ms: values.run_timeout_ms,
+            sync_interval: values.sync_interval,
+          })}
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <Field>
+              <FieldLabel htmlFor={`${id}-timeout`}>Run timeout (ms)</FieldLabel>
+              <Input
+                id={`${id}-timeout`}
+                type="number"
+                value={values.run_timeout_ms}
+                onChange={(e) => set('run_timeout_ms', Number(e.target.value))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${id}-interval`}>Sync interval</FieldLabel>
+              <NativeSelect
+                id={`${id}-interval`}
+                value={values.sync_interval}
+                onChange={(e) => set('sync_interval', e.target.value as Settings['sync_interval'])}
+              >
+                {['off', '1h', '6h', '24h'].map((v) => (
+                  <NativeSelectOption key={v} value={v}>
+                    {v}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+        </SettingsSection>
+        <SettingsSection title="Server" getPatch={() => ({ port: values.port })}>
+          <Field className="max-w-xs">
+            <FieldLabel htmlFor={`${id}-port`}>Port</FieldLabel>
+            <Input
+              id={`${id}-port`}
+              type="number"
+              value={values.port}
+              onChange={(e) => set('port', Number(e.target.value))}
+            />
+            <FieldDescription>Port changes take effect on restart.</FieldDescription>
+          </Field>
+        </SettingsSection>
+        <DataSection dataDir={dataDir} />
+      </div>
     </div>
   );
 }
