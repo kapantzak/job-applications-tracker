@@ -83,7 +83,7 @@ jobtrack [options]
 ## Known limitations
 
 - Windows: agent CLIs installed by npm are resolved through their `.cmd` shims and started as `node <cli.js>`; this path is covered by tests with simulated shims only and has not been exercised on a real Windows machine.
-- On timeout only the direct agent process is killed, not processes it started.
+- On POSIX a timeout or abort kills the agent's whole process group; on Windows the process tree is killed with `taskkill /T`. A helper that ignores SIGTERM is only force-killed if the agent itself is still running when the 5 s escalation fires.
 - A custom command cannot read Gmail unless that agent has a Gmail tool.
 
 ## Development

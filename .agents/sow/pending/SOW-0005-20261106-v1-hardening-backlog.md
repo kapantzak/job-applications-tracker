@@ -23,6 +23,7 @@ Settings and UI:
 - Sync-interval options derived from a shared constant.
 
 Server:
+- Windows resolver: handle a `.cmd` shim that references a native `.exe`; look up a bare `name.cmd` argv0 on PATH instead of cwd only (SOW-0002 review).
 - `extractClaudeStructuredOutput`: surface `is_error` / `subtype` from the Claude result event instead of "no structured output".
 - Verifier: skip loopback and private-range hosts; share one deadline across redirect hops; `body.cancel()` failure must not misclassify.
 - Logs purge via a `runsRepo.listActiveIds()` method instead of direct SQL in the route.

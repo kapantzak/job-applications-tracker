@@ -18,8 +18,11 @@ export interface ResolvedCommand {
 
 const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD;.JS';
 // npm's cmd-shim launches its entry as "%dp0%\node_modules\<pkg>\<entry>.js"; older shims use %~dp0.
+// A quoted reference may contain spaces, so it is tried first; the unquoted form stops at whitespace.
 // The lookahead keeps "package.json" from matching as "package.js".
+const QUOTED_SHIM_SCRIPT = /"%~?dp0%?\\([^"]+?\.(?:m|c)?js)"/i;
 const SHIM_SCRIPT = /"?%~?dp0%?\\?([^"\s]+\.(?:m|c)?js)(?![^"\s])"?/i;
+const SCRIPT_EXTS = new Set(['.js', '.mjs', '.cjs']);
 
 export function defaultResolveDeps(): ResolveDeps {
   return {
@@ -41,6 +44,7 @@ export function resolveCommand(argv0: string, deps: ResolveDeps): ResolvedComman
   if (winner === undefined) return unchanged;
 
   const ext = win32.extname(winner).toLowerCase();
+  if (SCRIPT_EXTS.has(ext)) return { file: deps.execPath, prefixArgs: [winner] };
   if (ext !== '.cmd' && ext !== '.bat') return { file: winner, prefixArgs: [] };
 
   let text: string;
@@ -49,7 +53,7 @@ export function resolveCommand(argv0: string, deps: ResolveDeps): ResolvedComman
   } catch {
     return unchanged;
   }
-  const match = SHIM_SCRIPT.exec(text);
+  const match = QUOTED_SHIM_SCRIPT.exec(text) ?? SHIM_SCRIPT.exec(text);
   if (!match) return unchanged;
   const join = deps.join ?? win32.join;
   return { file: deps.execPath, prefixArgs: [join(win32.dirname(winner), match[1]!)] };

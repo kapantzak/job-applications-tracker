@@ -142,6 +142,45 @@ describe('resolveCommand', () => {
     expect(named.probed).toEqual(['agent.exe']);
   });
 
+  it('keeps a space inside a quoted script reference', () => {
+    const shim = win32.join('C:\\tools', 'claude.cmd');
+    const deps = winDeps({ [shim]: npmShim('node_modules\\my tool\\cli.js') });
+    expect(resolveCommand('claude', deps)).toEqual({
+      file: EXEC_PATH,
+      prefixArgs: ['C:\\tools\\node_modules\\my tool\\cli.js'],
+    });
+  });
+
+  it('keeps a space in the shim directory', () => {
+    const shim = 'C:\\Program Files\\nodejs\\claude.cmd';
+    const deps = winDeps(
+      { [shim]: npmShim('node_modules\\@acme\\agent\\cli.js') },
+      { env: { PATH: 'C:\\Program Files\\nodejs', PATHEXT: '.EXE;.CMD' } },
+    );
+    expect(resolveCommand('claude', deps)).toEqual({
+      file: EXEC_PATH,
+      prefixArgs: ['C:\\Program Files\\nodejs\\node_modules\\@acme\\agent\\cli.js'],
+    });
+  });
+
+  it('still resolves an unquoted script reference', () => {
+    const shim = win32.join('C:\\tools', 'claude.cmd');
+    const deps = winDeps({ [shim]: '@echo off\r\nnode %~dp0\\node_modules\\agent\\cli.js %*\r\n' });
+    expect(resolveCommand('claude', deps).prefixArgs).toEqual(['C:\\tools\\node_modules\\agent\\cli.js']);
+  });
+
+  it('runs a script found on PATH with node', () => {
+    const script = win32.join('C:\\tools', 'claude.JS');
+    const deps = winDeps({ [script]: '' }, { env: { PATH: 'C:\\tools', PATHEXT: '.EXE;.JS' } });
+    expect(resolveCommand('claude', deps)).toEqual({ file: EXEC_PATH, prefixArgs: [script] });
+  });
+
+  it('runs an explicit .mjs or .cjs script with node', () => {
+    for (const script of ['D:\\agents\\agent.mjs', 'agent.cjs']) {
+      expect(resolveCommand(script, winDeps({ [script]: '' }))).toEqual({ file: EXEC_PATH, prefixArgs: [script] });
+    }
+  });
+
   it('joins the script reference with the injected join', () => {
     const shim = win32.join('C:\\tools', 'claude.cmd');
     const deps = winDeps(
