@@ -10,6 +10,9 @@ export const APPLICATION_STATUSES = [
   'no_response',
 ] as const;
 export const RUN_KINDS = ['discover_jobs', 'sync_mail'] as const;
+// Logged when a run starts saving its results; the UI matches it exactly to lock the cancel control.
+export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be cancelled';
+
 export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'aborted'] as const;
 export const VERIFICATION_STATUSES = ['ok', 'redirected', 'dead', 'unverified'] as const;
 export const PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;

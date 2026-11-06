@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
+  cancelRun,
   dismissJob,
   getModelCatalogs,
   getRunLog,
@@ -54,6 +55,15 @@ describe('api client', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/setup/models');
     expect(init.method).toBe('GET');
+  });
+
+  it('cancelRun posts to the run cancel route and returns the run', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 'r 1', status: 'aborted' }, 202));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    expect(await cancelRun('r 1')).toEqual({ id: 'r 1', status: 'aborted' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/runs/r%201/cancel');
+    expect(init.method).toBe('POST');
   });
 
   it('dismissJob returns undefined on 204 without parsing a body', async () => {

@@ -1,4 +1,5 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunPage } from '../../src/ui/pages/RunPage.js';
@@ -10,6 +11,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   getRun: vi.fn(),
   getRunLog: vi.fn(),
   subscribeRunEvents: vi.fn(),
+  cancelRun: vi.fn(),
 }));
 
 const run: Run = {
@@ -149,5 +151,55 @@ describe('RunPage', () => {
     // Later lines do not fetch again.
     await act(async () => onLine('Using adapter claude'));
     expect(client.getRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a running run after confirmation and shows Cancelling until it ends', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.cancelRun).mockResolvedValue(run);
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await user.click(screen.getByRole('button', { name: 'Cancel run' }));
+    expect(client.cancelRun).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
+    expect(client.cancelRun).toHaveBeenCalledWith('r1');
+    expect(await screen.findByRole('button', { name: 'Cancelling…' })).toBeDisabled();
+
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });
+    await act(async () => onDone('aborted' as never));
+    expect(await screen.findByText('Cancelled by user')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+  });
+
+  it('turns the control into Saving results once the run starts saving', async () => {
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    // Agent output that merely starts with the same words must not lock the control.
+    await act(async () => onLine('Saving results to output.json'));
+    expect(screen.getByRole('button', { name: 'Cancel run' })).toBeEnabled();
+    await act(async () => onLine('Saving results; the run can no longer be cancelled'));
+    expect(screen.getByRole('button', { name: 'Saving results…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Cancel run' })).not.toBeInTheDocument();
+  });
+
+  it('shows the cancelled state at once for a queued run', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued' });
+    vi.mocked(client.cancelRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await user.click(screen.getByRole('button', { name: 'Cancel run' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
+    expect(await screen.findByText('Cancelled by user')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+  });
+
+  it('offers no cancel on a finished run', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText('done');
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
   });
 });

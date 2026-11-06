@@ -85,7 +85,8 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
       throw new Error(`Agent output did not match schema: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
     }
 
-    if (ctx.signal.aborted) throw new Error('Aborted');
+    // Past this point the run cannot be cancelled; throws if a cancel or shutdown came first.
+    ctx.beginSaving();
 
     let dead = 0;
     let unverified = 0;

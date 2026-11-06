@@ -153,6 +153,8 @@ export const listRuns = (limit?: number): Promise<Run[]> =>
   request('GET', limit === undefined ? '/api/runs' : `/api/runs?limit=${limit}`);
 export const getRun = (id: string): Promise<Run> => request('GET', `/api/runs/${enc(id)}`);
 export const startDiscovery = (): Promise<Run> => request('POST', '/api/runs/discover');
+// 202 with the run: already `aborted` for a queued run, still `running` while the agent is stopped.
+export const cancelRun = (id: string): Promise<Run> => request('POST', `/api/runs/${enc(id)}/cancel`);
 export const startSync = (): Promise<Run> => request('POST', '/api/runs/sync');
 export const purgeRunLogs = (): Promise<{ deleted: number }> => request('DELETE', '/api/runs/logs');
 

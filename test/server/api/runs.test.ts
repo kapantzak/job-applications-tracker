@@ -133,7 +133,87 @@ describe('runs: reading', () => {
         const res = await h.app.request(`/api/runs/${id}${suffix}`);
         expect(res.status, `${id}${suffix}`).toBe(404);
       }
+      const cancel = await h.app.request(`/api/runs/${id}/cancel`, { method: 'POST' });
+      expect(cancel.status, `${id}/cancel`).toBe(404);
+      expect(await cancel.json()).toEqual({ error: 'Run not found' });
     }
+  });
+
+  describe('cancel', () => {
+    const cancel = (id: string) => h.app.request(`/api/runs/${id}/cancel`, { method: 'POST' });
+
+    it('cancels a queued run at once and returns it', async () => {
+      // The queue is not started, so the run stays queued.
+      const run = h.deps.queue.enqueue('sync_mail');
+      const res = await cancel(run.id);
+      expect(res.status).toBe(202);
+      expect(await res.json()).toMatchObject({ id: run.id, status: 'aborted', error: 'Cancelled by user' });
+      expect(h.deps.runsRepo.get(run.id)?.status).toBe('aborted');
+    });
+
+    it('stops a running run and records it as cancelled', async () => {
+      let entered = false;
+      h.handlers.discover_jobs = ({ signal }) => {
+        entered = true;
+        return new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('Aborted'))));
+      };
+      h.deps.queue.start();
+      const run = h.deps.queue.enqueue('discover_jobs');
+      await waitFor(() => entered);
+      const res = await cancel(run.id);
+      expect(res.status).toBe(202);
+      expect(((await res.json()) as { id: string }).id).toBe(run.id);
+      await waitFor(() => h.deps.runsRepo.get(run.id)?.status === 'aborted');
+      expect(h.deps.runsRepo.get(run.id)?.error).toBe('Cancelled by user');
+    });
+
+    it('refuses with 409 once the run is saving its results', async () => {
+      let saving = false;
+      let release: () => void = () => {};
+      h.handlers.discover_jobs = async ({ beginSaving }) => {
+        beginSaving();
+        saving = true;
+        await new Promise<void>((r) => (release = r));
+        return { summary: 'saved' };
+      };
+      h.deps.queue.start();
+      const run = h.deps.queue.enqueue('discover_jobs');
+      await waitFor(() => saving);
+      const res = await cancel(run.id);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'This run is saving its results and can no longer be cancelled' });
+      release();
+      await waitFor(() => h.deps.runsRepo.get(run.id)?.status === 'succeeded');
+    });
+
+    it('refuses with 409 for a finished run', async () => {
+      const run = h.deps.runsRepo.create('sync_mail', { adapter_id: '', prompt_version: null });
+      h.deps.runsRepo.update(run.id, { status: 'failed', error: 'x' });
+      const res = await cancel(run.id);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'This run has already finished' });
+      expect(h.deps.runsRepo.get(run.id)?.error).toBe('x');
+    });
+
+    it('rejects a cancel from a foreign origin', async () => {
+      const run = h.deps.queue.enqueue('sync_mail');
+      const res = await h.app.request(`/api/runs/${run.id}/cancel`, {
+        method: 'POST',
+        headers: { origin: 'http://evil.example.com' },
+      });
+      expect(res.status).toBe(403);
+      expect(h.deps.runsRepo.get(run.id)?.status).toBe('queued');
+    });
+
+    it('rejects a cancel with a foreign Host', async () => {
+      const run = h.deps.queue.enqueue('sync_mail');
+      const res = await h.app.request(`/api/runs/${run.id}/cancel`, {
+        method: 'POST',
+        headers: { host: 'evil.example.com' },
+      });
+      expect(res.status).toBe(403);
+      expect(h.deps.runsRepo.get(run.id)?.status).toBe('queued');
+    });
   });
 
   it('GET log returns the full text as text/plain', async () => {

@@ -64,10 +64,32 @@ function ctx(): RunContext {
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'mail-sync-')),
     recordAgent: (record) => runsRepo.update(run.id, record),
+    beginSaving: () => {},
   };
 }
 
 describe('mail sync handler', () => {
+  it('enters the saving phase after the mail source returns and saves nothing when refused', async () => {
+    const app = applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
+    const events: string[] = [];
+    const handler = handlerFor({
+      sync: async () => {
+        events.push('agent');
+        return { mail_access: true, findings: [finding(app.id, 'interview')], notes: '' } as MailSyncFindings;
+      },
+    });
+    const refusing = {
+      ...ctx(),
+      beginSaving: () => {
+        events.push('saving');
+        throw new Error('Aborted');
+      },
+    };
+    await expect(handler(refusing)).rejects.toThrow('Aborted');
+    expect(events).toEqual(['agent', 'saving']);
+    expect(proposalsRepo.listPending()).toHaveLength(0);
+  });
+
   it('passes the run record callback to the mail source', async () => {
     applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
     const c = ctx();

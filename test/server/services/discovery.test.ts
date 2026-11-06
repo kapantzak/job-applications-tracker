@@ -83,6 +83,7 @@ function ctx(): RunContext {
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'discovery-')),
     recordAgent: (record) => runsRepo.update(run.id, record),
+    beginSaving: () => {},
   };
 }
 
@@ -227,12 +228,67 @@ describe('discovery handler', () => {
     expect(adapterCalls).toBe(0);
   });
 
-  it('throws Aborted when the signal is already aborted', async () => {
+  it('stops before checking links or saving when beginSaving refuses', async () => {
     saveProfile();
-    const c = ctx();
-    const controller = new AbortController();
-    controller.abort();
-    await expect(makeHandler(okResult([job(1)]))({ ...c, signal: controller.signal })).rejects.toThrow('Aborted');
+    let verified = 0;
+    const handler = createDiscoveryHandler({
+      profileRepo,
+      jobsRepo,
+      settingsRepo,
+      adapterFactory: () => ({
+        id: 'custom',
+        check: async () => ({ id: 'custom', installed: true }),
+        listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+        run: async () => okResult([job(1)]),
+      }),
+      verify: (async (url: string) => {
+        verified++;
+        return { status: 'ok', finalUrl: url, httpStatus: 200 };
+      }) as typeof verifyLink,
+    });
+    const c = {
+      ...ctx(),
+      beginSaving: () => {
+        throw new Error('Aborted');
+      },
+    };
+    await expect(handler(c)).rejects.toThrow('Aborted');
+    expect(verified).toBe(0);
     expect(jobsRepo.list()).toHaveLength(0);
+  });
+
+  it('enters the saving phase after the agent returns and before checking links', async () => {
+    saveProfile();
+    const events: string[] = [];
+    const handler = createDiscoveryHandler({
+      profileRepo,
+      jobsRepo,
+      settingsRepo,
+      adapterFactory: () => ({
+        id: 'custom',
+        check: async () => ({ id: 'custom', installed: true }),
+        listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+        run: async () => {
+          events.push('agent');
+          return okResult([job(1)]);
+        },
+      }),
+      verify: (async (url: string) => {
+        events.push('verify');
+        return { status: 'ok', finalUrl: url, httpStatus: 200 };
+      }) as typeof verifyLink,
+    });
+    await handler({ ...ctx(), beginSaving: () => void events.push('saving') });
+    expect(events).toEqual(['agent', 'saving', 'verify']);
+  });
+
+  it('does not enter the saving phase when the agent run fails', async () => {
+    saveProfile();
+    let saving = 0;
+    const failed: AgentResult = { ...okResult([]), ok: false, error: 'Exited with code 1' };
+    await expect(makeHandler(failed)({ ...ctx(), beginSaving: () => void saving++ })).rejects.toThrow(
+      'Agent run failed',
+    );
+    expect(saving).toBe(0);
   });
 });

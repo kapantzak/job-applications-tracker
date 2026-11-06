@@ -45,6 +45,9 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
       },
     );
 
+    // Past this point the run cannot be cancelled; throws if a cancel or shutdown came first.
+    ctx.beginSaving();
+
     const known = new Set(open.map((a) => a.id));
     const collected: NewProposal[] = [];
     let skipped = 0;

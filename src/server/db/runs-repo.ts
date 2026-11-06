@@ -50,6 +50,10 @@ export function createRunsRepo(db: Db) {
     `SELECT * FROM runs WHERE kind = ? AND status IN ('queued','running')
      ORDER BY created_at ASC, rowid ASC LIMIT 1`,
   );
+  const selectActiveExcept = db.prepare(
+    `SELECT * FROM runs WHERE kind = ? AND id != ? AND status IN ('queued','running')
+     ORDER BY created_at ASC, rowid ASC LIMIT 1`,
+  );
   const interruptRunning = db.prepare(
     "UPDATE runs SET status = 'aborted', error = 'server restarted', finished_at = ? WHERE status = 'running'",
   );
@@ -100,11 +104,16 @@ export function createRunsRepo(db: Db) {
     return (selectActive.get(kind) as Run | undefined) ?? null;
   }
 
+  // Used while one run of the kind is being cancelled: another active run may be queued behind it.
+  function findActiveExcept(kind: RunKind, excludeId: string): Run | null {
+    return (selectActiveExcept.get(kind, excludeId) as Run | undefined) ?? null;
+  }
+
   function hasActive(kind: RunKind): boolean {
     return findActive(kind) !== null;
   }
 
-  return { create, update, get, list, nextQueued, markInterrupted, findActive, hasActive };
+  return { create, update, get, list, nextQueued, markInterrupted, findActive, findActiveExcept, hasActive };
 }
 
 export type RunsRepo = ReturnType<typeof createRunsRepo>;

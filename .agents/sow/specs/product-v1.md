@@ -42,11 +42,12 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 
 ## Runs
 
-- Statuses `queued`, `running`, `succeeded`, `failed`, `aborted`. One run at a time. One active run per kind.
+- Statuses `queued`, `running`, `succeeded`, `failed`, `aborted`. One run at a time. One active run per kind, not counting a run that is being cancelled: starting a run of that kind (button or schedule) queues a new run behind it instead of returning the dying one (SOW-0012).
 - Each run keeps a full log under `runs/<id>.log` and its prompt/schema/output files under `runs/<id>/`; the log is streamed to the UI over SSE. "Purge run logs" deletes both for every run that is not active.
 - `runs.started_at` and `runs.prompt_version` are null until set; `runs.adapter_id` records the adapter used.
 - `runs.agent_model` and `runs.agent_effort` (migration 2) record what the run asked for: `''` = agent default, NULL = not recorded (older run, custom command, or the run never reached the agent). `runs.agent_model_reported` holds the model Claude Code names in its stream-json init event; Codex `--json` reports neither model nor effort, and no agent reports the effort. Handlers write these through `RunContext.recordAgent` before the agent starts and after it returns, so failed and aborted runs keep them; a write failure is logged and never fails the run.
 - Runs left `running` by a crash are marked `aborted` with reason "server restarted" on next start.
+- Cancel (SOW-0012): `POST /api/runs/:id/cancel`. A queued run is recorded `aborted` / "Cancelled by user" at once and never starts (202). A running run whose agent is still working is aborted: the agent's process tree is killed and the run ends `aborted` / "Cancelled by user" (202 returns the run while it is still `running`; it ends within about 6 s). Once the handler calls `beginSaving()` (discovery: after a valid agent result, before link checks; mail sync: after the mail source returns, before proposals are created) the queue logs "Saving results; the run can no longer be cancelled" and cancel returns 409; a cancel that arrived first makes `beginSaving()` throw so nothing is saved. Finished runs return 409, unknown ids 404. Shutdown still records "Aborted"; a cancel during shutdown keeps "Aborted", and a run cancelled before shutdown keeps "Cancelled by user" even if shutdown gives up waiting.
 
 ## Scheduled sync
 
@@ -56,7 +57,8 @@ Optional interval (`off`, `1h`, `6h`, `24h`) that enqueues `sync_mail` while the
 
 - The SPA under `src/ui/` is built from shadcn/ui components (Tailwind CSS v4, Radix primitives, lucide icons), owned as source under `src/ui/components/ui/` (SOW-0010). Desktop browsers only; Tailwind v4 needs Chrome 111+, Safari 16.4+ or Firefox 128+.
 - A fixed left sidebar holds navigation, the pending-proposal count on Review, and a theme menu with Light, Dark and System. The choice is stored in browser `localStorage` under `theme` (default System, which follows the OS setting live); a pre-paint script in `index.html` applies it before first render.
-- Destructive actions confirm first: "Purge run logs" (Settings) and "Dismiss" (Jobs) open a confirmation dialog and do nothing on Cancel.
+- Destructive actions confirm first: "Purge run logs" (Settings), "Dismiss" (Jobs) and "Cancel run" (Run page, Runs list) open a confirmation dialog and do nothing when dismissed.
+- Queued and running runs show "Cancel run" on the Run page and on their Runs list row. After a cancel request the Run page shows "Cancelling…" until the run ends; once the run logs its saving line it shows "Saving results…" (disabled). The Runs list re-reads the list each second (up to 30 s) until the cancelled run has ended; a refused cancel (409) is shown above the list and the list is re-read once. The saving line is matched exactly (`RUN_SAVING_LOG_LINE` in `domain/types.ts`), so agent output cannot lock the control.
 - Manual applications are added from an "Add application" side sheet on the Applications screen; the sheet closes after a successful add.
 - Feedback stays inline: errors render with `role="alert"`, success messages ("Saved") with `role="status"`, next to the action that produced them. No toasts.
 - Settings → Agent shows model and effort per run kind for the selected claude or codex agent (saved with the Agent section; model is free text with suggestions, effort a select with "Agent default" and the levels the chosen model supports when the catalog knows it). The Run page shows agent, model (plus "ran as" when reported) and effort; the Dashboard has an Agent card with the saved choice per run kind.

@@ -25,6 +25,12 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 2. Profile: enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
 3. Find jobs: start a discovery run from the Jobs screen and follow its progress.
 
+## Cancelling a run
+
+- A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as aborted with "Cancelled by user".
+- Once the agent has finished and the app is checking links and saving results, the run can no longer be cancelled: the Run page shows "Saving results…", and a cancel from the Runs list is refused with a message.
+- Stopping the agent can take a few seconds; the Run page shows "Cancelling…" meanwhile.
+
 ## Model and effort
 
 - Settings → Agent lets you pick the model and the effort level for Claude Code or Codex, separately for discovery and for Gmail sync. Leave them on "Agent default" to use whatever your Claude Code or Codex configuration sets; the app then passes no flag and cannot tell you which model that is.
@@ -98,7 +104,7 @@ jobtrack [options]
 ## Interface
 
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
-- Purging run logs and dismissing a job ask for confirmation first.
+- Purging run logs, dismissing a job and cancelling a run ask for confirmation first.
 - Desktop browsers only. The interface needs Chrome or Edge 111+, Safari 16.4+, or Firefox 128+.
 
 ## Development

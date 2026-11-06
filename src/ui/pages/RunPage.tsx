@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { getRun, getRunLog, subscribeRunEvents } from '../api/client.js';
-import type { Run } from '../../server/domain/types.js';
+import { RUN_SAVING_LOG_LINE, type Run } from '../../server/domain/types.js';
+import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -21,6 +22,7 @@ export function RunPage() {
   const [run, setRun] = useState<Run | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -31,6 +33,7 @@ export function RunPage() {
     setRun(null);
     setLines([]);
     setError(null);
+    setSaving(false);
 
     const refresh = () =>
       getRun(id)
@@ -51,6 +54,7 @@ export function RunPage() {
             (line) => {
               if (!active) return;
               setLines((prev) => [...prev, line]);
+              if (line === RUN_SAVING_LOG_LINE) setSaving(true);
               // Handlers record agent, model and effort right after logging this line.
               if (!agentSeen && line.startsWith('Using adapter ')) {
                 agentSeen = true;
@@ -97,10 +101,20 @@ export function RunPage() {
         <PageHeader
           title="Run"
           actions={
-            <Badge variant={RUN_STATUS_TONES[run.status]} className="text-sm">
-              {!terminal && <LoaderCircleIcon className="animate-spin" />}
-              {run.status}
-            </Badge>
+            <div className="flex items-start gap-3">
+              {!terminal && (
+                <CancelRunButton
+                  runId={run.id}
+                  saving={saving}
+                  // A queued run comes back already aborted; a running one ends through the event stream.
+                  onCancelled={(fresh) => setRun(fresh)}
+                />
+              )}
+              <Badge variant={RUN_STATUS_TONES[run.status]} className="text-sm">
+                {!terminal && <LoaderCircleIcon className="animate-spin" />}
+                {run.status}
+              </Badge>
+            </div>
           }
         />
         <Card className="py-4">
