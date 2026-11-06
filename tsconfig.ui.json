@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "lib": ["DOM", "ES2022"],
+    "types": ["vite/client", "@testing-library/jest-dom"]
+  },
+  "include": ["src/ui", "test/ui", "src/server/domain/types.ts"]
+}
