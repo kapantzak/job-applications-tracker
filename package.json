@@ -1,6 +1,25 @@
 {
   "name": "job-applications-tracker",
   "version": "0.1.0",
+  "description": "Local job applications tracker that uses your own agent CLI to find openings and sync application status from Gmail",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kapantzak/job-applications-tracker.git"
+  },
+  "homepage": "https://github.com/kapantzak/job-applications-tracker#readme",
+  "bugs": {
+    "url": "https://github.com/kapantzak/job-applications-tracker/issues"
+  },
+  "keywords": [
+    "job-search",
+    "job-applications",
+    "tracker",
+    "gmail",
+    "claude-code",
+    "codex",
+    "local-first"
+  ],
   "type": "module",
   "bin": {
     "jobtrack": "bin/jobtrack.js"
@@ -12,7 +31,8 @@
     "bin",
     "dist",
     "prompts",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup && vite build",

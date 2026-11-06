@@ -95,3 +95,7 @@ npm run build
 npm run dev:ui      # Vite dev server; proxies the API to port 4173
 node bin/jobtrack.js --no-open --data-dir .tmp/dev
 ```
+
+## License
+
+MIT. See `LICENSE`.
