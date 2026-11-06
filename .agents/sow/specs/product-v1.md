@@ -48,3 +48,14 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 ## Scheduled sync
 
 Optional interval (`off`, `1h`, `6h`, `24h`) that enqueues `sync_mail` while the server runs. No OS scheduler.
+
+## User interface
+
+- The SPA under `src/ui/` is built from shadcn/ui components (Tailwind CSS v4, Radix primitives, lucide icons), owned as source under `src/ui/components/ui/` (SOW-0010). Desktop browsers only; Tailwind v4 needs Chrome 111+, Safari 16.4+ or Firefox 128+.
+- A fixed left sidebar holds navigation, the pending-proposal count on Review, and a theme menu with Light, Dark and System. The choice is stored in browser `localStorage` under `theme` (default System, which follows the OS setting live); a pre-paint script in `index.html` applies it before first render.
+- Destructive actions confirm first: "Purge run logs" (Settings) and "Dismiss" (Jobs) open a confirmation dialog and do nothing on Cancel.
+- Manual applications are added from an "Add application" side sheet on the Applications screen; the sheet closes after a successful add.
+- Feedback stays inline: errors render with `role="alert"`, success messages ("Saved") with `role="status"`, next to the action that produced them. No toasts.
+- Selects are native `<select>` elements (shadcn `NativeSelect`) so keyboard behaviour and form tests stay native.
+- No network fonts or CDN assets: the UI uses the system font stack and ships fully in `dist/ui`.
+

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,10 +72,12 @@ describe('ApplicationsPage', () => {
     } as never);
     renderPage();
     await screen.findByText('Acme');
-    await user.type(screen.getByLabelText('Company'), 'Beta');
-    await user.type(screen.getByLabelText('Role'), 'Lead');
-    await user.type(screen.getByLabelText('Applied date'), '2026-03-04');
     await user.click(screen.getByRole('button', { name: 'Add application' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add application' });
+    await user.type(within(sheet).getByLabelText('Company'), 'Beta');
+    await user.type(within(sheet).getByLabelText('Role'), 'Lead');
+    await user.type(within(sheet).getByLabelText('Applied date'), '2026-03-04');
+    await user.click(within(sheet).getByRole('button', { name: 'Add' }));
     expect(client.createApplication).toHaveBeenCalledWith(
       expect.objectContaining({
         company: 'Beta',
@@ -85,6 +87,8 @@ describe('ApplicationsPage', () => {
       }),
     );
     expect(await screen.findByText('Beta')).toBeInTheDocument();
+    // A successful add closes the sheet.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('omits applied_at when no date is given so the server default applies', async () => {
@@ -92,9 +96,11 @@ describe('ApplicationsPage', () => {
     vi.mocked(client.createApplication).mockResolvedValue({ ...app, id: 'a3', company: 'Gamma' } as never);
     renderPage();
     await screen.findByText('Acme');
-    await user.type(screen.getByLabelText('Company'), 'Gamma');
-    await user.type(screen.getByLabelText('Role'), 'Dev');
     await user.click(screen.getByRole('button', { name: 'Add application' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add application' });
+    await user.type(within(sheet).getByLabelText('Company'), 'Gamma');
+    await user.type(within(sheet).getByLabelText('Role'), 'Dev');
+    await user.click(within(sheet).getByRole('button', { name: 'Add' }));
     const payload = vi.mocked(client.createApplication).mock.calls[0]![0];
     expect(payload).toMatchObject({ company: 'Gamma', role: 'Dev', status: 'applied' });
     expect(payload).not.toHaveProperty('applied_at');

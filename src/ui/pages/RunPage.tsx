@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
+import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { getRun, getRunLog, subscribeRunEvents } from '../api/client.js';
 import type { Run } from '../../server/domain/types.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { LogView } from '../components/LogView.js';
+import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { RUN_STATUS_TONES } from '../labels.js';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 const NO_GMAIL = 'Your agent has no Gmail tool';
 
@@ -55,33 +63,78 @@ export function RunPage() {
     };
   }, [id]);
 
-  if (!run) return error ? <p role="alert">{error}</p> : <p>Loading...</p>;
+  if (!run) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
 
   const terminal = run.status !== 'queued' && run.status !== 'running';
   const succeeded = run.status === 'succeeded';
+  const followUp = (to: string, label: string) => (
+    <Button asChild variant="outline" size="sm">
+      <Link to={to}>
+        {label}
+        <ArrowRightIcon />
+      </Link>
+    </Button>
+  );
 
   return (
-    <section>
-      <h1>Run</h1>
-      <dl>
-        <dt>Kind</dt>
-        <dd>{run.kind}</dd>
-        <dt>Status</dt>
-        <dd>{run.status}</dd>
-        <dt>Started</dt>
-        <dd>{formatTime(run.started_at)}</dd>
-        <dt>Finished</dt>
-        <dd>{formatTime(run.finished_at)}</dd>
-      </dl>
-      {succeeded && run.summary && <p>{run.summary}</p>}
-      {!succeeded && terminal && run.error && <p role="alert">{run.error}</p>}
-      {error && <p role="alert">{error}</p>}
-      {terminal && run.kind === 'discover_jobs' && <Link to="/jobs">View jobs</Link>}
-      {terminal && run.kind === 'sync_mail' && <Link to="/review">Review proposals</Link>}
-      {terminal && run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && (
-        <Link to="/settings">Open settings</Link>
+    <div className="flex flex-col gap-6">
+      <div>
+        <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
+          <Link to="/runs">
+            <ArrowLeftIcon />
+            Runs
+          </Link>
+        </Button>
+        <PageHeader
+          title="Run"
+          actions={
+            <Badge variant={RUN_STATUS_TONES[run.status]} className="text-sm">
+              {!terminal && <LoaderCircleIcon className="animate-spin" />}
+              {run.status}
+            </Badge>
+          }
+        />
+        <Card className="py-4">
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-muted-foreground">Kind</dt>
+                <dd className="font-mono">{run.kind}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Status</dt>
+                <dd>{run.status}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Started</dt>
+                <dd>{formatTime(run.started_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Finished</dt>
+                <dd>{formatTime(run.finished_at)}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      </div>
+      {succeeded && run.summary && (
+        <Alert role="status">
+          <AlertDescription className="text-foreground">{run.summary}</AlertDescription>
+        </Alert>
       )}
-      <LogView lines={lines} />
-    </section>
+      {!succeeded && terminal && run.error && <ErrorAlert>{run.error}</ErrorAlert>}
+      {error && <ErrorAlert>{error}</ErrorAlert>}
+      {terminal && (
+        <div className="flex flex-wrap gap-2">
+          {run.kind === 'discover_jobs' && followUp('/jobs', 'View jobs')}
+          {run.kind === 'sync_mail' && followUp('/review', 'Review proposals')}
+          {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}
+        </div>
+      )}
+      <section aria-label="Log" className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">Log</h2>
+        <LogView lines={lines} />
+      </section>
+    </div>
   );
 }

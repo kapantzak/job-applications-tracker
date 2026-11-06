@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
+import { BookmarkIcon, CheckIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ApiError,
@@ -9,23 +10,33 @@ import {
   startDiscovery,
 } from '../api/client.js';
 import type { ApplicationStatus, JobListItem } from '../../server/domain/types.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
+import { StatusBadge } from '../components/StatusBadge.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 // Job URLs come from an agent and are untrusted; never render javascript: and similar schemes.
 const isHttpUrl = (u: string) => /^https?:\/\//i.test(u);
 
-const STATUS_LABELS: Record<ApplicationStatus, string> = {
-  saved: 'Saved',
-  applied: 'Applied',
-  screening: 'Screening',
-  interview: 'Interview',
-  offer: 'Offer',
-  rejected: 'Rejected',
-  no_response: 'No response',
-  withdrawn: 'Withdrawn',
-};
-
 export function JobsPage() {
+  const id = useId();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobListItem[] | null>(null);
   const [includeDead, setIncludeDead] = useState(false);
@@ -76,98 +87,148 @@ export function JobsPage() {
   };
 
   return (
-    <section>
-      <h1>Jobs</h1>
-      <button type="button" onClick={onFind}>
-        Find jobs
-      </button>
-      {needsProfile && (
-        <p role="alert">
-          Fill in your profile first: <Link to="/profile">Open profile</Link>
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-      <div>
-        <label>
-          <input type="checkbox" checked={includeDead} onChange={(e) => setIncludeDead(e.target.checked)} />
-          Show dead links
-        </label>{' '}
-        <label>
-          <input
-            type="checkbox"
-            checked={includeDismissed}
-            onChange={(e) => setIncludeDismissed(e.target.checked)}
-          />
-          Show dismissed
-        </label>
+    <div>
+      <PageHeader
+        title="Jobs"
+        description="Openings found by discovery runs, with their links checked."
+        actions={
+          <Button type="button" onClick={onFind}>
+            <SearchIcon />
+            Find jobs
+          </Button>
+        }
+      />
+      <div className="flex flex-col gap-4">
+        {needsProfile && (
+          <ErrorAlert>
+            <p>
+              Fill in your profile first:{' '}
+              <Link to="/profile" className="font-medium underline underline-offset-4">
+                Open profile
+              </Link>
+            </p>
+          </ErrorAlert>
+        )}
+        {error && <ErrorAlert>{error}</ErrorAlert>}
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`${id}-dead`}
+              checked={includeDead}
+              onCheckedChange={(v) => setIncludeDead(v === true)}
+            />
+            <Label htmlFor={`${id}-dead`}>Show dead links</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`${id}-dismissed`}
+              checked={includeDismissed}
+              onCheckedChange={(v) => setIncludeDismissed(v === true)}
+            />
+            <Label htmlFor={`${id}-dismissed`}>Show dismissed</Label>
+          </div>
+        </div>
+        {!jobs ? (
+          <LoadingState />
+        ) : jobs.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyTitle>No jobs yet</EmptyTitle>
+              <EmptyDescription>Run a discovery to find openings that match your profile.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Card className="py-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Company</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-4 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {jobs.map((job) => {
+                  const href = job.canonical_url || job.url;
+                  return (
+                    <TableRow key={job.id}>
+                      <TableCell className="pl-4 font-medium">{job.company}</TableCell>
+                      <TableCell className="max-w-64 truncate">{job.title}</TableCell>
+                      <TableCell className="text-muted-foreground">{job.location ?? '–'}</TableCell>
+                      <TableCell className="text-muted-foreground">{job.source_site ?? '–'}</TableCell>
+                      <TableCell>
+                        <VerificationBadge status={job.verification_status} />
+                      </TableCell>
+                      <TableCell className="pr-4">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isHttpUrl(href) && (
+                            <Button asChild variant="ghost" size="sm">
+                              <a href={href} target="_blank" rel="noopener noreferrer">
+                                <ExternalLinkIcon />
+                                Open
+                              </a>
+                            </Button>
+                          )}
+                          {job.application_status && <StatusBadge status={job.application_status} />}
+                          {!job.application_status && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => run(() => saveJob(job.id), (a) => setStatus(job.id, a.status))}
+                            >
+                              <BookmarkIcon />
+                              Save
+                            </Button>
+                          )}
+                          {(!job.application_status || job.application_status === 'saved') && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => run(() => markApplied(job.id), (a) => setStatus(job.id, a.status))}
+                            >
+                              <CheckIcon />
+                              Mark applied
+                            </Button>
+                          )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
+                                <XIcon />
+                                Dismiss
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Dismiss this job?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {job.company}, {job.title} will be hidden from the list. Turn on Show dismissed to
+                                  see it again.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => run(() => dismissJob(job.id), () => setReloadTick((t) => t + 1))}
+                                >
+                                  Dismiss job
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
       </div>
-      {!jobs ? (
-        <p>Loading...</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Title</th>
-              <th>Location</th>
-              <th>Source</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => {
-              const href = job.canonical_url || job.url;
-              return (
-                <tr key={job.id}>
-                  <td>{job.company}</td>
-                  <td>{job.title}</td>
-                  <td>{job.location ?? '–'}</td>
-                  <td>{job.source_site ?? '–'}</td>
-                  <td>
-                    <VerificationBadge status={job.verification_status} />
-                  </td>
-                  <td>
-                    {isHttpUrl(href) && (
-                      <a href={href} target="_blank" rel="noopener noreferrer">
-                        Open
-                      </a>
-                    )}{' '}
-                    {job.application_status && <span>{STATUS_LABELS[job.application_status]}</span>}{' '}
-                    {!job.application_status && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => run(() => saveJob(job.id), (a) => setStatus(job.id, a.status))}
-                        >
-                          Save
-                        </button>{' '}
-                      </>
-                    )}
-                    {(!job.application_status || job.application_status === 'saved') && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => run(() => markApplied(job.id), (a) => setStatus(job.id, a.status))}
-                        >
-                          Mark applied
-                        </button>{' '}
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => run(() => dismissJob(job.id), () => setReloadTick((t) => t + 1))}
-                    >
-                      Dismiss
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </section>
+    </div>
   );
 }

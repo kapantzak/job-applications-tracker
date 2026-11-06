@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listRuns } from '../api/client.js';
 import type { Run } from '../../server/domain/types.js';
+import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { RUN_STATUS_TONES } from '../labels.js';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export function RunsPage() {
   const [runs, setRuns] = useState<Run[] | null>(null);
@@ -22,35 +29,52 @@ export function RunsPage() {
     };
   }, []);
 
-  if (!runs) return error ? <p role="alert">{error}</p> : <p>Loading...</p>;
+  if (!runs) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
 
   return (
-    <section>
-      <h1>Runs</h1>
-      <table>
-        <thead>
-          <tr>
-            <th>Kind</th>
-            <th>Status</th>
-            <th>Started</th>
-            <th>Finished</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr key={r.id}>
-              <td>
-                <Link to={`/runs/${r.id}`}>{r.kind}</Link>
-              </td>
-              <td>{r.status}</td>
-              <td>{formatTime(r.started_at)}</td>
-              <td>{formatTime(r.finished_at)}</td>
-              <td>{r.summary ?? r.error ?? '–'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+    <div>
+      <PageHeader title="Runs" description="Discovery and mail sync runs, newest first." />
+      {runs.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>No runs yet</EmptyTitle>
+            <EmptyDescription>Find jobs or sync from Gmail to start one.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Card className="py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Kind</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Started</TableHead>
+                <TableHead>Finished</TableHead>
+                <TableHead className="pr-4">Result</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {runs.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="pl-4">
+                    <Link to={`/runs/${r.id}`} className="font-mono text-sm font-medium hover:underline">
+                      {r.kind}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={RUN_STATUS_TONES[r.status]}>{r.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(r.started_at)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatTime(r.finished_at)}</TableCell>
+                  <TableCell className="max-w-96 truncate pr-4 whitespace-nowrap" title={r.summary ?? r.error ?? undefined}>
+                    {r.summary ?? r.error ?? '–'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </div>
   );
 }

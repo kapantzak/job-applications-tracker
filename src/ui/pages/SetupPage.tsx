@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ArrowRightIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ApiError, getAdapters, getSettings, patchSettings, type AdapterStatus } from '../api/client.js';
 import { AdapterChooser } from '../components/AdapterChooser.js';
+import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
+import { PageHeader } from '../components/PageHeader.js';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 
 type AdapterId = AdapterStatus['id'];
 
@@ -45,23 +50,40 @@ export function SetupPage() {
   };
 
   if (!adapters) {
-    return error ? <p role="alert">{error}</p> : <p>Loading...</p>;
+    return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <h1>Setup</h1>
-      <AdapterChooser
-        adapters={adapters}
-        adapterId={adapterId}
-        customCommand={customCommand}
-        onAdapterChange={setAdapterId}
-        onCustomCommandChange={setCustomCommand}
-      />
-      <button type="submit">Save</button>
-      {status && <p role="status">{status}</p>}
-      {status === 'Saved' && <Link to="/profile">Continue to Profile</Link>}
-      {error && <p role="alert">{error}</p>}
-    </form>
+    <div className="max-w-2xl">
+      <PageHeader title="Setup" description="Pick the agent CLI that searches for jobs and reads your mail." />
+      <Card>
+        <form onSubmit={onSubmit} className="flex flex-col gap-6">
+          <CardContent>
+            <AdapterChooser
+              adapters={adapters}
+              adapterId={adapterId}
+              customCommand={customCommand}
+              onAdapterChange={setAdapterId}
+              onCustomCommandChange={setCustomCommand}
+            />
+          </CardContent>
+          <CardFooter className="flex flex-col items-start gap-3 border-t">
+            {error && <ErrorAlert>{error}</ErrorAlert>}
+            <div className="flex items-center gap-3">
+              <Button type="submit">Save</Button>
+              {status && <SuccessMessage>{status}</SuccessMessage>}
+              {status === 'Saved' && (
+                <Button asChild variant="outline">
+                  <Link to="/profile">
+                    Continue to Profile
+                    <ArrowRightIcon />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </CardFooter>
+        </form>
+      </Card>
+    </div>
   );
 }

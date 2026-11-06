@@ -87,6 +87,12 @@ jobtrack [options]
 - On POSIX a timeout or abort kills the agent's whole process group; on Windows the process tree is killed with `taskkill /T`. A helper that ignores SIGTERM is only force-killed if the agent itself is still running when the 5 s escalation fires.
 - A custom command cannot read Gmail unless that agent has a Gmail tool.
 
+## Interface
+
+- Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
+- Purging run logs and dismissing a job ask for confirmation first.
+- Desktop browsers only. The interface needs Chrome or Edge 111+, Safari 16.4+, or Firefox 128+.
+
 ## Development
 
 ```sh
@@ -96,6 +102,14 @@ npm run build
 npm run dev:ui      # Vite dev server; proxies the API to port 4173
 node bin/jobtrack.js --no-open --data-dir .tmp/dev
 ```
+
+The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
+
+```sh
+npx shadcn@latest add <component>
+```
+
+The CLI adds a stray `cn` package and a `cn` placeholder import; see `AGENTS.md` for the fix-up steps.
 
 ## License
 

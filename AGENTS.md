@@ -279,7 +279,7 @@ Runtime input skills (load every one whose trigger matches before non-trivial wo
   Enforces: no-shell spawning, placeholder rules, never-reject contract, last-JSON-object extraction, prompt version bumps, fake-agent testing, process-group kill.
 - `.agents/skills/project-testing/`
   Trigger: mandatory when adding or changing tests, touching vitest config or harnesses, or before claiming the suite passes.
-  Enforces: two vitest projects, in-memory DB with FK rows, harness Host header and JSON content type, mocked UI client, invented data, pristine output, bounded polling.
+  Enforces: two vitest projects, in-memory DB with FK rows, harness Host header and JSON content type, mocked UI client, Radix portal and confirmation testing, invented data, pristine output, bounded polling.
 - `.agents/skills/project-local-api/`
   Trigger: mandatory when changing routes, the request guard, static serving, SSE, or server bootstrap/shutdown.
   Enforces: loopback-only binding, Host/Origin/Content-Type guard, zod allow-lists, error mapping, SSE ends on run status, shutdown order.
@@ -307,6 +307,9 @@ Output/reference skills: none.
 - Temporary files go under project-local `.tmp/` (git-ignored).
 - Commit only the files a task names. Never `git add -A`.
 - Commit messages describe the change and never mention tooling or assistants.
+- UI components come from shadcn/ui and live as owned source in `src/ui/components/ui/` (SOW-0010). Compose pages from them; do not reintroduce global element styles or raw `button`/`input`/`select`/`textarea`/`table` outside that folder.
+- Every UI-only package (Tailwind, Radix, lucide, cva, clsx, tailwind-merge, tw-animate-css) is a `devDependency`, because Vite bundles it into `dist/ui` and the tarball ships only `dist`. Runtime `dependencies` stay server-only.
+- `npx shadcn add` reads the `@/` alias from the root `tsconfig.json` (which therefore declares `paths` too; without it the CLI writes to a literal `./@/` folder). shadcn CLI 4.23 still emits `import { cn } from "cn"` and installs an unrelated npm package named `cn`. After every add: replace `from "cn"` with `from "@/lib/utils"`, run `npm uninstall cn`, and move any new packages to `devDependencies`. `src/ui/components/ui/sidebar.tsx` and `src/ui/hooks/use-mobile.ts` carry marked local changes (no cookie, no Cmd/Ctrl+B shortcut, `matchMedia` guard); re-apply them if those files are ever overwritten.
 
 ### Preservation Notes
 
