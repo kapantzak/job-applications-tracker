@@ -11,7 +11,8 @@ export const DEFAULT_SETTINGS: Settings = {
     'mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread,mcp__claude_ai_Gmail__get_message',
   sandbox_discover: 'read-only',
   sandbox_sync: 'read-only',
-  run_timeout_ms: 600000,
+  // 20 min: a bounded discovery run with page confirmation took ~15 min with subagents (SOW-0008).
+  run_timeout_ms: 1200000,
   sync_interval: 'off',
   port: 4173,
 };

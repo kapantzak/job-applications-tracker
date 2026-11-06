@@ -32,6 +32,7 @@ Server:
 - Product decisions for the user: duplicate applications on double Save / Save-then-Applied; manual applications do not infer `sender_domains`; `no_response` ageing.
 - Queue: `start()` after `stop()` is a silent no-op; stuck-row guard blocks later runs of the other kind (only on DB write failure).
 - Data directory: expand a leading `~`; close the db if migration fails before listen.
+- Profile round-trip: `GET /api/profile` returns `created_at` but `PUT /api/profile` rejects it (`Unrecognized key`), so a client cannot PUT what it GOT (found in SOW-0008 validation).
 
 Tests:
 - Auth-probe `hang` test should record the child pid and assert it is dead (SOW-0003 review).

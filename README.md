@@ -27,7 +27,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 
 ## How discovery works
 
-- The agent searches the web for postings that match your profile and returns structured results.
+- The agent searches the web for postings that match your profile and returns structured results. It is told to spend about 10 minutes, prefer employer and ATS pages, confirm each posting once, and return 10 to 30 jobs. A run that exceeds the run timeout in Settings (default 20 minutes) is stopped and saves nothing.
 - The app then checks every link itself (it does not trust the agent) and shows a badge on each job:
   - **Verified**: the page loaded.
   - **Redirected**: the link led somewhere else; the final address is stored.
@@ -57,7 +57,7 @@ Sync needs a Gmail tool in your agent.
 - The server binds to `127.0.0.1` only, so other machines cannot reach it.
 - There is no authentication, on purpose: it is a single-user local tool.
 - Requests must carry a loopback `Host` header, and browser requests with a foreign `Origin` are rejected. This stops other websites from using the API through your browser.
-- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read).
+- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read). On Claude Code the app also loads only your user-level Claude settings and blocks subagents.
 - The app never applies to jobs, sends mail, or modifies labels or messages.
 
 ## Data and logs

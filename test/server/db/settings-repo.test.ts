@@ -17,7 +17,7 @@ describe('settings repo', () => {
 
   it('has the documented defaults', () => {
     expect(DEFAULT_SETTINGS.port).toBe(4173);
-    expect(DEFAULT_SETTINGS.run_timeout_ms).toBe(600000);
+    expect(DEFAULT_SETTINGS.run_timeout_ms).toBe(1200000);
     expect(DEFAULT_SETTINGS.allowed_tools_discover).toBe('WebSearch,WebFetch');
   });
 

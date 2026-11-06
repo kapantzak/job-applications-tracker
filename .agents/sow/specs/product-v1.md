@@ -18,6 +18,8 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 - Timeouts and aborts kill the agent's whole process group on POSIX and the process tree on Windows. On Windows the command is resolved through `PATH` and `PATHEXT`, and an npm `.cmd` shim is started as `node <cli.js>` without a shell; this is tested with simulated shims only, not on a real Windows machine.
 - Two task kinds: `discover_jobs`, `sync_mail`. Each has a versioned prompt template and a JSON output schema the agent must satisfy. The schema given to the agent is strict: no `$schema` pointer, no `default` keywords, `additionalProperties: false` on every object, every property required (so agents emit empty strings and nulls explicitly). The app's own parse of the agent output still applies defaults for missing optional fields.
 - Every prompt states: read only; never apply; never send, draft or label mail.
+- The discovery prompt (v2) also states a budget: about 10 minutes, return 10 to 30 jobs, prefer employer/ATS links, open at most one page per job to confirm it, do not delegate to subagents, the app verifies links itself. The default run timeout is 20 minutes (`run_timeout_ms` 1200000), editable in Settings between 10 seconds and 1 hour.
+- The Claude Code preset runs `claude -p` with `--setting-sources user` (user-level settings, credentials, hooks, plugins and claude.ai connectors; project settings implied by the run cwd are skipped) and `--disallowedTools Agent,Task` (no subagents), plus the permission mode and allowed tools from Settings.
 - `sync_mail` output carries a required `mail_access` boolean. `false` fails the run with "Your agent has no Gmail tool".
 
 ## Status pipeline

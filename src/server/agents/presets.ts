@@ -40,9 +40,13 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
     case 'claude':
       return {
         id: 'claude',
+        // `--setting-sources user` keeps credentials, hooks and MCP connectors (Gmail) but skips
+        // project settings the run cwd might imply; `--bare` would skip the keychain and log the
+        // agent out. Denying Agent/Task is the only hard stop on subagent fan-out.
         argv: [
           'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
           '--permission-mode', '{permission_mode}', '--allowedTools', '{allowed_tools}',
+          '--setting-sources', 'user', '--disallowedTools', 'Agent,Task',
         ],
         promptVia: 'stdin',
         resultFrom: 'claude-stream-json',

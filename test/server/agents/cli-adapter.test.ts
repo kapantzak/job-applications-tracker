@@ -356,6 +356,13 @@ describe('buildAdapterConfig', () => {
     expect(c.resultFrom).toBe('claude-stream-json');
   });
 
+  it.each(['discover_jobs', 'sync_mail'] as const)('claude preset skips project settings and denies subagents for %s', (kind) => {
+    const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, kind);
+    expect(c.argv.slice(c.argv.indexOf('--setting-sources'), c.argv.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'user']);
+    expect(c.argv.slice(c.argv.indexOf('--disallowedTools'), c.argv.indexOf('--disallowedTools') + 2)).toEqual(['--disallowedTools', 'Agent,Task']);
+    expect(c.argv.filter((a) => a === '--allowedTools')).toHaveLength(1);
+  });
+
   it('uses the discover sandbox for codex', () => {
     const settings = { ...DEFAULT_SETTINGS, adapter_id: 'codex' as const, sandbox_discover: 'workspace-write' };
     const c = buildAdapterConfig(settings, 'discover_jobs');
