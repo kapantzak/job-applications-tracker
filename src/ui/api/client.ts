@@ -30,6 +30,8 @@ export interface AdapterStatus {
   id: 'claude' | 'codex' | 'custom';
   installed: boolean;
   version?: string;
+  authenticated?: boolean;
+  authMessage?: string;
   message?: string;
   gmail_guide: boolean;
 }

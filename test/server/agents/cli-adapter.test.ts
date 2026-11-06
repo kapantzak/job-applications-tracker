@@ -83,6 +83,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.FAKE_AGENT_MODE;
   delete process.env.FAKE_AGENT_OUTPUT;
+  delete process.env.FAKE_AGENT_AUTH;
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -281,6 +282,64 @@ describe('createCliAdapter check', () => {
     const h = await createCliAdapter(fakeConfig({ argv: [process.execPath, FIXTURE] })).check();
     expect(h.installed).toBe(true);
     expect(h.version).toBe(process.version);
+  });
+});
+
+describe('createCliAdapter check sign-in probe', () => {
+  const authConfig = (overrides: Partial<CliAdapterConfig> = {}) =>
+    fakeConfig({
+      versionArgv: [process.execPath, '--version'],
+      authArgv: [process.execPath, FIXTURE, 'auth', 'status'],
+      ...overrides,
+    });
+
+  it('reports authenticated when the probe exits 0', async () => {
+    process.env.FAKE_AGENT_AUTH = 'ok';
+    const h = await createCliAdapter(authConfig()).check();
+    expect(h.installed).toBe(true);
+    expect(h.authenticated).toBe(true);
+    expect(h.authMessage).toBeUndefined();
+  });
+
+  it('reports not authenticated with the first output line on a non-zero exit', async () => {
+    process.env.FAKE_AGENT_AUTH = 'fail';
+    const h = await createCliAdapter(authConfig({ authArgv: [process.execPath, FIXTURE, 'login', 'status'] })).check();
+    expect(h.installed).toBe(true);
+    expect(h.authenticated).toBe(false);
+    expect(h.authMessage).toBe('Not logged in');
+  });
+
+  it('leaves authenticated unknown when the probe times out', async () => {
+    process.env.FAKE_AGENT_AUTH = 'hang';
+    const h = await createCliAdapter(authConfig({ authTimeoutMs: 200 })).check();
+    expect(h.installed).toBe(true);
+    expect(h.authenticated).toBeUndefined();
+    expect(h.authMessage).toMatch(/^Sign-in check failed: /);
+  });
+
+  it('leaves authenticated unknown when the probe cannot start', async () => {
+    const h = await createCliAdapter(authConfig({ authArgv: ['definitely-not-a-binary-xyz', 'status'] })).check();
+    expect(h.authenticated).toBeUndefined();
+    expect(h.authMessage).toMatch(/^Sign-in check failed: /);
+  });
+
+  it('skips the probe when the version probe fails', async () => {
+    process.env.FAKE_AGENT_AUTH = 'ok';
+    const h = await createCliAdapter(
+      authConfig({ versionArgv: ['definitely-not-a-binary-xyz', '--version'] }),
+    ).check();
+    expect(h.installed).toBe(false);
+    expect(h.authenticated).toBeUndefined();
+    expect(h.authMessage).toBeUndefined();
+  });
+
+  it('configures the claude and codex presets with their status commands and not custom', () => {
+    const claude = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'discover_jobs');
+    const codex = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'codex' }, 'discover_jobs');
+    const custom = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'custom', custom_command: 'x' }, 'discover_jobs');
+    expect(claude.authArgv).toEqual(['claude', 'auth', 'status']);
+    expect(codex.authArgv).toEqual(['codex', 'login', 'status']);
+    expect(custom.authArgv).toBeUndefined();
   });
 });
 

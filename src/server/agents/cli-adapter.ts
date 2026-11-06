@@ -8,6 +8,7 @@ import type { AdapterHealth, AgentAdapter, AgentResult, AgentTask, CliAdapterCon
 
 const KILL_GRACE_MS = 5000;
 const CHECK_TIMEOUT_MS = 3000;
+const AUTH_MESSAGE_MAX = 200;
 // A grandchild holding stdout open must not keep a run alive after the agent itself exits.
 const CLOSE_GRACE_MS = 1000;
 
@@ -88,54 +89,104 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+type ProbeOutcome =
+  | { kind: 'not-found' }
+  | { kind: 'error'; message: string }
+  | { kind: 'timeout' }
+  | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string };
+
+// Short-lived status command (version or sign-in). Never rejects; failures come back as outcomes.
+function probe(config: CliAdapterConfig, argv: string[], timeoutMs: number): Promise<ProbeOutcome> {
+  return new Promise((done) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    const finish = (o: ProbeOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(o);
+    };
+    let child: ChildProcess;
+    try {
+      child = spawnAgent(config, argv, {
+        shell: false,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch (err) {
+      // spawn throws synchronously for invalid argv (empty command, NUL byte, E2BIG).
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return done({ kind: 'not-found' });
+      return done({ kind: 'error', message: `Failed to start: ${errorMessage(err)}` });
+    }
+    const timer = setTimeout(() => {
+      killTimer = terminate(child);
+      finish({ kind: 'timeout' });
+    }, timeoutMs);
+    child.stdout!.setEncoding('utf8');
+    child.stdout!.on('data', (c: string) => (stdout += c));
+    child.stderr!.setEncoding('utf8');
+    child.stderr!.on('data', (c: string) => (stderr += c));
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') finish({ kind: 'not-found' });
+      else finish({ kind: 'error', message: errorMessage(err) });
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(killTimer);
+      finish({ kind: 'exit', code, signal, stdout, stderr });
+    });
+  });
+}
+
+// First non-empty line only: the full output may carry account details that must not reach the UI.
+function firstLine(...texts: string[]): string | undefined {
+  for (const t of texts) {
+    const line = t.split('\n').map((l) => l.trim()).find((l) => l !== '');
+    if (line) return line.slice(0, AUTH_MESSAGE_MAX);
+  }
+  return undefined;
+}
+
 export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
+  async function checkAuth(): Promise<Pick<AdapterHealth, 'authenticated' | 'authMessage'>> {
+    if (!config.authArgv) return {};
+    const o = await probe(config, config.authArgv, config.authTimeoutMs ?? CHECK_TIMEOUT_MS);
+    switch (o.kind) {
+      case 'exit':
+        if (o.code === 0) return { authenticated: true };
+        if (o.code === null) return { authMessage: `Sign-in check failed: Killed by signal ${o.signal}` };
+        return { authenticated: false, authMessage: firstLine(o.stdout, o.stderr) };
+      case 'timeout':
+        return { authMessage: 'Sign-in check failed: timed out' };
+      case 'not-found':
+        return { authMessage: 'Sign-in check failed: command not found' };
+      case 'error':
+        return { authMessage: `Sign-in check failed: ${o.message}` };
+    }
+  }
+
   async function check(): Promise<AdapterHealth> {
     const argv = config.versionArgv ?? [config.argv[0]!, '--version'];
-    return new Promise((done) => {
-      let stdout = '';
-      let settled = false;
-      let killTimer: NodeJS.Timeout | undefined;
-      const finish = (h: Omit<AdapterHealth, 'id'>) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        done({ id: config.id, ...h });
-      };
-      let child: ChildProcess;
-      try {
-        child = spawnAgent(config, argv, {
-          shell: false,
-          env: process.env,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
-      } catch (err) {
-        // spawn throws synchronously for invalid argv (empty command, NUL byte, E2BIG).
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'ENOENT') return done({ id: config.id, installed: false, message: 'Not found on PATH' });
-        return done({ id: config.id, installed: true, message: `Failed to start: ${errorMessage(err)}` });
-      }
-      const timer = setTimeout(() => {
-        killTimer = terminate(child);
-        finish({ installed: true, message: `Timed out after ${CHECK_TIMEOUT_MS} ms` });
-      }, CHECK_TIMEOUT_MS);
-      child.stdout!.setEncoding('utf8');
-      child.stdout!.on('data', (c: string) => (stdout += c));
-      child.stderr!.resume();
-      child.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ENOENT') finish({ installed: false, message: 'Not found on PATH' });
-        else finish({ installed: true, message: errorMessage(err) });
-      });
-      child.on('close', (code, signal) => {
-        clearTimeout(killTimer);
-        if (code === 0) {
-          const version = stdout.split('\n')[0]!.trim();
-          finish({ installed: true, version: version || undefined });
-        } else {
-          finish({ installed: true, message: code === null ? `Killed by signal ${signal}` : `Exited with code ${code}` });
+    const o = await probe(config, argv, CHECK_TIMEOUT_MS);
+    switch (o.kind) {
+      case 'not-found':
+        return { id: config.id, installed: false, message: 'Not found on PATH' };
+      case 'error':
+        return { id: config.id, installed: true, message: o.message };
+      case 'timeout':
+        return { id: config.id, installed: true, message: `Timed out after ${CHECK_TIMEOUT_MS} ms` };
+      case 'exit': {
+        if (o.code !== 0) {
+          const message = o.code === null ? `Killed by signal ${o.signal}` : `Exited with code ${o.code}`;
+          return { id: config.id, installed: true, message };
         }
-      });
-    });
+        const version = o.stdout.split('\n')[0]!.trim();
+        const health: AdapterHealth = { id: config.id, installed: true, version: version || undefined };
+        return { ...health, ...(await checkAuth()) };
+      }
+    }
   }
 
   async function run(task: AgentTask, opts: RunOptions): Promise<AgentResult> {

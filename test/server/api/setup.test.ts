@@ -36,6 +36,14 @@ describe('setup adapters', () => {
     ]);
   });
 
+  it('passes the sign-in fields through unchanged', async () => {
+    h.healthFor.claude = { id: 'claude', installed: true, version: '1', authenticated: true };
+    h.healthFor.codex = { id: 'codex', installed: true, version: '2', authenticated: false, authMessage: 'Not logged in' };
+    const body = (await (await h.app.request('/api/setup/adapters')).json()) as Record<string, unknown>[];
+    expect(body[0]).toMatchObject({ id: 'claude', authenticated: true });
+    expect(body[1]).toMatchObject({ id: 'codex', authenticated: false, authMessage: 'Not logged in' });
+  });
+
   it('lists custom as not installed on a fresh database without checking it', async () => {
     expect(h.deps.settingsRepo.getAll().custom_command).toBe('');
     const body = (await (await h.app.request('/api/setup/adapters')).json()) as { id: string }[];

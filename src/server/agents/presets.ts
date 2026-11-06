@@ -47,6 +47,7 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
         promptVia: 'stdin',
         resultFrom: 'claude-stream-json',
         versionArgv: ['claude', '--version'],
+        authArgv: ['claude', 'auth', 'status'],
         vars: {
           permission_mode: discover ? settings.permission_mode_discover : settings.permission_mode_sync,
           allowed_tools: discover ? settings.allowed_tools_discover : settings.allowed_tools_sync,
@@ -62,6 +63,7 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
         promptVia: 'argv',
         resultFrom: 'output-file',
         versionArgv: ['codex', '--version'],
+        authArgv: ['codex', 'login', 'status'],
         vars: { sandbox: discover ? settings.sandbox_discover : settings.sandbox_sync },
       };
     case 'custom': {

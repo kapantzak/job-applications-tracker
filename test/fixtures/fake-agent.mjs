@@ -5,6 +5,23 @@ import { writeFileSync } from 'node:fs';
 const mode = process.env.FAKE_AGENT_MODE ?? 'ok';
 const output = process.env.FAKE_AGENT_OUTPUT ?? '{}';
 
+// Sign-in status probes (`auth status` claude style, `login status` codex style) are keyed by argv and
+// FAKE_AGENT_AUTH (ok | fail | hang) so they stay independent of FAKE_AGENT_MODE.
+const args = process.argv.slice(2);
+if (args.includes('status') && (args.includes('auth') || args.includes('login'))) {
+  const auth = process.env.FAKE_AGENT_AUTH ?? 'ok';
+  if (auth === 'ok') {
+    process.stdout.write('Logged in\n');
+    process.exit(0);
+  }
+  if (auth === 'fail') {
+    process.stderr.write('Not logged in\n');
+    process.exit(1);
+  }
+  setTimeout(() => {}, 60_000);
+  await new Promise(() => {});
+}
+
 // Written first so tests can find the pid even when startup is slow; lets them confirm the process is gone.
 if (mode === 'hang') writeFileSync('fake-agent.pid', String(process.pid));
 // Stands in for an agent that starts its own helper processes: the pid file lists the agent, then the helper.

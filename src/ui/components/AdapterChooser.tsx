@@ -31,6 +31,8 @@ export function AdapterChooser({
               onChange={() => onAdapterChange(a.id)}
             />
             {a.id} - {a.installed ? `installed ${a.version ?? ''}`.trim() : 'not installed'}
+            {a.authenticated === true && ' - signed in'}
+            {a.authenticated === false && ` - not signed in${a.authMessage ? ` (${a.authMessage})` : ''}`}
             {a.message ? ` (${a.message})` : ''}
           </label>
         ))}

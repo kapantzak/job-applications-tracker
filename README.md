@@ -21,7 +21,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 
 ## First run
 
-1. Setup: pick the agent CLI the app should use (Claude Code, Codex, or a custom command). The app checks that it is installed.
+1. Setup: pick the agent CLI the app should use (Claude Code, Codex, or a custom command). The app checks that it is installed and, for Claude Code and Codex, whether it is signed in.
 2. Profile: enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
 3. Find jobs: start a discovery run from the Jobs screen and follow its progress.
 

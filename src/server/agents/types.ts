@@ -7,6 +7,9 @@ export interface AdapterHealth {
   id: AdapterId;
   installed: boolean;
   version?: string;
+  // Sign-in state; undefined when unknown (no probe configured, or the probe could not run).
+  authenticated?: boolean;
+  authMessage?: string;
   message?: string;
 }
 
@@ -48,6 +51,10 @@ export interface CliAdapterConfig {
   promptVia: 'stdin' | 'argv' | 'file';
   resultFrom: 'claude-stream-json' | 'output-file' | 'stdout-json';
   versionArgv?: string[];
+  // Sign-in status command; exit 0 means signed in. Unset for custom commands.
+  authArgv?: string[];
+  // Test seam for the sign-in probe timeout; defaults to the version probe timeout.
+  authTimeoutMs?: number;
   vars?: Record<string, string>;
   // Test seam for Windows command resolution; presets leave it unset so the real platform is used.
   resolve?: ResolveDeps;

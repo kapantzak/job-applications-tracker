@@ -50,6 +50,21 @@ describe('SetupPage', () => {
     );
   });
 
+  it('labels each adapter as signed in or not signed in and stays silent when unknown', async () => {
+    vi.mocked(client.getAdapters).mockResolvedValue([
+      { id: 'claude', installed: true, version: '1.2.3', authenticated: true, gmail_guide: false },
+      { id: 'codex', installed: true, version: '0.1', authenticated: false, authMessage: 'Not logged in', gmail_guide: true },
+      { id: 'custom', installed: true, gmail_guide: true },
+    ]);
+    renderPage();
+    const claude = await screen.findByRole('radio', { name: /claude/i });
+    expect(claude.closest('label')).toHaveTextContent('signed in');
+    expect(claude.closest('label')).not.toHaveTextContent('not signed in');
+    const codex = screen.getByRole('radio', { name: /codex/i }).closest('label');
+    expect(codex).toHaveTextContent('not signed in (Not logged in)');
+    expect(screen.getByRole('radio', { name: /custom/i }).closest('label')).not.toHaveTextContent('signed in');
+  });
+
   it('saves the chosen adapter and custom command', async () => {
     const user = userEvent.setup();
     renderPage();
