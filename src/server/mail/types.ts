@@ -1,3 +1,4 @@
+import type { AgentRunRecord } from '../db/runs-repo.js';
 import type { SyncMailResult } from '../tasks/schemas.js';
 
 export interface MailSyncRequest {
@@ -20,6 +21,7 @@ export interface MailSyncContext {
   signal: AbortSignal;
   runDir: string;
   timeoutMs: number;
+  recordAgent: (record: AgentRunRecord) => void;
 }
 
 export interface MailSource {

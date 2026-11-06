@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import type { AdapterHealth, AdapterId } from '../agents/index.js';
+import type { AdapterHealth, AdapterId, ModelCatalog } from '../agents/index.js';
+import { UNAVAILABLE_CATALOG } from '../agents/model-catalog.js';
 import type { AppDeps } from '../app.js';
 import { APP_VERSION } from '../version.js';
 
@@ -31,6 +32,22 @@ export function createSetupRouter(deps: AppDeps): Hono {
       }),
     );
     return c.json(results);
+  });
+
+  // Suggestions for the model and effort controls; custom commands carry their own flags.
+  router.get('/setup/models', async (c) => {
+    const settings = deps.settingsRepo.getAll();
+    const ids = ['claude', 'codex'] as const;
+    const catalogs = await Promise.all(
+      ids.map(async (id): Promise<ModelCatalog> => {
+        try {
+          return await deps.adapterFactory({ ...settings, adapter_id: id }, 'discover_jobs').listModels();
+        } catch {
+          return UNAVAILABLE_CATALOG;
+        }
+      }),
+    );
+    return c.json({ claude: catalogs[0], codex: catalogs[1] });
   });
 
   return router;

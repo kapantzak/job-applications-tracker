@@ -104,4 +104,12 @@ CREATE TABLE status_history (
 CREATE INDEX idx_status_history_application_id ON status_history (application_id);
 `,
   },
+  {
+    id: 2,
+    sql: `
+ALTER TABLE runs ADD COLUMN agent_model TEXT;
+ALTER TABLE runs ADD COLUMN agent_effort TEXT;
+ALTER TABLE runs ADD COLUMN agent_model_reported TEXT;
+`,
+  },
 ];

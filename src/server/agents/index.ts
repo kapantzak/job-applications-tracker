@@ -8,8 +8,11 @@ export type {
   AdapterId,
   AgentAdapter,
   AgentResult,
+  AgentSelection,
   AgentTask,
   CliAdapterConfig,
+  ModelCatalog,
+  ModelOption,
   RunOptions,
 } from './types.js';
 

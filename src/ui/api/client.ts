@@ -3,6 +3,7 @@ import type {
   ApplicationStatus,
   Job,
   JobListItem,
+  ModelCatalog,
   Profile,
   Proposal,
   Run,
@@ -35,6 +36,11 @@ export interface AdapterStatus {
   authMessage?: string;
   message?: string;
   gmail_guide: boolean;
+}
+
+export interface ModelCatalogs {
+  claude: ModelCatalog;
+  codex: ModelCatalog;
 }
 
 export type ProfileInput = Omit<Profile, 'created_at'>;
@@ -104,6 +110,7 @@ const enc = encodeURIComponent;
 
 export const getHealth = (): Promise<Health> => request('GET', '/api/health');
 export const getAdapters = (): Promise<AdapterStatus[]> => request('GET', '/api/setup/adapters');
+export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/api/setup/models');
 
 export const getProfile = (): Promise<Profile | null> => request('GET', '/api/profile');
 export const putProfile = (profile: Partial<ProfileInput>): Promise<Profile> =>
@@ -146,6 +153,8 @@ export const listRuns = (limit?: number): Promise<Run[]> =>
   request('GET', limit === undefined ? '/api/runs' : `/api/runs?limit=${limit}`);
 export const getRun = (id: string): Promise<Run> => request('GET', `/api/runs/${enc(id)}`);
 export const startDiscovery = (): Promise<Run> => request('POST', '/api/runs/discover');
+// 202 with the run: already `aborted` for a queued run, still `running` while the agent is stopped.
+export const cancelRun = (id: string): Promise<Run> => request('POST', `/api/runs/${enc(id)}/cancel`);
 export const startSync = (): Promise<Run> => request('POST', '/api/runs/sync');
 export const purgeRunLogs = (): Promise<{ deleted: number }> => request('DELETE', '/api/runs/logs');
 

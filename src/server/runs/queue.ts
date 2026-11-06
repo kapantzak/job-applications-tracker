@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RunPatch, RunsRepo } from '../db/runs-repo.js';
-import type { Run, RunKind } from '../domain/types.js';
+import type { AgentRunRecord, RunPatch, RunsRepo } from '../db/runs-repo.js';
+import { RUN_SAVING_LOG_LINE, type Run, type RunKind } from '../domain/types.js';
 import type { LogStore } from './log-store.js';
 
 export interface RunContext {
@@ -9,6 +9,11 @@ export interface RunContext {
   log: (line: string) => void;
   signal: AbortSignal;
   runDir: string;
+  // Writes agent, model and effort to the run row immediately; never throws.
+  recordAgent: (record: AgentRunRecord) => void;
+  // Called once the agent's result is in hand: from here on the run cannot be cancelled. Throws
+  // 'Aborted' when a cancel or shutdown came first, so a late result is never saved.
+  beginSaving: () => void;
 }
 
 export interface RunResult {
@@ -30,6 +35,11 @@ export interface RunQueueOptions {
 }
 
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
+const CANCELLED_BY_USER = 'Cancelled by user';
+
+// cancelled: a queued run was stopped before it started; cancelling: the running agent is being
+// stopped; saving: too late, results are being saved; finished: already terminal.
+export type CancelOutcome = 'cancelled' | 'cancelling' | 'saving' | 'finished' | 'not_found';
 
 type Outcome = Required<Pick<RunPatch, 'status'>> & RunPatch;
 
@@ -38,6 +48,9 @@ interface InFlight {
   controller: AbortController;
   // Set once the terminal status is written so a late settle cannot overwrite it.
   finalized: boolean;
+  saving: boolean;
+  // Error recorded when the abort came from a user cancel rather than shutdown.
+  cancelReason?: string;
 }
 
 function messageOf(err: unknown): string {
@@ -76,8 +89,17 @@ export function createRunQueue(opts: RunQueueOptions) {
     safeLog(entry.id, `Run ${entry.id} ${outcome.status}: ${outcome.summary ?? outcome.error ?? ''}`);
   }
 
+  // Metadata only: a failed write is logged and must not fail the run.
+  function recordAgent(runId: string, record: AgentRunRecord): void {
+    try {
+      runsRepo.update(runId, record);
+    } catch (err) {
+      console.error(`run ${runId}: failed to record agent details: ${messageOf(err)}`);
+    }
+  }
+
   async function execute(queued: Run): Promise<void> {
-    const entry: InFlight = { id: queued.id, controller: new AbortController(), finalized: false };
+    const entry: InFlight = { id: queued.id, controller: new AbortController(), finalized: false, saving: false };
     current = entry;
     try {
       const run = runsRepo.update(queued.id, { status: 'running', started_at: now() });
@@ -93,6 +115,12 @@ export function createRunQueue(opts: RunQueueOptions) {
           log: (line) => logStore.append(run.id, line),
           signal: entry.controller.signal,
           runDir,
+          recordAgent: (record) => recordAgent(run.id, record),
+          beginSaving: () => {
+            if (entry.controller.signal.aborted) throw new Error('Aborted');
+            entry.saving = true;
+            safeLog(run.id, RUN_SAVING_LOG_LINE);
+          },
         });
         outcome = {
           status: 'succeeded',
@@ -102,7 +130,7 @@ export function createRunQueue(opts: RunQueueOptions) {
         };
       } catch (err) {
         outcome = entry.controller.signal.aborted
-          ? { status: 'aborted', error: 'Aborted' }
+          ? { status: 'aborted', error: entry.cancelReason ?? 'Aborted' }
           : { status: 'failed', error: messageOf(err) };
       }
       finish(entry, outcome);
@@ -145,11 +173,37 @@ export function createRunQueue(opts: RunQueueOptions) {
   }
 
   function enqueue(kind: RunKind): Run {
-    const active = runsRepo.findActive(kind);
+    let active = runsRepo.findActive(kind);
+    // A run being cancelled no longer counts: the new request queues behind it (user decision, SOW-0012).
+    if (active && current?.id === active.id && current.cancelReason) {
+      active = runsRepo.findActiveExcept(kind, active.id);
+    }
     if (active) return active;
     const run = runsRepo.create(kind, { adapter_id: '', prompt_version: null });
     kick();
     return run;
+  }
+
+  function cancel(id: string): CancelOutcome {
+    const entry = current;
+    if (entry && entry.id === id && !entry.finalized) {
+      if (entry.saving) return 'saving';
+      // During shutdown the run is already being aborted; keep the shutdown reason.
+      if (stopping) return 'cancelling';
+      entry.cancelReason ??= CANCELLED_BY_USER;
+      entry.controller.abort();
+      return 'cancelling';
+    }
+    const run = runsRepo.get(id);
+    if (!run) return 'not_found';
+    // Synchronous read-then-write: the drain loop cannot pick the row up in between.
+    if (run.status === 'queued') {
+      runsRepo.update(id, { status: 'aborted', error: CANCELLED_BY_USER, finished_at: now() });
+      safeLog(id, `Run ${id} aborted: ${CANCELLED_BY_USER}`);
+      return 'cancelled';
+    }
+    // 'running' without an in-flight entry is a row this process does not own; treat it as done.
+    return 'finished';
   }
 
   function start(): void {
@@ -173,14 +227,14 @@ export function createRunQueue(opts: RunQueueOptions) {
     });
     const gaveUp = await Promise.race([drainDone.then(() => false), timedOut]);
     clearTimeout(timer);
-    if (gaveUp) finish(entry, { status: 'aborted', error: 'Aborted' });
+    if (gaveUp) finish(entry, { status: 'aborted', error: entry.cancelReason ?? 'Aborted' });
   }
 
   function isRunning(): boolean {
     return current !== null;
   }
 
-  return { enqueue, start, stop, isRunning };
+  return { enqueue, cancel, start, stop, isRunning };
 }
 
 export type RunQueue = ReturnType<typeof createRunQueue>;

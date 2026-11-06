@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listRuns } from '../api/client.js';
 import type { Run } from '../../server/domain/types.js';
+import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
@@ -11,9 +12,40 @@ import { Card } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+const isActive = (r: Run) => r.status === 'queued' || r.status === 'running';
+// A cancelled agent is killed within about 6 s (SIGTERM grace plus close grace); poll a while longer.
+const SETTLE_POLL_MS = 1000;
+const SETTLE_POLLS = 30;
+
 export function RunsPage() {
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // The list does not stream; after a cancel request it is re-read until that run has ended.
+  const refreshUntilEnded = async (id: string) => {
+    setError(null);
+    for (let i = 0; i < SETTLE_POLLS && mounted.current; i++) {
+      try {
+        const list = await listRuns();
+        if (!mounted.current) return;
+        setRuns(list);
+        const run = list.find((r) => r.id === id);
+        if (!run || !isActive(run)) return;
+      } catch (e) {
+        if (mounted.current) setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      await new Promise((r) => setTimeout(r, SETTLE_POLL_MS));
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -29,11 +61,26 @@ export function RunsPage() {
     };
   }, []);
 
+  // A refused cancel means the row is stale (saving or already finished): show why and re-read once.
+  const onCancelRefused = (message: string) => {
+    setError(message);
+    listRuns()
+      .then((list) => {
+        if (mounted.current) setRuns(list);
+      })
+      .catch(() => {});
+  };
+
   if (!runs) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
 
   return (
     <div>
       <PageHeader title="Runs" description="Discovery and mail sync runs, newest first." />
+      {error && (
+        <div className="mb-4">
+          <ErrorAlert>{error}</ErrorAlert>
+        </div>
+      )}
       {runs.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
@@ -50,7 +97,10 @@ export function RunsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Started</TableHead>
                 <TableHead>Finished</TableHead>
-                <TableHead className="pr-4">Result</TableHead>
+                <TableHead>Result</TableHead>
+                <TableHead className="pr-4">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -66,8 +116,17 @@ export function RunsPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatTime(r.started_at)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatTime(r.finished_at)}</TableCell>
-                  <TableCell className="max-w-96 truncate pr-4 whitespace-nowrap" title={r.summary ?? r.error ?? undefined}>
+                  <TableCell className="max-w-96 truncate whitespace-nowrap" title={r.summary ?? r.error ?? undefined}>
                     {r.summary ?? r.error ?? '–'}
+                  </TableCell>
+                  <TableCell className="pr-4 text-right">
+                    {isActive(r) && (
+                      <CancelRunButton
+                        runId={r.id}
+                        onCancelled={() => void refreshUntilEnded(r.id)}
+                        onError={onCancelRefused}
+                      />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

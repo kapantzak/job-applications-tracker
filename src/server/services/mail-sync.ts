@@ -36,8 +36,17 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
         })),
         reviewed_message_ids: proposalsRepo.reviewedMessageIds(),
       },
-      { log: ctx.log, signal: ctx.signal, runDir: ctx.runDir, timeoutMs: settings.run_timeout_ms },
+      {
+        log: ctx.log,
+        signal: ctx.signal,
+        runDir: ctx.runDir,
+        timeoutMs: settings.run_timeout_ms,
+        recordAgent: ctx.recordAgent,
+      },
     );
+
+    // Past this point the run cannot be cancelled; throws if a cancel or shutdown came first.
+    ctx.beginSaving();
 
     const known = new Set(open.map((a) => a.id));
     const collected: NewProposal[] = [];

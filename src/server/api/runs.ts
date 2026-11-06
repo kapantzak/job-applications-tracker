@@ -77,6 +77,23 @@ export function createRunsRouter(deps: AppDeps): Hono {
 
   router.get('/:id', (c) => c.json(requireRun(c.req.param('id'))));
 
+  // A queued run is cancelled at once; a running one is aborted and finishes as `aborted` once the
+  // agent has been killed. Refused once the run is saving results (user decision, SOW-0012).
+  router.post('/:id/cancel', (c) => {
+    const id = requireRun(c.req.param('id')).id;
+    switch (deps.queue.cancel(id)) {
+      case 'cancelled':
+      case 'cancelling':
+        return c.json(requireRun(id), 202);
+      case 'saving':
+        throw new HttpError(409, 'This run is saving its results and can no longer be cancelled');
+      case 'not_found':
+        throw new HttpError(404, 'Run not found');
+      case 'finished':
+        throw new HttpError(409, 'This run has already finished');
+    }
+  });
+
   router.get('/:id/log', (c) => {
     const run = requireRun(c.req.param('id'));
     return c.text(deps.logStore.read(run.id));

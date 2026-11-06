@@ -1,4 +1,5 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunPage } from '../../src/ui/pages/RunPage.js';
@@ -10,6 +11,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   getRun: vi.fn(),
   getRunLog: vi.fn(),
   subscribeRunEvents: vi.fn(),
+  cancelRun: vi.fn(),
 }));
 
 const run: Run = {
@@ -20,6 +22,9 @@ const run: Run = {
   finished_at: null,
   adapter_id: 'claude',
   prompt_version: null,
+  agent_model: 'opus',
+  agent_effort: '',
+  agent_model_reported: null,
   summary: null,
   error: null,
   created_at: '2026-01-01T00:00:00Z',
@@ -36,6 +41,9 @@ function renderPage() {
 }
 
 afterEach(cleanup);
+
+// The value shown next to a run detail label.
+const detail = (term: string) => screen.getByText(term, { selector: 'dt' }).nextElementSibling?.textContent;
 
 describe('RunPage', () => {
   let onLine: (l: string) => void;
@@ -87,5 +95,165 @@ describe('RunPage', () => {
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
     expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/jobs');
+  });
+
+  it('shows the agent, the requested model and effort, and the model the agent reported', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      agent_model: '',
+      agent_effort: 'high',
+      agent_model_reported: 'model-a',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Agent')).toBe('claude');
+    expect(detail('Model')).toBe('Agent defaultran as model-a');
+    expect(detail('Effort')).toBe('high');
+  });
+
+  it('marks model and effort as not recorded for older runs and as custom for custom commands', async () => {
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', agent_model: null, agent_effort: null });
+    const { unmount } = renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Model')).toBe('Not recorded');
+    expect(detail('Effort')).toBe('Not recorded');
+    unmount();
+
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      adapter_id: 'custom',
+      agent_model: null,
+      agent_effort: null,
+    });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Model')).toBe('Set in your custom command');
+    expect(detail('Effort')).toBe('Set in your custom command');
+  });
+
+  it('shows pending agent details on a live run and refreshes them when the agent starts', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued', adapter_id: '', agent_model: null, agent_effort: null });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Agent')).toBe('Pending');
+    expect(detail('Model')).toBe('Pending');
+    expect(detail('Effort')).toBe('Pending');
+
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'running', agent_model: 'opus', agent_effort: 'high' });
+    await act(async () => onLine('Using adapter claude'));
+    expect(await screen.findByText('opus')).toBeInTheDocument();
+    expect(detail('Effort')).toBe('high');
+    expect(client.getRun).toHaveBeenCalledTimes(2);
+    // Later lines do not fetch again.
+    await act(async () => onLine('Using adapter claude'));
+    expect(client.getRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a running run after confirmation and shows Cancelling until it ends', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.cancelRun).mockResolvedValue(run);
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await user.click(screen.getByRole('button', { name: 'Cancel run' }));
+    expect(client.cancelRun).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
+    expect(client.cancelRun).toHaveBeenCalledWith('r1');
+    expect(await screen.findByRole('button', { name: 'Cancelling…' })).toBeDisabled();
+
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });
+    await act(async () => onDone('aborted' as never));
+    expect(await screen.findByText('Cancelled by user')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+  });
+
+  it('turns the control into Saving results once the run starts saving', async () => {
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    // Agent output that merely starts with the same words must not lock the control.
+    await act(async () => onLine('Saving results to output.json'));
+    expect(screen.getByRole('button', { name: 'Cancel run' })).toBeEnabled();
+    await act(async () => onLine('Saving results; the run can no longer be cancelled'));
+    expect(screen.getByRole('button', { name: 'Saving results…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Cancel run' })).not.toBeInTheDocument();
+  });
+
+  it('shows the cancelled state at once for a queued run', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued' });
+    vi.mocked(client.cancelRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await user.click(screen.getByRole('button', { name: 'Cancel run' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
+    expect(await screen.findByText('Cancelled by user')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+  });
+
+  it('offers no cancel on a finished run', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText('done');
+    expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+  });
+
+  it('shows readable log rows by default and the raw lines on request', async () => {
+    const user = userEvent.setup();
+    const event = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'WebSearch', input: { query: 'platform engineer Lisbon' } }] },
+    });
+    const hook = JSON.stringify({ type: 'system', subtype: 'hook_started', hook_name: 'h' });
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue(['Using adapter claude', hook, event].join('\n'));
+    renderPage();
+    const log = await screen.findByRole('list', { name: 'Run log' });
+    expect(within(log).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Using adapter claude',
+      'Searching the web: platform engineer Lisbon',
+    ]);
+    expect(screen.queryByText(/hook_started/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Show raw output' }));
+    expect(screen.queryByRole('list', { name: 'Run log' })).not.toBeInTheDocument();
+    expect(screen.getByText(/"hook_started"/)).toBeInTheDocument();
+    expect(screen.getByText(/"WebSearch"/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Show raw output' }));
+    expect(screen.getByRole('list', { name: 'Run log' })).toBeInTheDocument();
+  });
+
+  it('adds readable rows as lines stream in', async () => {
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await act(async () =>
+      onLine(JSON.stringify({ type: 'system', subtype: 'init', model: 'model-a' })),
+    );
+    await act(async () =>
+      onLine(
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', name: 'WebFetch', input: { url: 'https://jobs.example.com/3' } }] },
+        }),
+      ),
+    );
+    const log = screen.getByRole('list', { name: 'Run log' });
+    expect(within(log).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Agent started (model-a)',
+      'Opening https://jobs.example.com/3',
+    ]);
+  });
+
+  it('says when every line is hidden in the readable view', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue(JSON.stringify({ type: 'system', subtype: 'hook_started' }));
+    renderPage();
+    expect(await screen.findByText('Nothing readable to show. Turn on raw output to see everything.')).toBeInTheDocument();
   });
 });

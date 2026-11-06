@@ -77,3 +77,26 @@ export function extractClaudeStructuredOutput(ndjson: string): unknown {
   if (typeof result.result === 'string') return extractLastJsonObject(result.result);
   throw new NoJsonFoundError('Claude result event has no structured_output or result text');
 }
+
+const REPORTED_MODEL_MAX = 100;
+// The init event is the first event; a long run's stdout is not worth scanning past the start.
+const INIT_SCAN_LINES = 20;
+
+// Claude Code names the resolved model in its stream-json init event; it is shown to the user, so cap it.
+export function extractClaudeInitModel(ndjson: string): string | undefined {
+  for (const line of ndjson.split('\n', INIT_SCAN_LINES)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    try {
+      const event = JSON.parse(trimmed) as { type?: unknown; subtype?: unknown; model?: unknown };
+      if (event?.type === 'system' && event.subtype === 'init') {
+        return typeof event.model === 'string' && event.model !== ''
+          ? event.model.slice(0, REPORTED_MODEL_MAX)
+          : undefined;
+      }
+    } catch {
+      // Non-JSON lines are ignored.
+    }
+  }
+  return undefined;
+}

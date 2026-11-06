@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase, type Db } from '../../../src/server/db/connection.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import type { Run, RunKind, RunStatus } from '../../../src/server/domain/types.js';
@@ -100,6 +100,10 @@ describe('runs repo', () => {
     expect(runsRepo.nextQueued()?.id).toBe(a.id);
     expect(runsRepo.hasActive('discover_jobs')).toBe(true);
     expect(runsRepo.findActive('sync_mail')?.id).toBe(b.id);
+    expect(runsRepo.findActiveExcept('sync_mail', b.id)).toBeNull();
+    const c = runsRepo.create('discover_jobs', { adapter_id: '', prompt_version: null });
+    expect(runsRepo.findActiveExcept('discover_jobs', a.id)?.id).toBe(c.id);
+    runsRepo.update(c.id, { status: 'aborted' });
     runsRepo.update(a.id, { status: 'succeeded' });
     expect(runsRepo.hasActive('discover_jobs')).toBe(false);
     expect(runsRepo.findActive('discover_jobs')).toBeNull();
@@ -130,6 +134,53 @@ describe('run queue', () => {
     expect(text).toContain('hello from handler\n');
     expect(text).toContain(`Run ${run.id} (discover_jobs) started`);
     expect(text).toContain(`Run ${run.id} succeeded: done`);
+  });
+
+  it('records agent model and effort as soon as the handler reports them, also for a failed run', async () => {
+    const q = makeQueue({
+      discover_jobs: async ({ recordAgent }) => {
+        recordAgent({ adapter_id: 'claude', agent_model: 'opus', agent_effort: '' });
+        recordAgent({ agent_model_reported: 'model-a' });
+        throw new Error('Agent run failed: Exited with code 1');
+      },
+    });
+    const run = q.enqueue('discover_jobs');
+    q.start();
+    const done = await waitForTerminal(run.id);
+    expect(done.status).toBe('failed');
+    expect(done).toMatchObject({
+      adapter_id: 'claude',
+      agent_model: 'opus',
+      agent_effort: '',
+      agent_model_reported: 'model-a',
+    });
+  });
+
+  it('keeps the run going when recording agent details fails', async () => {
+    const realUpdate = runsRepo.update;
+    const errors: unknown[] = [];
+    const consoleError = vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args));
+    runsRepo.update = (id, patch) => {
+      if ('agent_model' in patch) throw new Error('disk full');
+      return realUpdate(id, patch);
+    };
+    try {
+      const q = makeQueue({
+        discover_jobs: async ({ recordAgent }) => {
+          recordAgent({ adapter_id: 'claude', agent_model: 'opus', agent_effort: '' });
+          return { summary: 'done' };
+        },
+      });
+      const run = q.enqueue('discover_jobs');
+      q.start();
+      const done = await waitForTerminal(run.id);
+      expect(done.status).toBe('succeeded');
+      expect(done.agent_model).toBeNull();
+      expect(String(errors[0])).toContain('failed to record agent details: disk full');
+    } finally {
+      runsRepo.update = realUpdate;
+      consoleError.mockRestore();
+    }
   });
 
   it('records the adapter id the handler reports', async () => {
@@ -207,6 +258,170 @@ describe('run queue', () => {
     await waitForTerminal(a.id);
     await waitForTerminal(b.id);
     expect(maxActive).toBe(1);
+  });
+
+  it('cancels a queued run at once and never starts it', async () => {
+    let started = false;
+    let release: () => void = () => {};
+    const q = makeQueue({
+      // Holds the queue busy so the sync run stays queued.
+      discover_jobs: () => new Promise((res) => (release = () => res({ summary: 'ok' }))),
+      sync_mail: async () => {
+        started = true;
+        return { summary: 'ran' };
+      },
+    });
+    q.start();
+    const busy = q.enqueue('discover_jobs');
+    const queued = q.enqueue('sync_mail');
+    await waitFor(() => runsRepo.get(busy.id)?.status === 'running');
+    expect(q.cancel(queued.id)).toBe('cancelled');
+    const cancelled = runsRepo.get(queued.id) as Run;
+    expect([cancelled.status, cancelled.error]).toEqual(['aborted', 'Cancelled by user']);
+    expect(cancelled.finished_at).not.toBeNull();
+    expect(logStore.read(queued.id)).toContain(`Run ${queued.id} aborted: Cancelled by user`);
+    release();
+    await waitForTerminal(busy.id);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started).toBe(false);
+    // The kind is free again.
+    expect(q.enqueue('sync_mail').id).not.toBe(queued.id);
+  });
+
+  it('cancels a running run through its signal and records the reason', async () => {
+    let entered = false;
+    const q = makeQueue({
+      discover_jobs: ({ signal }) => {
+        entered = true;
+        return new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('Aborted'))));
+      },
+    });
+    q.start();
+    const run = q.enqueue('discover_jobs');
+    await waitFor(() => entered);
+    expect(q.cancel(run.id)).toBe('cancelling');
+    // A second request while the agent is being stopped is accepted again.
+    expect(q.cancel(run.id)).toBe('cancelling');
+    const done = await waitForTerminal(run.id);
+    expect([done.status, done.error]).toEqual(['aborted', 'Cancelled by user']);
+  });
+
+  it('refuses to cancel once the handler has started saving, and the run succeeds', async () => {
+    let saving = false;
+    let release: () => void = () => {};
+    const q = makeQueue({
+      discover_jobs: async ({ beginSaving }) => {
+        beginSaving();
+        saving = true;
+        await new Promise<void>((res) => (release = res));
+        return { summary: 'saved' };
+      },
+    });
+    q.start();
+    const run = q.enqueue('discover_jobs');
+    await waitFor(() => saving);
+    expect(q.cancel(run.id)).toBe('saving');
+    expect(logStore.read(run.id)).toContain('Saving results; the run can no longer be cancelled');
+    release();
+    const done = await waitForTerminal(run.id);
+    expect([done.status, done.summary]).toEqual(['succeeded', 'saved']);
+  });
+
+  it('beginSaving throws when the run was cancelled first, so nothing is saved', async () => {
+    let entered = false;
+    let saved = false;
+    let proceed: () => void = () => {};
+    const q = makeQueue({
+      discover_jobs: async ({ beginSaving }) => {
+        entered = true;
+        // Stands in for an agent that finished just as the cancel arrived.
+        await new Promise<void>((res) => (proceed = res));
+        beginSaving();
+        saved = true;
+        return { summary: 'saved' };
+      },
+    });
+    q.start();
+    const run = q.enqueue('discover_jobs');
+    await waitFor(() => entered);
+    expect(q.cancel(run.id)).toBe('cancelling');
+    proceed();
+    const done = await waitForTerminal(run.id);
+    expect([done.status, done.error]).toEqual(['aborted', 'Cancelled by user']);
+    expect(saved).toBe(false);
+  });
+
+  it('keeps the cancel reason when stop() gives up on a cancelled run, and the shutdown reason when cancel comes after stop', async () => {
+    let entered = false;
+    const q = makeQueue(
+      { discover_jobs: () => new Promise(() => void (entered = true)) },
+      { stopTimeoutMs: 20 },
+    );
+    q.start();
+    const run = q.enqueue('discover_jobs');
+    await waitFor(() => entered);
+    expect(q.cancel(run.id)).toBe('cancelling');
+    await q.stop();
+    expect(runsRepo.get(run.id)?.error).toBe('Cancelled by user');
+
+    queue = null;
+    let entered2 = false;
+    const q2 = makeQueue(
+      {
+        discover_jobs: ({ signal }) =>
+          new Promise((_, rej) => {
+            entered2 = true;
+            signal.addEventListener('abort', () => setTimeout(() => rej(new Error('Aborted')), 10));
+          }),
+      },
+      { stopTimeoutMs: 1000 },
+    );
+    q2.start();
+    const run2 = q2.enqueue('discover_jobs');
+    await waitFor(() => entered2);
+    const stopping = q2.stop();
+    q2.cancel(run2.id);
+    await stopping;
+    expect(runsRepo.get(run2.id)?.error).toBe('Aborted');
+  });
+
+  it('queues a new run of the same kind behind a run that is being cancelled', async () => {
+    let entered = 0;
+    let rejectFirst: () => void = () => {};
+    const q = makeQueue({
+      discover_jobs: ({ signal }) => {
+        entered++;
+        if (entered > 1) return Promise.resolve({ summary: 'second' });
+        return new Promise((_, rej) => {
+          // Stands in for an agent that takes a while to die after the abort.
+          signal.addEventListener('abort', () => (rejectFirst = () => rej(new Error('Aborted'))));
+        });
+      },
+    });
+    q.start();
+    const first = q.enqueue('discover_jobs');
+    await waitFor(() => entered === 1);
+    // Before any cancel the active run is returned as before.
+    expect(q.enqueue('discover_jobs').id).toBe(first.id);
+    expect(q.cancel(first.id)).toBe('cancelling');
+    const second = q.enqueue('discover_jobs');
+    expect(second.id).not.toBe(first.id);
+    expect(second.status).toBe('queued');
+    // A repeated click returns the queued run instead of piling up more.
+    expect(q.enqueue('discover_jobs').id).toBe(second.id);
+    rejectFirst();
+    expect((await waitForTerminal(first.id)).error).toBe('Cancelled by user');
+    expect((await waitForTerminal(second.id)).summary).toBe('second');
+  });
+
+  it('reports finished and unknown runs', async () => {
+    const q = makeQueue({});
+    q.start();
+    const run = q.enqueue('discover_jobs');
+    await waitForTerminal(run.id);
+    expect(q.cancel(run.id)).toBe('finished');
+    expect(q.cancel(randomUUID())).toBe('not_found');
+    expect(runsRepo.get(run.id)?.status).toBe('succeeded');
   });
 
   it('stop() aborts the in-flight handler and resolves', async () => {

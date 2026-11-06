@@ -3,8 +3,23 @@ import type { Run, RunKind } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type RunPatch = Partial<
-  Pick<Run, 'status' | 'started_at' | 'finished_at' | 'summary' | 'error' | 'prompt_version' | 'adapter_id'>
+  Pick<
+    Run,
+    | 'status'
+    | 'started_at'
+    | 'finished_at'
+    | 'summary'
+    | 'error'
+    | 'prompt_version'
+    | 'adapter_id'
+    | 'agent_model'
+    | 'agent_effort'
+    | 'agent_model_reported'
+  >
 >;
+
+// What a handler records about the agent call, as soon as it knows it.
+export type AgentRunRecord = Pick<RunPatch, 'adapter_id' | 'agent_model' | 'agent_effort' | 'agent_model_reported'>;
 
 // Runtime allow-list: patch keys become column names in the UPDATE.
 const PATCHABLE = new Set<string>([
@@ -15,6 +30,9 @@ const PATCHABLE = new Set<string>([
   'error',
   'prompt_version',
   'adapter_id',
+  'agent_model',
+  'agent_effort',
+  'agent_model_reported',
 ]);
 
 export function createRunsRepo(db: Db) {
@@ -30,6 +48,10 @@ export function createRunsRepo(db: Db) {
   );
   const selectActive = db.prepare(
     `SELECT * FROM runs WHERE kind = ? AND status IN ('queued','running')
+     ORDER BY created_at ASC, rowid ASC LIMIT 1`,
+  );
+  const selectActiveExcept = db.prepare(
+    `SELECT * FROM runs WHERE kind = ? AND id != ? AND status IN ('queued','running')
      ORDER BY created_at ASC, rowid ASC LIMIT 1`,
   );
   const interruptRunning = db.prepare(
@@ -82,11 +104,16 @@ export function createRunsRepo(db: Db) {
     return (selectActive.get(kind) as Run | undefined) ?? null;
   }
 
+  // Used while one run of the kind is being cancelled: another active run may be queued behind it.
+  function findActiveExcept(kind: RunKind, excludeId: string): Run | null {
+    return (selectActiveExcept.get(kind, excludeId) as Run | undefined) ?? null;
+  }
+
   function hasActive(kind: RunKind): boolean {
     return findActive(kind) !== null;
   }
 
-  return { create, update, get, list, nextQueued, markInterrupted, findActive, hasActive };
+  return { create, update, get, list, nextQueued, markInterrupted, findActive, findActiveExcept, hasActive };
 }
 
 export type RunsRepo = ReturnType<typeof createRunsRepo>;

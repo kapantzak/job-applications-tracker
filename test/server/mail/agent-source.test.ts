@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentAdapter, AgentResult, AgentTask } from '../../../src/server/agents/types.js';
+import type { AgentRunRecord } from '../../../src/server/db/runs-repo.js';
 import { createAgentMailSource } from '../../../src/server/mail/agent-source.js';
 import { MailAccessError, type MailSyncRequest } from '../../../src/server/mail/types.js';
 
@@ -16,25 +17,30 @@ const req: MailSyncRequest = {
 
 function ctx() {
   const logs: string[] = [];
+  const records: AgentRunRecord[] = [];
   return {
     logs,
+    records,
     c: {
       log: (l: string) => logs.push(l),
       signal: new AbortController().signal,
       runDir: mkdtempSync(join(tmpdir(), 'mail-')),
       timeoutMs: 1000,
+      recordAgent: (r: AgentRunRecord) => records.push(r),
     },
   };
 }
 
-function stub(result: AgentResult, tasks: AgentTask[] = []): AgentAdapter {
+function stub(result: AgentResult, tasks: AgentTask[] = [], overrides: Partial<AgentAdapter> = {}): AgentAdapter {
   return {
     id: 'custom',
     check: async () => ({ id: 'custom', installed: true }),
+    listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
     run: async (task) => {
       tasks.push(task);
       return result;
     },
+    ...overrides,
   };
 }
 
@@ -43,6 +49,18 @@ function ok(output: unknown): AgentResult {
 }
 
 describe('agent mail source', () => {
+  it('records the requested selection before the run and the reported model after, even on failure', async () => {
+    const failed: AgentResult = { ...ok({}), ok: false, error: 'Timed out after 1000 ms', reportedModel: 'model-a' };
+    const source = createAgentMailSource(stub(failed, [], { id: 'codex', selection: { model: 'model-x', effort: 'high' } }));
+    const { records, logs, c } = ctx();
+    await expect(source.sync(req, c)).rejects.toThrow('Agent run failed: Timed out after 1000 ms');
+    expect(records).toEqual([
+      { adapter_id: 'codex', agent_model: 'model-x', agent_effort: 'high' },
+      { agent_model_reported: 'model-a' },
+    ]);
+    expect(logs).toContain('Model: model-x, effort: high');
+  });
+
   it('rejects with MailAccessError when mail_access is false', async () => {
     const source = createAgentMailSource(stub(ok({ mail_access: false, findings: [] })));
     const p = source.sync(req, ctx().c);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NoJsonFoundError,
+  extractClaudeInitModel,
   extractClaudeStructuredOutput,
   extractLastJsonObject,
 } from '../../../src/server/agents/extract-json.js';
@@ -65,5 +66,33 @@ describe('extractClaudeStructuredOutput', () => {
 
   it('throws NoJsonFoundError without a result line', () => {
     expect(() => extractClaudeStructuredOutput(JSON.stringify({ type: 'system' }))).toThrow(NoJsonFoundError);
+  });
+});
+
+describe('extractClaudeInitModel', () => {
+  it('returns the model of the init event', () => {
+    const ndjson = [
+      'not json',
+      JSON.stringify({ type: 'system', subtype: 'init', model: 'model-a' }),
+      JSON.stringify({ type: 'result', structured_output: {} }),
+    ].join('\n');
+    expect(extractClaudeInitModel(ndjson)).toBe('model-a');
+  });
+
+  it('returns undefined without an init event or without a model string', () => {
+    expect(extractClaudeInitModel(JSON.stringify({ type: 'result' }))).toBeUndefined();
+    expect(extractClaudeInitModel(JSON.stringify({ type: 'system', subtype: 'init', model: 42 }))).toBeUndefined();
+    expect(extractClaudeInitModel('')).toBeUndefined();
+  });
+
+  it('only looks at the start of the stream for the init event', () => {
+    const filler = Array.from({ length: 60 }, () => JSON.stringify({ type: 'assistant' })).join('\n');
+    const late = JSON.stringify({ type: 'system', subtype: 'init', model: 'model-late' });
+    expect(extractClaudeInitModel(`${filler}\n${late}`)).toBeUndefined();
+  });
+
+  it('caps an oversized model name', () => {
+    const line = JSON.stringify({ type: 'system', subtype: 'init', model: 'm'.repeat(500) });
+    expect(extractClaudeInitModel(line)).toHaveLength(100);
   });
 });
