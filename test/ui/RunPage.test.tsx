@@ -202,4 +202,58 @@ describe('RunPage', () => {
     await screen.findByText('done');
     expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
   });
+
+  it('shows readable log rows by default and the raw lines on request', async () => {
+    const user = userEvent.setup();
+    const event = JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'WebSearch', input: { query: 'platform engineer Lisbon' } }] },
+    });
+    const hook = JSON.stringify({ type: 'system', subtype: 'hook_started', hook_name: 'h' });
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue(['Using adapter claude', hook, event].join('\n'));
+    renderPage();
+    const log = await screen.findByRole('list', { name: 'Run log' });
+    expect(within(log).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Using adapter claude',
+      'Searching the web: platform engineer Lisbon',
+    ]);
+    expect(screen.queryByText(/hook_started/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Show raw output' }));
+    expect(screen.queryByRole('list', { name: 'Run log' })).not.toBeInTheDocument();
+    expect(screen.getByText(/"hook_started"/)).toBeInTheDocument();
+    expect(screen.getByText(/"WebSearch"/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Show raw output' }));
+    expect(screen.getByRole('list', { name: 'Run log' })).toBeInTheDocument();
+  });
+
+  it('adds readable rows as lines stream in', async () => {
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    await act(async () =>
+      onLine(JSON.stringify({ type: 'system', subtype: 'init', model: 'model-a' })),
+    );
+    await act(async () =>
+      onLine(
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', name: 'WebFetch', input: { url: 'https://jobs.example.com/3' } }] },
+        }),
+      ),
+    );
+    const log = screen.getByRole('list', { name: 'Run log' });
+    expect(within(log).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Agent started (model-a)',
+      'Opening https://jobs.example.com/3',
+    ]);
+  });
+
+  it('says when every line is hidden in the readable view', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue(JSON.stringify({ type: 'system', subtype: 'hook_started' }));
+    renderPage();
+    expect(await screen.findByText('Nothing readable to show. Turn on raw output to see everything.')).toBeInTheDocument();
+  });
 });

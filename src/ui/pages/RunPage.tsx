@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { getRun, getRunLog, subscribeRunEvents } from '../api/client.js';
@@ -14,6 +14,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 const NO_GMAIL = 'Your agent has no Gmail tool';
 
@@ -23,6 +25,8 @@ export function RunPage() {
   const [lines, setLines] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
+  const rawId = useId();
 
   useEffect(() => {
     let active = true;
@@ -174,8 +178,16 @@ export function RunPage() {
         </div>
       )}
       <section aria-label="Log" className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Log</h2>
-        <LogView lines={lines} />
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-sm font-medium text-muted-foreground">Log</h2>
+          <div className="flex items-center gap-2">
+            <Checkbox id={rawId} checked={showRaw} onCheckedChange={(v) => setShowRaw(v === true)} />
+            <Label htmlFor={rawId} className="text-sm font-normal text-muted-foreground">
+              Show raw output
+            </Label>
+          </div>
+        </div>
+        <LogView lines={lines} raw={showRaw} />
       </section>
     </div>
   );
