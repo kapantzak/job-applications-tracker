@@ -295,6 +295,7 @@ Output/reference skills: none.
 - `npm run build` bundles the server (tsup → `dist/server`) and the UI (vite → `dist/ui`).
 - `npm run dev:server` runs the server from source with tsx; `npm run dev:ui` runs the Vite dev server with `/api` proxied to port 4173.
 - `node bin/jobtrack.js --no-open --port 0 --data-dir .tmp/dev` runs the built app for manual checks (run `npm run build` first).
+- `npm run sandbox` builds and runs the app on the throwaway data dir `.tmp/sandbox`; append flags after `--` (e.g. `npm run sandbox -- --no-open --port 0`).
 - `npm pack --pack-destination .tmp/` then install the tarball in an empty directory to verify packaging.
 - `bash .agents/sow/audit.sh` audits the SOW setup.
 

@@ -101,7 +101,10 @@ npm test
 npm run build
 npm run dev:ui      # Vite dev server; proxies the API to port 4173
 node bin/jobtrack.js --no-open --data-dir .tmp/dev
+npm run sandbox     # build, then run the app on a throwaway data dir (.tmp/sandbox)
 ```
+
+`npm run sandbox` never touches your real data in `~/.job-applications-tracker`. Delete `.tmp/sandbox` to start fresh. Extra flags go after `--`, for example `npm run sandbox -- --no-open --port 5000`.
 
 The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
 
