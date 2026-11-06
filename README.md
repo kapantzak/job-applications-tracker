@@ -82,7 +82,7 @@ jobtrack [options]
 
 ## Known limitations
 
-- Windows: agent CLIs installed as `.cmd` shims cannot be spawned without a shell, so Windows support is untested in v1.
+- Windows: agent CLIs installed by npm are resolved through their `.cmd` shims and started as `node <cli.js>`; this path is covered by tests with simulated shims only and has not been exercised on a real Windows machine.
 - On timeout only the direct agent process is killed, not processes it started.
 - A custom command cannot read Gmail unless that agent has a Gmail tool.
 

@@ -1,4 +1,5 @@
 import type { RunKind } from '../domain/types.js';
+import type { ResolveDeps } from './resolve-command.js';
 
 export type AdapterId = 'claude' | 'codex' | 'custom';
 
@@ -48,4 +49,6 @@ export interface CliAdapterConfig {
   resultFrom: 'claude-stream-json' | 'output-file' | 'stdout-json';
   versionArgv?: string[];
   vars?: Record<string, string>;
+  // Test seam for Windows command resolution; presets leave it unset so the real platform is used.
+  resolve?: ResolveDeps;
 }

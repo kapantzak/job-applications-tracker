@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { extractClaudeStructuredOutput, extractLastJsonObject } from './extract-json.js';
+import { defaultResolveDeps, resolveCommand } from './resolve-command.js';
 import type { AdapterHealth, AgentAdapter, AgentResult, AgentTask, CliAdapterConfig, RunOptions } from './types.js';
 
 const KILL_GRACE_MS = 5000;
@@ -77,6 +78,12 @@ function streamLines(stream: Readable, sink: (chunk: string) => void, onLine: (l
   };
 }
 
+// argv[0] stays the configured command so error messages name what the user typed.
+function spawnAgent(config: CliAdapterConfig, argv: string[], options: SpawnOptions): ChildProcess {
+  const resolved = resolveCommand(argv[0]!, config.resolve ?? defaultResolveDeps());
+  return spawn(resolved.file, [...resolved.prefixArgs, ...argv.slice(1)], options);
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -96,7 +103,7 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       };
       let child: ChildProcess;
       try {
-        child = spawn(argv[0]!, argv.slice(1), {
+        child = spawnAgent(config, argv, {
           shell: false,
           env: process.env,
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -180,7 +187,7 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
 
       let child: ChildProcess;
       try {
-        child = spawn(argv[0]!, argv.slice(1), {
+        child = spawnAgent(config, argv, {
           cwd,
           shell: false,
           env: process.env,

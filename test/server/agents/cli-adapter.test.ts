@@ -1,11 +1,12 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCliAdapter } from '../../../src/server/agents/cli-adapter.js';
 import { createAdapter } from '../../../src/server/agents/index.js';
 import { buildAdapterConfig } from '../../../src/server/agents/presets.js';
+import type { ResolveDeps } from '../../../src/server/agents/resolve-command.js';
 import type { AgentTask, CliAdapterConfig } from '../../../src/server/agents/types.js';
 import { DEFAULT_SETTINGS } from '../../../src/server/db/settings-repo.js';
 
@@ -15,6 +16,24 @@ const TASK: AgentTask = { kind: 'discover_jobs', prompt: 'Find jobs', outputSche
 
 function fakeConfig(overrides: Partial<CliAdapterConfig> = {}): CliAdapterConfig {
   return { id: 'custom', argv: [process.execPath, FIXTURE], promptVia: 'file', resultFrom: 'stdout-json', ...overrides };
+}
+
+// Simulated Windows install: `fake` resolves to C:\tools\fake.cmd, an npm-style shim whose entry is the
+// fixture. posix.resolve stands in for win32.join so the absolute fixture path stays openable off Windows.
+function simulatedWin32Shim(): ResolveDeps {
+  const shim = win32.join('C:\\tools', 'fake.cmd').toLowerCase();
+  return {
+    platform: 'win32',
+    env: { PATH: 'C:\\tools', PATHEXT: '.COM;.EXE;.BAT;.CMD' },
+    // Case-insensitive like a Windows file system: PATHEXT yields fake.CMD.
+    exists: (p) => p.toLowerCase() === shim,
+    readFile: (p) => {
+      if (p.toLowerCase() !== shim) throw new Error(`unexpected read: ${p}`);
+      return `@ECHO off\r\n"%_prog%"  "%dp0%\\${FIXTURE}" %*\r\n`;
+    },
+    execPath: process.execPath,
+    join: posix.resolve,
+  };
 }
 
 let cwd: string;
@@ -194,6 +213,27 @@ describe('createCliAdapter run', () => {
     });
   });
 
+  it('spawns node with the shim entry first when a win32 .cmd shim is resolved', async () => {
+    process.env.FAKE_AGENT_MODE = 'echo-argv';
+    const r = await createCliAdapter(
+      fakeConfig({ argv: ['fake', '--mode', '{permission_mode}'], vars: { permission_mode: 'xyz' }, resolve: simulatedWin32Shim() }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    // The fixture echoes argv after the script, so this output only appears when node ran the fixture
+    // with the original arguments after it: spawning `fake` would be ENOENT, a lost prefix would make node open `--mode`.
+    expect(r.error).toBeUndefined();
+    expect(r.ok).toBe(true);
+    expect(r.output).toEqual({ argv: ['--mode', 'xyz'] });
+  });
+
+  it('reports the original command when a simulated win32 command is not found', async () => {
+    const r = await createCliAdapter(fakeConfig({ argv: ['missing-xyz'], resolve: simulatedWin32Shim() })).run(TASK, {
+      timeoutMs: 10_000,
+      cwd,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Command not found: missing-xyz');
+  });
+
   it('resolves instead of rejecting when spawn throws synchronously', async () => {
     const r = await createCliAdapter(fakeConfig({ argv: [''] })).run(TASK, { timeoutMs: 10_000, cwd });
     expect(r.ok).toBe(false);
@@ -226,6 +266,15 @@ describe('createCliAdapter check', () => {
     expect(h.installed).toBe(true);
     expect(h.version).toBeUndefined();
     expect(h.message).toMatch(/^Failed to start: /);
+  });
+
+  it('checks through a resolved win32 .cmd shim', async () => {
+    process.env.FAKE_AGENT_MODE = 'echo-argv';
+    const h = await createCliAdapter(
+      fakeConfig({ argv: ['fake'], versionArgv: ['fake', '--version'], resolve: simulatedWin32Shim() }),
+    ).check();
+    expect(h.installed).toBe(true);
+    expect(h.version).toBe(JSON.stringify({ argv: ['--version'] }));
   });
 
   it('reports the version of an installed binary', async () => {
