@@ -48,14 +48,20 @@ function job(n: number, extra: Record<string, unknown> = {}) {
   return { company: `Acme ${n}`, title: `Engineer ${n}`, url: `https://jobs.example.com/${n}`, ...extra };
 }
 
-function makeHandler(result: AgentResult, statuses: Record<string, VerificationStatus> = {}) {
+function makeHandler(
+  result: AgentResult,
+  statuses: Record<string, VerificationStatus> = {},
+  overrides: Partial<AgentAdapter> = {},
+) {
   const adapter: AgentAdapter = {
     id: 'custom',
     check: async () => ({ id: 'custom', installed: true }),
+    listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
     run: async () => {
       adapterCalls++;
       return result;
     },
+    ...overrides,
   };
   const verify = (async (url: string) => ({
     status: statuses[url] ?? 'ok',
@@ -76,6 +82,7 @@ function ctx(): RunContext {
     log: (l) => logs.push(l),
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'discovery-')),
+    recordAgent: (record) => runsRepo.update(run.id, record),
   };
 }
 
@@ -89,6 +96,49 @@ describe('discovery handler', () => {
     expect(jobsRepo.list()).toHaveLength(2);
     expect(logs).toContain('Using adapter custom');
     expect(logs).toContain(res.summary);
+  });
+
+  it('records the requested model and effort and the reported model on the run', async () => {
+    saveProfile();
+    const c = ctx();
+    await makeHandler({ ...okResult([job(1)]), reportedModel: 'model-a' }, {}, {
+      id: 'claude',
+      selection: { model: 'opus', effort: '' },
+    })(c);
+    expect(runsRepo.get(c.run.id)).toMatchObject({
+      adapter_id: 'claude',
+      agent_model: 'opus',
+      agent_effort: '',
+      agent_model_reported: 'model-a',
+    });
+    expect(logs).toContain('Model: opus, effort: agent default');
+  });
+
+  it('keeps the model record when the agent run fails', async () => {
+    saveProfile();
+    const c = ctx();
+    const failed: AgentResult = { ...okResult([]), ok: false, error: 'Exited with code 1', reportedModel: 'model-b' };
+    const handler = makeHandler(failed, {}, { id: 'claude', selection: { model: '', effort: 'max' } });
+    await expect(handler(c)).rejects.toThrow('Agent run failed: Exited with code 1');
+    expect(runsRepo.get(c.run.id)).toMatchObject({
+      adapter_id: 'claude',
+      agent_model: '',
+      agent_effort: 'max',
+      agent_model_reported: 'model-b',
+    });
+  });
+
+  it('records no model or effort for a custom command', async () => {
+    saveProfile();
+    const c = ctx();
+    await makeHandler(okResult([job(1)]))(c);
+    expect(runsRepo.get(c.run.id)).toMatchObject({
+      adapter_id: 'custom',
+      agent_model: null,
+      agent_effort: null,
+      agent_model_reported: null,
+    });
+    expect(logs.some((l) => l.startsWith('Model:'))).toBe(false);
   });
 
   it('skips jobs whose key already exists and duplicates in the batch', async () => {
@@ -116,6 +166,7 @@ describe('discovery handler', () => {
     const adapter: AgentAdapter = {
       id: 'custom',
       check: async () => ({ id: 'custom', installed: true }),
+      listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
       run: async () => okResult([job(1)]),
     };
     const verify = (async () => ({
@@ -143,6 +194,7 @@ describe('discovery handler', () => {
     const adapter: AgentAdapter = {
       id: 'custom',
       check: async () => ({ id: 'custom', installed: true }),
+      listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
       run: async () => okResult([job(1, { url: 'javascript:alert(1)' }), job(2)]),
     };
     const verify = (async (url: string) => {

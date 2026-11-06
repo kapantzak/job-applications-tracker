@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, dismissJob, getRunLog, listJobs, putProfile, subscribeRunEvents } from '../../src/ui/api/client.js';
+import {
+  ApiError,
+  dismissJob,
+  getModelCatalogs,
+  getRunLog,
+  listJobs,
+  putProfile,
+  subscribeRunEvents,
+} from '../../src/ui/api/client.js';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -36,6 +44,16 @@ describe('api client', () => {
     expect(init.method).toBe('PUT');
     expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
     expect(init.body).toBe(JSON.stringify({ target_roles: [] }));
+  });
+
+  it('getModelCatalogs calls GET /api/setup/models', async () => {
+    const body = { claude: { source: 'static', models: [], efforts: [] }, codex: { source: 'unavailable', models: [], efforts: [] } };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(body));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    expect(await getModelCatalogs()).toEqual(body);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/setup/models');
+    expect(init.method).toBe('GET');
   });
 
   it('dismissJob returns undefined on 204 without parsing a body', async () => {

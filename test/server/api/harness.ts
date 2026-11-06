@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { createApp, type AppDeps } from '../../../src/server/app.js';
-import type { AdapterHealth, AgentAdapter } from '../../../src/server/agents/index.js';
+import type { AdapterHealth, AgentAdapter, ModelCatalog } from '../../../src/server/agents/index.js';
 import { createApplicationsRepo } from '../../../src/server/db/applications-repo.js';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../../src/server/db/jobs-repo.js';
@@ -33,6 +33,7 @@ export interface Harness {
   handlers: Record<RunKind, RunHandler>;
   factoryCalls: { settings: Settings; kind: RunKind }[];
   healthFor: Record<string, AdapterHealth | Error>;
+  catalogFor: Record<string, ModelCatalog>;
   cleanup(): Promise<void>;
 }
 
@@ -76,6 +77,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const scheduler = createSyncScheduler({ settingsRepo, queue });
   const factoryCalls: Harness['factoryCalls'] = [];
   const healthFor: Harness['healthFor'] = {};
+  const catalogFor: Harness['catalogFor'] = {};
   const adapterFactory = (settings: Settings, kind: RunKind): AgentAdapter => {
     factoryCalls.push({ settings, kind });
     const id = settings.adapter_id;
@@ -85,6 +87,9 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
         const health = healthFor[id] ?? { id, installed: true, version: '0.0.1-test' };
         if (health instanceof Error) throw health;
         return health;
+      },
+      async listModels() {
+        return catalogFor[id] ?? { source: 'unavailable', models: [], efforts: [] };
       },
       async run() {
         throw new Error('stub adapter does not run');
@@ -125,6 +130,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     handlers,
     factoryCalls,
     healthFor,
+    catalogFor,
     async cleanup() {
       scheduler.stop();
       await queue.stop();

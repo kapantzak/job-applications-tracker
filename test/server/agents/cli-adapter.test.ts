@@ -81,6 +81,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete process.env.FAKE_AGENT_MODEL;
+  delete process.env.FAKE_AGENT_MODELS;
   delete process.env.FAKE_AGENT_MODE;
   delete process.env.FAKE_AGENT_OUTPUT;
   delete process.env.FAKE_AGENT_AUTH;
@@ -173,6 +175,41 @@ describe('createCliAdapter run', () => {
     expect(r.output).toEqual(OUTPUT);
     expect(lines).toHaveLength(3);
     expect(JSON.parse(lines[2]!).type).toBe('result');
+  });
+
+  it('reports the model named by the claude init event', async () => {
+    process.env.FAKE_AGENT_MODE = 'claude';
+    process.env.FAKE_AGENT_MODEL = 'model-a';
+    const r = await createCliAdapter(
+      fakeConfig({ argv: [process.execPath, FIXTURE], promptVia: 'stdin', resultFrom: 'claude-stream-json' }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(true);
+    expect(r.reportedModel).toBe('model-a');
+  });
+
+  it('reports the claude model on a failed run too', async () => {
+    process.env.FAKE_AGENT_MODE = 'claude-fail';
+    process.env.FAKE_AGENT_MODEL = 'model-b';
+    const r = await createCliAdapter(
+      fakeConfig({ argv: [process.execPath, FIXTURE], promptVia: 'stdin', resultFrom: 'claude-stream-json' }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Exited with code 2');
+    expect(r.reportedModel).toBe('model-b');
+  });
+
+  it('does not look for a reported model in other output formats', async () => {
+    process.env.FAKE_AGENT_MODE = 'ok';
+    process.env.FAKE_AGENT_OUTPUT = JSON.stringify({ type: 'system', subtype: 'init', model: 'model-c' });
+    const r = await createCliAdapter(fakeConfig()).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(true);
+    expect(r.reportedModel).toBeUndefined();
+  });
+
+  it('exposes the requested selection on the adapter', () => {
+    const selection = { model: 'model-a', effort: 'low' };
+    expect(createCliAdapter(fakeConfig({ selection })).selection).toEqual(selection);
+    expect(createCliAdapter(fakeConfig()).selection).toBeUndefined();
   });
 
   it('reads codex output from {output_file}', async () => {
@@ -343,6 +380,73 @@ describe('createCliAdapter check sign-in probe', () => {
   });
 });
 
+describe('createCliAdapter listModels', () => {
+  const CATALOG = {
+    models: [
+      {
+        slug: 'model-a',
+        display_name: 'Model A',
+        visibility: 'list',
+        supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }],
+      },
+      { slug: 'model-hidden', display_name: 'Hidden', visibility: 'hide', supported_reasoning_levels: [{ effort: 'max' }] },
+      { slug: 'model-b', visibility: 'list', supported_reasoning_levels: [{ effort: 'medium' }, { effort: 'ultra' }] },
+    ],
+  };
+  const modelsConfig = () => fakeConfig({ modelsArgv: [process.execPath, FIXTURE, 'debug', 'models'] });
+
+  it('returns a static catalog without spawning anything', async () => {
+    const catalog = { source: 'static' as const, models: [{ id: 'a', label: 'a', efforts: ['low'] }], efforts: ['low'] };
+    const c = await createCliAdapter(fakeConfig({ argv: ['definitely-not-a-binary-xyz'], modelCatalog: catalog })).listModels();
+    expect(c).toEqual(catalog);
+  });
+
+  it('parses the agent catalog, skips hidden models and unions the effort levels', async () => {
+    process.env.FAKE_AGENT_MODELS = JSON.stringify(CATALOG);
+    expect(await createCliAdapter(modelsConfig()).listModels()).toEqual({
+      source: 'agent',
+      models: [
+        { id: 'model-a', label: 'Model A', efforts: ['low', 'high'] },
+        { id: 'model-b', label: 'model-b', efforts: ['medium', 'ultra'] },
+      ],
+      efforts: ['low', 'high', 'medium', 'ultra'],
+    });
+  });
+
+  it('drops catalog entries the settings API would reject', async () => {
+    process.env.FAKE_AGENT_MODELS = JSON.stringify({
+      models: [
+        { slug: 'model a', supported_reasoning_levels: [{ effort: 'low' }] },
+        { slug: '-model', supported_reasoning_levels: [{ effort: 'low' }] },
+        { slug: 'model-c', supported_reasoning_levels: [{ effort: 'x-high' }, { effort: 'Minimal' }, { effort: 'high' }] },
+      ],
+    });
+    expect(await createCliAdapter(modelsConfig()).listModels()).toEqual({
+      source: 'agent',
+      models: [{ id: 'model-c', label: 'model-c', efforts: ['high'] }],
+      efforts: ['high'],
+    });
+  });
+
+  it.each([
+    ['the command fails', 'fail'],
+    ['the output is not JSON', 'not json'],
+    ['the output has an unexpected shape', JSON.stringify({ models: [{ display_name: 'no slug' }] })],
+  ])('reports unavailable when %s', async (_name, models) => {
+    process.env.FAKE_AGENT_MODELS = models;
+    expect(await createCliAdapter(modelsConfig()).listModels()).toEqual({ source: 'unavailable', models: [], efforts: [] });
+  });
+
+  it('reports unavailable when the catalog command is missing', async () => {
+    const c = await createCliAdapter(fakeConfig({ modelsArgv: ['definitely-not-a-binary-xyz', 'debug', 'models'] })).listModels();
+    expect(c).toEqual({ source: 'unavailable', models: [], efforts: [] });
+  });
+
+  it('reports unavailable for an agent without any catalog', async () => {
+    expect(await createCliAdapter(fakeConfig()).listModels()).toEqual({ source: 'unavailable', models: [], efforts: [] });
+  });
+});
+
 describe('buildAdapterConfig', () => {
   it('passes the sync_mail allowed tools to claude', () => {
     const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const };
@@ -373,6 +477,66 @@ describe('buildAdapterConfig', () => {
     expect(c.vars?.sandbox).toBe('workspace-write');
     expect(c.promptVia).toBe('argv');
     expect(c.resultFrom).toBe('output-file');
+  });
+
+  it('adds no model or effort flag when both are agent default', () => {
+    const claude = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'discover_jobs');
+    expect(claude.argv).not.toContain('--model');
+    expect(claude.argv).not.toContain('--effort');
+    expect(claude.selection).toEqual({ model: '', effort: '' });
+  });
+
+  it.each([
+    ['discover_jobs', ['--model', 'opus', '--effort', 'high']],
+    ['sync_mail', ['--model', 'sonnet', '--effort', 'low']],
+  ] as const)('passes the claude model and effort for %s', (kind, flags) => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      adapter_id: 'claude' as const,
+      claude_model_discover: 'opus',
+      claude_effort_discover: 'high',
+      claude_model_sync: 'sonnet',
+      claude_effort_sync: 'low',
+      codex_model_discover: 'model-x',
+    };
+    const c = buildAdapterConfig(settings, kind);
+    expect(c.argv.slice(-4)).toEqual(flags);
+    expect(c.selection).toEqual({ model: flags[1], effort: flags[3] });
+  });
+
+  it('passes only the claude effort when the model is agent default', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, claude_effort_sync: 'max' };
+    const c = buildAdapterConfig(settings, 'sync_mail');
+    expect(c.argv).not.toContain('--model');
+    expect(c.argv.slice(-2)).toEqual(['--effort', 'max']);
+  });
+
+  it('passes the codex model and reasoning effort as a quoted TOML string', () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      adapter_id: 'codex' as const,
+      codex_model_sync: 'model-a',
+      codex_effort_sync: 'xhigh',
+      claude_model_sync: 'opus',
+    };
+    const c = buildAdapterConfig(settings, 'sync_mail');
+    expect(c.argv.slice(-4)).toEqual(['-m', 'model-a', '-c', 'model_reasoning_effort="xhigh"']);
+    expect(c.selection).toEqual({ model: 'model-a', effort: 'xhigh' });
+    expect(c.modelsArgv).toEqual(['codex', 'debug', 'models']);
+  });
+
+  it('refuses a stored model or effort that could be read as a flag', () => {
+    const claude = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, claude_model_discover: '--bare' };
+    expect(() => buildAdapterConfig(claude, 'discover_jobs')).toThrow('Invalid model setting: --bare');
+    const codex = { ...DEFAULT_SETTINGS, adapter_id: 'codex' as const, codex_effort_sync: 'high" -x' };
+    expect(() => buildAdapterConfig(codex, 'sync_mail')).toThrow('Invalid effort setting');
+  });
+
+  it('gives custom commands no selection and no catalog', () => {
+    const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'custom', custom_command: 'x' }, 'sync_mail');
+    expect(c.selection).toBeUndefined();
+    expect(c.modelsArgv).toBeUndefined();
+    expect(c.modelCatalog).toBeUndefined();
   });
 
   it('splits a quoted custom command', () => {

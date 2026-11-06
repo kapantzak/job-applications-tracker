@@ -3,6 +3,7 @@ import type { createJobsRepo, NewJob } from '../db/jobs-repo.js';
 import type { createProfileRepo } from '../db/profile-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import type { Profile, RunKind, Settings, VerificationStatus } from '../domain/types.js';
+import { reportedAgent, requestedAgent, selectionLogLine } from '../runs/agent-record.js';
 import type { RunHandler } from '../runs/queue.js';
 import { outputJsonSchema, DiscoverJobsOutput } from '../tasks/schemas.js';
 import { renderPrompt } from '../tasks/prompts.js';
@@ -67,10 +68,15 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
 
     const adapter = adapterFactory(settings, 'discover_jobs');
     ctx.log(`Using adapter ${adapter.id}`);
+    const selectionLine = selectionLogLine(adapter);
+    if (selectionLine) ctx.log(selectionLine);
+    ctx.recordAgent(requestedAgent(adapter));
     const result = await adapter.run(
       { kind: 'discover_jobs', prompt: text, outputSchema: outputJsonSchema('discover_jobs') },
       { timeoutMs: settings.run_timeout_ms, cwd: ctx.runDir, onLog: ctx.log, signal: ctx.signal },
     );
+    const reported = reportedAgent(result);
+    if (reported) ctx.recordAgent(reported);
     if (!result.ok) throw new Error(`Agent run failed: ${result.error}`);
 
     const parsed = DiscoverJobsOutput.safeParse(result.output);

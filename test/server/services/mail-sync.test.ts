@@ -63,10 +63,24 @@ function ctx(): RunContext {
     log: (l) => logs.push(l),
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'mail-sync-')),
+    recordAgent: (record) => runsRepo.update(run.id, record),
   };
 }
 
 describe('mail sync handler', () => {
+  it('passes the run record callback to the mail source', async () => {
+    applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
+    const c = ctx();
+    const handler = handlerFor({
+      sync: async (_req, sctx) => {
+        sctx.recordAgent({ adapter_id: 'claude', agent_model: 'sonnet', agent_effort: 'low' });
+        return { mail_access: true, findings: [], notes: '' } as MailSyncFindings;
+      },
+    });
+    await handler(c);
+    expect(runsRepo.get(c.run.id)).toMatchObject({ adapter_id: 'claude', agent_model: 'sonnet', agent_effort: 'low' });
+  });
+
   it('creates a pending proposal with evidence', async () => {
     const app = applicationsRepo.create({ company: 'Acme', role: 'Engineer' });
     const res = await returning([finding(app.id, 'interview')])(ctx());

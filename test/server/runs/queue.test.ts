@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase, type Db } from '../../../src/server/db/connection.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import type { Run, RunKind, RunStatus } from '../../../src/server/domain/types.js';
@@ -130,6 +130,53 @@ describe('run queue', () => {
     expect(text).toContain('hello from handler\n');
     expect(text).toContain(`Run ${run.id} (discover_jobs) started`);
     expect(text).toContain(`Run ${run.id} succeeded: done`);
+  });
+
+  it('records agent model and effort as soon as the handler reports them, also for a failed run', async () => {
+    const q = makeQueue({
+      discover_jobs: async ({ recordAgent }) => {
+        recordAgent({ adapter_id: 'claude', agent_model: 'opus', agent_effort: '' });
+        recordAgent({ agent_model_reported: 'model-a' });
+        throw new Error('Agent run failed: Exited with code 1');
+      },
+    });
+    const run = q.enqueue('discover_jobs');
+    q.start();
+    const done = await waitForTerminal(run.id);
+    expect(done.status).toBe('failed');
+    expect(done).toMatchObject({
+      adapter_id: 'claude',
+      agent_model: 'opus',
+      agent_effort: '',
+      agent_model_reported: 'model-a',
+    });
+  });
+
+  it('keeps the run going when recording agent details fails', async () => {
+    const realUpdate = runsRepo.update;
+    const errors: unknown[] = [];
+    const consoleError = vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args));
+    runsRepo.update = (id, patch) => {
+      if ('agent_model' in patch) throw new Error('disk full');
+      return realUpdate(id, patch);
+    };
+    try {
+      const q = makeQueue({
+        discover_jobs: async ({ recordAgent }) => {
+          recordAgent({ adapter_id: 'claude', agent_model: 'opus', agent_effort: '' });
+          return { summary: 'done' };
+        },
+      });
+      const run = q.enqueue('discover_jobs');
+      q.start();
+      const done = await waitForTerminal(run.id);
+      expect(done.status).toBe('succeeded');
+      expect(done.agent_model).toBeNull();
+      expect(String(errors[0])).toContain('failed to record agent details: disk full');
+    } finally {
+      runsRepo.update = realUpdate;
+      consoleError.mockRestore();
+    }
   });
 
   it('records the adapter id the handler reports', async () => {

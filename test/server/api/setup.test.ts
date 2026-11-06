@@ -71,3 +71,32 @@ describe('setup adapters', () => {
     );
   });
 });
+
+describe('setup models', () => {
+  it('returns the claude and codex catalogs without asking custom', async () => {
+    const claude = { source: 'static' as const, models: [{ id: 'opus', label: 'opus', efforts: ['low'] }], efforts: ['low'] };
+    const codex = { source: 'agent' as const, models: [{ id: 'model-a', label: 'Model A', efforts: ['high'] }], efforts: ['high'] };
+    h.catalogFor.claude = claude;
+    h.catalogFor.codex = codex;
+    h.deps.settingsRepo.set({ adapter_id: 'custom', custom_command: 'my-agent' });
+    const res = await h.app.request('/api/setup/models');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ claude, codex });
+    expect(h.factoryCalls.map((c) => c.settings.adapter_id)).toEqual(['claude', 'codex']);
+  });
+
+  it('reports a catalog as unavailable when building the adapter throws, without affecting the other', async () => {
+    const claude = { source: 'static' as const, models: [{ id: 'opus', label: 'opus', efforts: ['low'] }], efforts: ['low'] };
+    h.catalogFor.claude = claude;
+    const realFactory = h.deps.adapterFactory;
+    h.deps.adapterFactory = (settings, kind) => {
+      if (settings.adapter_id === 'codex') throw new Error('Invalid model setting: --bad');
+      return realFactory(settings, kind);
+    };
+    const res = await h.app.request('/api/setup/models');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.codex).toEqual({ source: 'unavailable', models: [], efforts: [] });
+    expect(body.claude).toEqual(claude);
+  });
+});

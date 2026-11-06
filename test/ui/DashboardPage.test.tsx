@@ -10,6 +10,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listProposals: vi.fn(),
   listJobs: vi.fn(),
   listRuns: vi.fn(),
+  getSettings: vi.fn(),
   startDiscovery: vi.fn(),
   startSync: vi.fn(),
 }));
@@ -30,6 +31,14 @@ beforeEach(() => {
   vi.mocked(client.listProposals).mockResolvedValue([{}, {}, {}] as never);
   vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}, {}] as never);
   vi.mocked(client.listRuns).mockResolvedValue([]);
+  vi.mocked(client.getSettings).mockResolvedValue({
+    adapter_id: 'claude',
+    claude_model_discover: 'opus',
+    claude_effort_discover: 'high',
+    claude_model_sync: '',
+    claude_effort_sync: '',
+    codex_model_discover: 'model-a',
+  } as never);
 });
 
 describe('DashboardPage', () => {
@@ -47,5 +56,19 @@ describe('DashboardPage', () => {
     renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('jobs down');
     expect(screen.getByTestId('count-applications')).toHaveTextContent('2');
+  });
+
+  it('shows the selected agent with its model and effort per run kind', async () => {
+    renderPage();
+    const card = await screen.findByRole('region', { name: 'Agent' });
+    expect(card).toHaveTextContent('Discovery: claude · model opus · effort high');
+    expect(card).toHaveTextContent('Mail sync: claude · model Agent default · effort Agent default');
+  });
+
+  it('points custom commands to their own flags', async () => {
+    vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'custom' } as never);
+    renderPage();
+    const card = await screen.findByRole('region', { name: 'Agent' });
+    expect(card).toHaveTextContent('Discovery: custom · model and effort set in your custom command');
   });
 });

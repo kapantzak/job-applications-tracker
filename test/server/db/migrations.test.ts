@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
+import { migrations } from '../../../src/server/db/migrations.js';
 
 describe('migrate', () => {
-  it('applies migration 1 and creates the eight tables', () => {
+  it('applies every migration and creates the eight tables', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(1);
+    expect(migrate(db)).toBe(2);
 
     const names = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
@@ -21,6 +22,35 @@ describe('migrate', () => {
     ]) {
       expect(names).toContain(t);
     }
+    db.close();
+  });
+
+  it('migration 2 adds nullable agent model and effort columns to runs', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const cols = (db.prepare('PRAGMA table_info(runs)').all() as { name: string; notnull: number }[]).filter((c) =>
+      ['agent_model', 'agent_effort', 'agent_model_reported'].includes(c.name),
+    );
+    expect(cols.map((c) => [c.name, c.notnull])).toEqual([
+      ['agent_model', 0],
+      ['agent_effort', 0],
+      ['agent_model_reported', 0],
+    ]);
+    db.close();
+  });
+
+  it('migration 2 upgrades a version 1 database and leaves existing runs unrecorded', () => {
+    const db = openDatabase(':memory:');
+    db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+    db.exec(migrations.find((m) => m.id === 1)!.sql);
+    db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (1, 't')").run();
+    db.prepare(
+      "INSERT INTO runs (id, kind, status, adapter_id, created_at) VALUES ('run-1', 'sync_mail', 'succeeded', 'claude', 't')",
+    ).run();
+    expect(migrate(db)).toBe(1);
+    expect(
+      db.prepare('SELECT adapter_id, agent_model, agent_effort, agent_model_reported FROM runs').get(),
+    ).toEqual({ adapter_id: 'claude', agent_model: null, agent_effort: null, agent_model_reported: null });
     db.close();
   });
 

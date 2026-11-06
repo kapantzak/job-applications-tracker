@@ -2,12 +2,22 @@ import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
-import { extractClaudeStructuredOutput, extractLastJsonObject } from './extract-json.js';
+import { extractClaudeInitModel, extractClaudeStructuredOutput, extractLastJsonObject } from './extract-json.js';
+import { parseCodexModelCatalog, UNAVAILABLE_CATALOG } from './model-catalog.js';
 import { defaultResolveDeps, resolveCommand } from './resolve-command.js';
-import type { AdapterHealth, AgentAdapter, AgentResult, AgentTask, CliAdapterConfig, RunOptions } from './types.js';
+import type {
+  AdapterHealth,
+  AgentAdapter,
+  AgentResult,
+  AgentTask,
+  CliAdapterConfig,
+  ModelCatalog,
+  RunOptions,
+} from './types.js';
 
 const KILL_GRACE_MS = 5000;
 const CHECK_TIMEOUT_MS = 3000;
+const MODELS_TIMEOUT_MS = 5000;
 const AUTH_MESSAGE_MAX = 200;
 // A grandchild holding stdout open must not keep a run alive after the agent itself exits.
 const CLOSE_GRACE_MS = 1000;
@@ -189,6 +199,18 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
     }
   }
 
+  async function listModels(): Promise<ModelCatalog> {
+    if (config.modelCatalog) return config.modelCatalog;
+    if (!config.modelsArgv) return UNAVAILABLE_CATALOG;
+    const o = await probe(config, config.modelsArgv, MODELS_TIMEOUT_MS);
+    if (o.kind !== 'exit' || o.code !== 0) return UNAVAILABLE_CATALOG;
+    try {
+      return parseCodexModelCatalog(o.stdout);
+    } catch {
+      return UNAVAILABLE_CATALOG;
+    }
+  }
+
   async function run(task: AgentTask, opts: RunOptions): Promise<AgentResult> {
     const started = Date.now();
     const cwd = resolve(opts.cwd);
@@ -199,6 +221,12 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
     };
     let rawStdout = '';
     let rawStderr = '';
+    // Read on success and failure alike: which model ran matters most when a run fails.
+    const reported = (): Pick<AgentResult, 'reportedModel'> => {
+      if (config.resultFrom !== 'claude-stream-json') return {};
+      const model = extractClaudeInitModel(rawStdout);
+      return model ? { reportedModel: model } : {};
+    };
     const fail = (error: string, exitCode: number | null = null): AgentResult => ({
       ok: false,
       rawStdout,
@@ -206,6 +234,7 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       exitCode,
       durationMs: Date.now() - started,
       error,
+      ...reported(),
     });
 
     if (opts.signal?.aborted) return fail('Aborted');
@@ -284,7 +313,15 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
         if (code !== 0) return finish(fail(code === null ? `Killed by signal ${signal}` : `Exited with code ${code}`, code));
         try {
           const output = extract();
-          finish({ ok: true, output, rawStdout, rawStderr, exitCode: code, durationMs: Date.now() - started });
+          finish({
+            ok: true,
+            output,
+            rawStdout,
+            rawStderr,
+            exitCode: code,
+            durationMs: Date.now() - started,
+            ...reported(),
+          });
         } catch (err) {
           finish(fail(errorMessage(err), code));
         }
@@ -331,5 +368,5 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
     });
   }
 
-  return { id: config.id, check, run };
+  return { id: config.id, ...(config.selection ? { selection: config.selection } : {}), check, listModels, run };
 }

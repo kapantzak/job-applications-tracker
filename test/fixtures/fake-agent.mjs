@@ -22,6 +22,18 @@ if (args.includes('status') && (args.includes('auth') || args.includes('login'))
   await new Promise(() => {});
 }
 
+// Model catalog probe (`debug models`, codex style); FAKE_AGENT_MODELS is printed as is, or the probe
+// fails when it is 'fail'.
+if (args.includes('debug') && args.includes('models')) {
+  const models = process.env.FAKE_AGENT_MODELS ?? '{"models":[]}';
+  if (models === 'fail') {
+    process.stderr.write('no catalog\n');
+    process.exit(5);
+  }
+  process.stdout.write(models + '\n');
+  process.exit(0);
+}
+
 // Written first so tests can find the pid even when startup is slow; lets them confirm the process is gone.
 if (mode === 'hang') writeFileSync('fake-agent.pid', String(process.pid));
 // Stands in for an agent that starts its own helper processes: the pid file lists the agent, then the helper.
@@ -46,11 +58,18 @@ switch (mode) {
   case 'prose':
     process.stdout.write('Here you go:\n' + output + '\n');
     break;
-  case 'claude': {
+  case 'claude':
+  case 'claude-fail': {
     // Read the prompt to the end so a stdin that is never closed makes the test hang.
     await readStdin();
+    const init = { type: 'system', subtype: 'init' };
+    if (process.env.FAKE_AGENT_MODEL) init.model = process.env.FAKE_AGENT_MODEL;
+    if (mode === 'claude-fail') {
+      process.stdout.write(JSON.stringify(init) + '\n');
+      process.exit(2);
+    }
     const lines = [
-      { type: 'system', subtype: 'init' },
+      init,
       { type: 'assistant', message: { content: [{ type: 'text', text: 'working' }] } },
       { type: 'result', subtype: 'success', structured_output: JSON.parse(output) },
     ];

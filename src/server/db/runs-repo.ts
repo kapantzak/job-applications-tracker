@@ -3,8 +3,23 @@ import type { Run, RunKind } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type RunPatch = Partial<
-  Pick<Run, 'status' | 'started_at' | 'finished_at' | 'summary' | 'error' | 'prompt_version' | 'adapter_id'>
+  Pick<
+    Run,
+    | 'status'
+    | 'started_at'
+    | 'finished_at'
+    | 'summary'
+    | 'error'
+    | 'prompt_version'
+    | 'adapter_id'
+    | 'agent_model'
+    | 'agent_effort'
+    | 'agent_model_reported'
+  >
 >;
+
+// What a handler records about the agent call, as soon as it knows it.
+export type AgentRunRecord = Pick<RunPatch, 'adapter_id' | 'agent_model' | 'agent_effort' | 'agent_model_reported'>;
 
 // Runtime allow-list: patch keys become column names in the UPDATE.
 const PATCHABLE = new Set<string>([
@@ -15,6 +30,9 @@ const PATCHABLE = new Set<string>([
   'error',
   'prompt_version',
   'adapter_id',
+  'agent_model',
+  'agent_effort',
+  'agent_model_reported',
 ]);
 
 export function createRunsRepo(db: Db) {

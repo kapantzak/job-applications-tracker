@@ -33,6 +33,22 @@ describe('settings', () => {
     expect(res.status).toBe(200);
   });
 
+  it('PATCH stores model and effort per agent and run kind, and accepts empty as agent default', async () => {
+    const patch = {
+      claude_model_discover: 'opus',
+      claude_effort_discover: 'high',
+      claude_model_sync: 'claude-model-a[1m]',
+      claude_effort_sync: '',
+      codex_model_discover: 'model-a.1',
+      codex_effort_discover: 'ultra',
+      codex_model_sync: '',
+      codex_effort_sync: 'low',
+    };
+    const res = await h.app.request('/api/settings', json('PATCH', patch));
+    expect(res.status).toBe(200);
+    expect(h.deps.settingsRepo.getAll()).toEqual({ ...DEFAULT_SETTINGS, ...patch });
+  });
+
   it.each([
     ['unknown key', { colour: 'blue' }],
     ['bad adapter', { adapter_id: 'gpt' }],
@@ -43,6 +59,13 @@ describe('settings', () => {
     ['port too low', { port: 80 }],
     ['port too high', { port: 70000 }],
     ['string field wrong type', { custom_command: 42 }],
+    ['model read as a flag', { claude_model_discover: '--dangerously-skip-permissions' }],
+    ['model with a space', { codex_model_sync: 'model a' }],
+    ['model with a quote', { codex_model_discover: 'model"a' }],
+    ['model too long', { claude_model_sync: 'm'.repeat(101) }],
+    ['effort with a quote', { codex_effort_discover: 'high"' }],
+    ['effort uppercase', { claude_effort_sync: 'HIGH' }],
+    ['effort with a flag', { claude_effort_discover: '-x' }],
   ])('PATCH rejects %s with 400 and writes nothing', async (_name, patch) => {
     const refresh = vi.spyOn(h.deps.scheduler, 'refresh');
     const res = await h.app.request('/api/settings', json('PATCH', patch));

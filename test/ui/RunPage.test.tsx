@@ -20,6 +20,9 @@ const run: Run = {
   finished_at: null,
   adapter_id: 'claude',
   prompt_version: null,
+  agent_model: 'opus',
+  agent_effort: '',
+  agent_model_reported: null,
   summary: null,
   error: null,
   created_at: '2026-01-01T00:00:00Z',
@@ -36,6 +39,9 @@ function renderPage() {
 }
 
 afterEach(cleanup);
+
+// The value shown next to a run detail label.
+const detail = (term: string) => screen.getByText(term, { selector: 'dt' }).nextElementSibling?.textContent;
 
 describe('RunPage', () => {
   let onLine: (l: string) => void;
@@ -87,5 +93,61 @@ describe('RunPage', () => {
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
     expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/jobs');
+  });
+
+  it('shows the agent, the requested model and effort, and the model the agent reported', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      agent_model: '',
+      agent_effort: 'high',
+      agent_model_reported: 'model-a',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Agent')).toBe('claude');
+    expect(detail('Model')).toBe('Agent defaultran as model-a');
+    expect(detail('Effort')).toBe('high');
+  });
+
+  it('marks model and effort as not recorded for older runs and as custom for custom commands', async () => {
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', agent_model: null, agent_effort: null });
+    const { unmount } = renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Model')).toBe('Not recorded');
+    expect(detail('Effort')).toBe('Not recorded');
+    unmount();
+
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      adapter_id: 'custom',
+      agent_model: null,
+      agent_effort: null,
+    });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Model')).toBe('Set in your custom command');
+    expect(detail('Effort')).toBe('Set in your custom command');
+  });
+
+  it('shows pending agent details on a live run and refreshes them when the agent starts', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued', adapter_id: '', agent_model: null, agent_effort: null });
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Agent')).toBe('Pending');
+    expect(detail('Model')).toBe('Pending');
+    expect(detail('Effort')).toBe('Pending');
+
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'running', agent_model: 'opus', agent_effort: 'high' });
+    await act(async () => onLine('Using adapter claude'));
+    expect(await screen.findByText('opus')).toBeInTheDocument();
+    expect(detail('Effort')).toBe('high');
+    expect(client.getRun).toHaveBeenCalledTimes(2);
+    // Later lines do not fetch again.
+    await act(async () => onLine('Using adapter claude'));
+    expect(client.getRun).toHaveBeenCalledTimes(2);
   });
 });

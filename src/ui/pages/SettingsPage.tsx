@@ -1,7 +1,16 @@
 import { useEffect, useId, useState } from 'react';
 import type { Settings } from '../../server/domain/types.js';
-import { getAdapters, getHealth, getSettings, type AdapterStatus } from '../api/client.js';
+import {
+  getAdapters,
+  getHealth,
+  getModelCatalogs,
+  getSettings,
+  type AdapterStatus,
+  type ModelCatalogs,
+} from '../api/client.js';
+import { AGENT_CHOICE_KEYS } from '../agent-choices.js';
 import { AdapterChooser } from '../components/AdapterChooser.js';
+import { AgentModelFields } from '../components/AgentModelFields.js';
 import { DataSection } from '../components/DataSection.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -32,6 +41,7 @@ export function SettingsPage() {
   const [adapters, setAdapters] = useState<AdapterStatus[] | null>(null);
   const [values, setValues] = useState<Settings | null>(null);
   const [dataDir, setDataDir] = useState<string | null>(null);
+  const [catalogs, setCatalogs] = useState<ModelCatalogs | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +56,12 @@ export function SettingsPage() {
       .catch((e: unknown) => {
         if (active) setError(e instanceof Error ? e.message : String(e));
       });
+    // Suggestions only: without them the model fields are plain text, so a failure is not an error.
+    getModelCatalogs()
+      .then((c) => {
+        if (active) setCatalogs(c);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -66,6 +82,7 @@ export function SettingsPage() {
           getPatch={() => ({
             adapter_id: values.adapter_id,
             custom_command: values.custom_command,
+            ...Object.fromEntries(AGENT_CHOICE_KEYS.map((key) => [key, values[key]])),
           })}
         >
           <AdapterChooser
@@ -74,6 +91,12 @@ export function SettingsPage() {
             customCommand={values.custom_command}
             onAdapterChange={(adapter) => set('adapter_id', adapter)}
             onCustomCommandChange={(v) => set('custom_command', v)}
+          />
+          <AgentModelFields
+            adapterId={values.adapter_id}
+            values={values}
+            catalogs={catalogs}
+            onChange={(key, value) => set(key, value)}
           />
         </SettingsSection>
         <SettingsSection

@@ -93,7 +93,10 @@ describe('discovery and sync flow over HTTP', () => {
 
     const discover = await api('POST', '/api/runs/discover');
     expect(discover.status).toBe(202);
-    expect((await waitForRun(discover.body.id)).adapter_id).toBe('custom');
+    const discovered = await waitForRun(discover.body.id);
+    expect(discovered.adapter_id).toBe('custom');
+    // A custom command carries its own flags; the app records no model or effort for it.
+    expect([discovered.agent_model, discovered.agent_effort, discovered.agent_model_reported]).toEqual([null, null, null]);
 
     const jobs = await api<any[]>('GET', '/api/jobs');
     expect(jobs.body).toHaveLength(2);

@@ -1,5 +1,28 @@
 import type { RunKind, Settings } from '../domain/types.js';
-import type { CliAdapterConfig } from './types.js';
+import type { AgentSelection, CliAdapterConfig, ModelCatalog } from './types.js';
+
+// Model ids and effort levels become argv elements; a leading '-' would be read as a flag, and
+// codex receives the effort inside a quoted TOML string.
+export const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,99}$/;
+export const EFFORT_PATTERN = /^[a-z]{1,20}$/;
+
+// From `claude --help` (2.1.319): it names these aliases and these effort levels; it has no catalog command.
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const CLAUDE_MODEL_CATALOG: ModelCatalog = {
+  source: 'static',
+  models: ['fable', 'opus', 'sonnet'].map((id) => ({ id, label: id, efforts: CLAUDE_EFFORTS })),
+  efforts: CLAUDE_EFFORTS,
+};
+
+function selectionFor(settings: Settings, agent: 'claude' | 'codex', kind: RunKind): AgentSelection {
+  const suffix = kind === 'discover_jobs' ? 'discover' : 'sync';
+  const model = settings[`${agent}_model_${suffix}`];
+  const effort = settings[`${agent}_effort_${suffix}`];
+  // The API validates these; stored values are re-checked because they reach argv.
+  if (model !== '' && !MODEL_PATTERN.test(model)) throw new Error(`Invalid model setting: ${model}`);
+  if (effort !== '' && !EFFORT_PATTERN.test(effort)) throw new Error('Invalid effort setting');
+  return { model, effort };
+}
 
 // Whitespace-separated words; single quotes are literal, double quotes allow \" and \\.
 // Other backslashes stay literal so Windows paths survive.
@@ -37,7 +60,8 @@ export function splitShellWords(input: string): string[] {
 export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapterConfig {
   const discover = kind === 'discover_jobs';
   switch (settings.adapter_id) {
-    case 'claude':
+    case 'claude': {
+      const selection = selectionFor(settings, 'claude', kind);
       return {
         id: 'claude',
         // `--setting-sources user` keeps credentials, hooks and MCP connectors (Gmail) but skips
@@ -47,6 +71,8 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
           'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
           '--permission-mode', '{permission_mode}', '--allowedTools', '{allowed_tools}',
           '--setting-sources', 'user', '--disallowedTools', 'Agent,Task',
+          ...(selection.model ? ['--model', selection.model] : []),
+          ...(selection.effort ? ['--effort', selection.effort] : []),
         ],
         promptVia: 'stdin',
         resultFrom: 'claude-stream-json',
@@ -56,20 +82,30 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
           permission_mode: discover ? settings.permission_mode_discover : settings.permission_mode_sync,
           allowed_tools: discover ? settings.allowed_tools_discover : settings.allowed_tools_sync,
         },
+        selection,
+        modelCatalog: CLAUDE_MODEL_CATALOG,
       };
-    case 'codex':
+    }
+    case 'codex': {
+      const selection = selectionFor(settings, 'codex', kind);
       return {
         id: 'codex',
         argv: [
           'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
           '--sandbox', '{sandbox}', '-o', '{output_file}',
+          ...(selection.model ? ['-m', selection.model] : []),
+          // A TOML string; no shell is involved, so the quotes reach codex as written.
+          ...(selection.effort ? ['-c', `model_reasoning_effort="${selection.effort}"`] : []),
         ],
         promptVia: 'argv',
         resultFrom: 'output-file',
         versionArgv: ['codex', '--version'],
         authArgv: ['codex', 'login', 'status'],
         vars: { sandbox: discover ? settings.sandbox_discover : settings.sandbox_sync },
+        selection,
+        modelsArgv: ['codex', 'debug', 'models'],
       };
+    }
     case 'custom': {
       const argv = splitShellWords(settings.custom_command);
       if (argv.length === 0) throw new Error('Custom command is empty');

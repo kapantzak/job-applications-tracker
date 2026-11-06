@@ -1,7 +1,10 @@
-import type { RunKind } from '../domain/types.js';
+import type { ModelCatalog, RunKind } from '../domain/types.js';
 import type { ResolveDeps } from './resolve-command.js';
 
 export type AdapterId = 'claude' | 'codex' | 'custom';
+
+// Shared with the UI, so they live with the domain types.
+export type { ModelCatalog, ModelOption } from '../domain/types.js';
 
 export interface AdapterHealth {
   id: AdapterId;
@@ -11,6 +14,12 @@ export interface AdapterHealth {
   authenticated?: boolean;
   authMessage?: string;
   message?: string;
+}
+
+// What the app asks the agent for; '' means the agent's own default (no flag passed).
+export interface AgentSelection {
+  model: string;
+  effort: string;
 }
 
 export interface AgentTask {
@@ -35,11 +44,17 @@ export interface AgentResult {
   exitCode: number | null;
   durationMs: number;
   error?: string;
+  // Model named by the agent's own output (Claude Code init event); set on failures too when seen.
+  reportedModel?: string;
 }
 
 export interface AgentAdapter {
   id: AdapterId;
+  // Undefined for custom commands, which carry their own flags.
+  selection?: AgentSelection;
   check(): Promise<AdapterHealth>;
+  // Never rejects; a failed catalog read comes back as `source: 'unavailable'`.
+  listModels(): Promise<ModelCatalog>;
   run(task: AgentTask, opts: RunOptions): Promise<AgentResult>;
 }
 
@@ -56,6 +71,11 @@ export interface CliAdapterConfig {
   // Test seam for the sign-in probe timeout; defaults to the version probe timeout.
   authTimeoutMs?: number;
   vars?: Record<string, string>;
+  selection?: AgentSelection;
+  // Built-in model suggestions, for agents without a catalog command.
+  modelCatalog?: ModelCatalog;
+  // Command that prints the agent's model catalog as JSON (codex `debug models`).
+  modelsArgv?: string[];
   // Test seam for Windows command resolution; presets leave it unset so the real platform is used.
   resolve?: ResolveDeps;
 }

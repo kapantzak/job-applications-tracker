@@ -25,6 +25,14 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 2. Profile: enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
 3. Find jobs: start a discovery run from the Jobs screen and follow its progress.
 
+## Model and effort
+
+- Settings → Agent lets you pick the model and the effort level for Claude Code or Codex, separately for discovery and for Gmail sync. Leave them on "Agent default" to use whatever your Claude Code or Codex configuration sets; the app then passes no flag and cannot tell you which model that is.
+- Model suggestions: Claude Code offers `fable`, `opus` and `sonnet` (or type a full model id). Codex lists the models from `codex debug models`; if that fails, type the model id.
+- Higher effort (`xhigh`, `max`, Codex `ultra`) makes runs slower and can hit the run timeout. Codex `ultra` delegates work to subagents.
+- Each run records what it asked for. The Run page shows it; for Claude Code it also shows the model that actually ran. Neither agent reports the effort it used.
+- A custom command carries its own flags, so these settings do not apply to it.
+
 ## How discovery works
 
 - The agent searches the web for postings that match your profile and returns structured results. It is told to spend about 10 minutes, prefer employer and ATS pages, confirm each posting once, and return 10 to 30 jobs. A run that exceeds the run timeout in Settings (default 20 minutes) is stopped and saves nothing.

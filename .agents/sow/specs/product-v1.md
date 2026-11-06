@@ -20,6 +20,8 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 - Every prompt states: read only; never apply; never send, draft or label mail.
 - The discovery prompt (v2) also states a budget: about 10 minutes, return 10 to 30 jobs, prefer employer/ATS links, open at most one page per job to confirm it, do not delegate to subagents, the app verifies links itself. The default run timeout is 20 minutes (`run_timeout_ms` 1200000), editable in Settings between 10 seconds and 1 hour.
 - The Claude Code preset runs `claude -p` with `--setting-sources user` (user-level settings, credentials, hooks, plugins and claude.ai connectors; project settings implied by the run cwd are skipped) and `--disallowedTools Agent,Task` (no subagents), plus the permission mode and allowed tools from Settings.
+- Model and effort (SOW-0011): Settings holds `<agent>_model_<kind>` and `<agent>_effort_<kind>` for `claude` and `codex` and the kinds `discover` and `sync` (8 keys, default `''`). `''` means the agent's own default and adds no flag; the app does not read the CLIs' config files to guess that default. Claude gets `--model <m>` / `--effort <e>`; Codex gets `-m <m>` / `-c model_reasoning_effort="<e>"`. A custom command carries its own flags. The API accepts a model matching `^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,99}$` and an effort matching `^[a-z]{1,20}$` (or `''`); the preset re-checks stored values because they reach argv. Every effort level is allowed; the UI warns on `xhigh`, `max` and `ultra` (Codex `ultra` delegates to subagents).
+- `GET /api/setup/models` returns `{ claude, codex }`, each `{ source: 'static' | 'agent' | 'unavailable', models: [{ id, label, efforts }], efforts }`. Claude is a static list (`fable`, `opus`, `sonnet`; efforts low to max, from `claude --help`). Codex comes from `codex debug models` (5 s timeout, hidden models skipped); any failure gives `unavailable` and the UI falls back to free text.
 - `sync_mail` output carries a required `mail_access` boolean. `false` fails the run with "Your agent has no Gmail tool".
 
 ## Status pipeline
@@ -43,6 +45,7 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 - Statuses `queued`, `running`, `succeeded`, `failed`, `aborted`. One run at a time. One active run per kind.
 - Each run keeps a full log under `runs/<id>.log` and its prompt/schema/output files under `runs/<id>/`; the log is streamed to the UI over SSE. "Purge run logs" deletes both for every run that is not active.
 - `runs.started_at` and `runs.prompt_version` are null until set; `runs.adapter_id` records the adapter used.
+- `runs.agent_model` and `runs.agent_effort` (migration 2) record what the run asked for: `''` = agent default, NULL = not recorded (older run, custom command, or the run never reached the agent). `runs.agent_model_reported` holds the model Claude Code names in its stream-json init event; Codex `--json` reports neither model nor effort, and no agent reports the effort. Handlers write these through `RunContext.recordAgent` before the agent starts and after it returns, so failed and aborted runs keep them; a write failure is logged and never fails the run.
 - Runs left `running` by a crash are marked `aborted` with reason "server restarted" on next start.
 
 ## Scheduled sync
@@ -56,6 +59,7 @@ Optional interval (`off`, `1h`, `6h`, `24h`) that enqueues `sync_mail` while the
 - Destructive actions confirm first: "Purge run logs" (Settings) and "Dismiss" (Jobs) open a confirmation dialog and do nothing on Cancel.
 - Manual applications are added from an "Add application" side sheet on the Applications screen; the sheet closes after a successful add.
 - Feedback stays inline: errors render with `role="alert"`, success messages ("Saved") with `role="status"`, next to the action that produced them. No toasts.
+- Settings → Agent shows model and effort per run kind for the selected claude or codex agent (saved with the Agent section; model is free text with suggestions, effort a select with "Agent default" and the levels the chosen model supports when the catalog knows it). The Run page shows agent, model (plus "ran as" when reported) and effort; the Dashboard has an Agent card with the saved choice per run kind.
 - Selects are native `<select>` elements (shadcn `NativeSelect`) so keyboard behaviour and form tests stay native.
 - No network fonts or CDN assets: the UI uses the system font stack and ships fully in `dist/ui`.
 

@@ -3,6 +3,7 @@ import type {
   ApplicationStatus,
   Job,
   JobListItem,
+  ModelCatalog,
   Profile,
   Proposal,
   Run,
@@ -35,6 +36,11 @@ export interface AdapterStatus {
   authMessage?: string;
   message?: string;
   gmail_guide: boolean;
+}
+
+export interface ModelCatalogs {
+  claude: ModelCatalog;
+  codex: ModelCatalog;
 }
 
 export type ProfileInput = Omit<Profile, 'created_at'>;
@@ -104,6 +110,7 @@ const enc = encodeURIComponent;
 
 export const getHealth = (): Promise<Health> => request('GET', '/api/health');
 export const getAdapters = (): Promise<AdapterStatus[]> => request('GET', '/api/setup/adapters');
+export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/api/setup/models');
 
 export const getProfile = (): Promise<Profile | null> => request('GET', '/api/profile');
 export const putProfile = (profile: Partial<ProfileInput>): Promise<Profile> =>

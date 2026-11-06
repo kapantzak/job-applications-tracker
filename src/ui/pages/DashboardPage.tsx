@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { BriefcaseIcon, FileTextIcon, InboxIcon, MailIcon, SearchIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { Run, RunKind } from '../../server/domain/types.js';
+import type { Run, RunKind, Settings } from '../../server/domain/types.js';
 import {
+  getSettings,
   listApplications,
   listJobs,
   listProposals,
@@ -12,6 +13,7 @@ import {
 } from '../api/client.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +23,7 @@ interface Stats {
   proposals: number | null;
   jobs: number | null;
   runs: Run[] | null;
+  settings: Settings | null;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -62,14 +65,15 @@ function StatCard({ label, value, testId, to, icon }: StatCardProps) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const agentHeadingId = useId();
   const [stats, setStats] = useState<Stats | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([listApplications(true), listProposals(), listJobs(), listRuns()]).then(
-      ([apps, proposals, jobs, runs]) => {
+    Promise.allSettled([listApplications(true), listProposals(), listJobs(), listRuns(), getSettings()]).then(
+      ([apps, proposals, jobs, runs, settings]) => {
         if (!active) return;
         const value = <T,>(r: PromiseSettledResult<T>) => (r.status === 'fulfilled' ? r.value : null);
         setStats({
@@ -77,9 +81,10 @@ export function DashboardPage() {
           proposals: value(proposals)?.length ?? null,
           jobs: value(jobs)?.length ?? null,
           runs: value(runs),
+          settings: value(settings),
         });
         setErrors(
-          [apps, proposals, jobs, runs].flatMap((r) => (r.status === 'rejected' ? [message(r.reason)] : [])),
+          [apps, proposals, jobs, runs, settings].flatMap((r) => (r.status === 'rejected' ? [message(r.reason)] : [])),
         );
       },
     );
@@ -100,6 +105,7 @@ export function DashboardPage() {
   };
 
   if (!stats) return <LoadingState />;
+  const { settings } = stats;
 
   return (
     <div>
@@ -156,6 +162,27 @@ export function DashboardPage() {
             <p className="text-muted-foreground">Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
           </CardContent>
         </Card>
+        {settings && (
+          <Card role="region" aria-labelledby={agentHeadingId}>
+            <CardHeader>
+              <CardTitle id={agentHeadingId}>
+                <h2>Agent</h2>
+              </CardTitle>
+              <CardDescription>
+                <Link to="/settings" className="underline underline-offset-4">
+                  Change in Settings
+                </Link>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm">
+              {RUN_SUFFIXES.map(({ suffix, title }) => (
+                <p key={suffix} className="text-muted-foreground">
+                  {title}: {selectionSummary(settings, suffix)}
+                </p>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

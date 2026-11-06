@@ -1,5 +1,6 @@
 import type { AgentAdapter } from '../agents/types.js';
 import { ATS_DOMAINS } from '../db/applications-repo.js';
+import { reportedAgent, requestedAgent, selectionLogLine } from '../runs/agent-record.js';
 import { renderPrompt } from '../tasks/prompts.js';
 import { outputJsonSchema, SyncMailOutput } from '../tasks/schemas.js';
 import { MailAccessError, type MailSource, type MailSyncRequest } from './types.js';
@@ -26,10 +27,15 @@ export function createAgentMailSource(adapter: AgentAdapter): MailSource {
       });
 
       ctx.log(`Using adapter ${adapter.id}`);
+      const selectionLine = selectionLogLine(adapter);
+      if (selectionLine) ctx.log(selectionLine);
+      ctx.recordAgent(requestedAgent(adapter));
       const result = await adapter.run(
         { kind: 'sync_mail', prompt: text, outputSchema: outputJsonSchema('sync_mail') },
         { timeoutMs: ctx.timeoutMs, cwd: ctx.runDir, onLog: ctx.log, signal: ctx.signal },
       );
+      const reported = reportedAgent(result);
+      if (reported) ctx.recordAgent(reported);
       if (!result.ok) throw new Error(`Agent run failed: ${result.error}`);
 
       const parsed = SyncMailOutput.safeParse(result.output);

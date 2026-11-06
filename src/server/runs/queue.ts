@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RunPatch, RunsRepo } from '../db/runs-repo.js';
+import type { AgentRunRecord, RunPatch, RunsRepo } from '../db/runs-repo.js';
 import type { Run, RunKind } from '../domain/types.js';
 import type { LogStore } from './log-store.js';
 
@@ -9,6 +9,8 @@ export interface RunContext {
   log: (line: string) => void;
   signal: AbortSignal;
   runDir: string;
+  // Writes agent, model and effort to the run row immediately; never throws.
+  recordAgent: (record: AgentRunRecord) => void;
 }
 
 export interface RunResult {
@@ -76,6 +78,15 @@ export function createRunQueue(opts: RunQueueOptions) {
     safeLog(entry.id, `Run ${entry.id} ${outcome.status}: ${outcome.summary ?? outcome.error ?? ''}`);
   }
 
+  // Metadata only: a failed write is logged and must not fail the run.
+  function recordAgent(runId: string, record: AgentRunRecord): void {
+    try {
+      runsRepo.update(runId, record);
+    } catch (err) {
+      console.error(`run ${runId}: failed to record agent details: ${messageOf(err)}`);
+    }
+  }
+
   async function execute(queued: Run): Promise<void> {
     const entry: InFlight = { id: queued.id, controller: new AbortController(), finalized: false };
     current = entry;
@@ -93,6 +104,7 @@ export function createRunQueue(opts: RunQueueOptions) {
           log: (line) => logStore.append(run.id, line),
           signal: entry.controller.signal,
           runDir,
+          recordAgent: (record) => recordAgent(run.id, record),
         });
         outcome = {
           status: 'succeeded',

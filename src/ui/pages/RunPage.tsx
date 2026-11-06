@@ -6,6 +6,7 @@ import type { Run } from '../../server/domain/types.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
 import { formatTime } from '../format.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -31,24 +32,32 @@ export function RunPage() {
     setLines([]);
     setError(null);
 
+    const refresh = () =>
+      getRun(id)
+        .then((fresh) => {
+          if (active) setRun(fresh);
+        })
+        .catch(fail);
+
     getRun(id)
       .then(async (initial) => {
         if (!active) return;
         setRun(initial);
         if (initial.status === 'queued' || initial.status === 'running') {
+          let agentSeen = false;
           // Subscribed once per mount; the client closes the stream itself after `done`.
           unsubscribe = subscribeRunEvents(
             id,
             (line) => {
-              if (active) setLines((prev) => [...prev, line]);
+              if (!active) return;
+              setLines((prev) => [...prev, line]);
+              // Handlers record agent, model and effort right after logging this line.
+              if (!agentSeen && line.startsWith('Using adapter ')) {
+                agentSeen = true;
+                void refresh();
+              }
             },
-            () => {
-              getRun(id)
-                .then((fresh) => {
-                  if (active) setRun(fresh);
-                })
-                .catch(fail);
-            },
+            () => void refresh(),
           );
         } else {
           const text = await getRunLog(id);
@@ -112,6 +121,25 @@ export function RunPage() {
               <div>
                 <dt className="text-muted-foreground">Finished</dt>
                 <dd>{formatTime(run.finished_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Agent</dt>
+                <dd className="font-mono">{runAgentLabel(run)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Model</dt>
+                <dd>
+                  {runChoiceLabel(run, 'agent_model')}
+                  {run.agent_model_reported && (
+                    <span className="block font-mono text-xs text-muted-foreground">
+                      ran as {run.agent_model_reported}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Effort</dt>
+                <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
               </div>
             </dl>
           </CardContent>
