@@ -117,7 +117,7 @@ Real-use evidence:
 
 Reviewer findings:
 
-- None yet; controller review follows.
+- Independent review 2026-11-06: one Important (FK-off repository test, fixed in the follow-up commit by inserting real run/job parent rows); minors: two-call advance (made transactional), 'Applied' label for statuses past applied (SOW-0005).
 
 Same-failure scan:
 

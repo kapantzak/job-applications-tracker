@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
+import { createJobsRepo } from '../../../src/server/db/jobs-repo.js';
+import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import {
   ATS_DOMAINS,
   createApplicationsRepo,
@@ -122,11 +124,29 @@ describe('applications repo', () => {
 
   it('findByJobId returns the newest application for a job, or null', () => {
     const { db, repo } = setup();
-    db.pragma('foreign_keys = OFF'); // job rows are irrelevant to this lookup
-    expect(repo.findByJobId('nope')).toBeNull();
-    repo.create({ company: 'A', role: 'R', job_id: 'j1' });
-    const newer = repo.create({ company: 'A', role: 'R2', job_id: 'j1' });
-    expect(repo.findByJobId('j1')?.id).toBe(newer.id);
+    const run = createRunsRepo(db).create('discover_jobs', { adapter_id: '', prompt_version: null });
+    const [job] = createJobsRepo(db).insertMany(run.id, [
+      {
+        company: 'A',
+        title: 'R',
+        location: null,
+        remote: 'remote',
+        url: 'https://a.example/jobs/1',
+        canonical_url: 'https://a.example/jobs/1',
+        source_site: null,
+        posted_at: null,
+        salary: null,
+        description_excerpt: null,
+        match_reason: null,
+        verification_status: 'ok',
+        verified_at: null,
+        dedupe_key: 'a|r',
+      },
+    ]);
+    expect(repo.findByJobId(job.id)).toBeNull();
+    repo.create({ company: 'A', role: 'R', job_id: job.id });
+    const newer = repo.create({ company: 'A', role: 'R2', job_id: job.id });
+    expect(repo.findByJobId(job.id)?.id).toBe(newer.id);
   });
 
   it('lists newest first', () => {

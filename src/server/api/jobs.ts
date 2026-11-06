@@ -23,8 +23,11 @@ export function createJobsRouter(deps: AppDeps): Hono {
     const existing = deps.applicationsRepo.findByJobId(job.id);
     if (existing) {
       if (status === 'applied' && existing.status === 'saved') {
-        deps.applicationsRepo.setStatus(existing.id, 'applied', 'user');
-        const advanced = deps.applicationsRepo.update(existing.id, { applied_at: new Date().toISOString() });
+        // One transaction so a crash cannot leave an applied row without applied_at.
+        const advanced = deps.db.transaction(() => {
+          deps.applicationsRepo.setStatus(existing.id, 'applied', 'user');
+          return deps.applicationsRepo.update(existing.id, { applied_at: new Date().toISOString() });
+        })();
         return { app: advanced, created: false };
       }
       return { app: existing, created: false };
