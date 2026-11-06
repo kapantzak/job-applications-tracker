@@ -8,6 +8,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusSelect } from '../components/StatusSelect.js';
 import { formatTime } from '../format.js';
+import { profilePath, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -26,6 +27,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const isHttp = (url: string | null): url is string => !!url && /^https?:\/\//i.test(url);
 
 export function ApplicationsPage() {
+  const profileId = useProfileId();
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function ApplicationsPage() {
 
   useEffect(() => {
     let active = true;
-    listApplications()
+    listApplications(profileId)
       .then((list) => {
         if (active) setApps(list);
       })
@@ -45,13 +47,13 @@ export function ApplicationsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [profileId]);
 
   const changeStatus = async (id: string, next: ApplicationStatus) => {
     setBusyId(id);
     setError(null);
     try {
-      const updated = await setApplicationStatus(id, next);
+      const updated = await setApplicationStatus(profileId, id, next);
       setApps((prev) => prev?.map((a) => (a.id === id ? updated : a)) ?? null);
     } catch (e) {
       setError(message(e));
@@ -64,8 +66,8 @@ export function ApplicationsPage() {
     setSyncing(true);
     setError(null);
     try {
-      const run = await startSync();
-      navigate(`/runs/${run.id}`);
+      const run = await startSync(profileId);
+      navigate(profilePath(profileId, `/runs/${run.id}`));
     } catch (e) {
       setError(message(e));
       setSyncing(false);
@@ -101,7 +103,7 @@ export function ApplicationsPage() {
                   <SheetDescription>Track an application you made outside of discovery.</SheetDescription>
                 </SheetHeader>
                 <div className="px-4 pb-4">
-                  <AddApplicationForm onCreated={onCreated} />
+                  <AddApplicationForm profileId={profileId} onCreated={onCreated} />
                 </div>
               </SheetContent>
             </Sheet>
@@ -150,7 +152,7 @@ export function ApplicationsPage() {
                     <TableCell className="pr-4">
                       <div className="flex items-center justify-end gap-1.5">
                         <Button asChild variant="outline" size="sm">
-                          <Link to={`/applications/${a.id}`}>Details</Link>
+                          <Link to={profilePath(profileId, `/applications/${a.id}`)}>Details</Link>
                         </Button>
                         {isHttp(a.url) && (
                           <Button asChild variant="ghost" size="sm">

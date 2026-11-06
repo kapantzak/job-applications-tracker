@@ -8,7 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { ErrorAlert } from './feedback.js';
 import { StatusSelect } from './StatusSelect.js';
 
-export function AddApplicationForm({ onCreated }: { onCreated: (app: Application) => void }) {
+export function AddApplicationForm({
+  profileId,
+  onCreated,
+}: {
+  profileId: string;
+  onCreated: (app: Application) => void;
+}) {
   const id = useId();
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
@@ -24,7 +30,7 @@ export function AddApplicationForm({ onCreated }: { onCreated: (app: Application
     setBusy(true);
     setError(null);
     try {
-      const created = await createApplication({
+      const created = await createApplication(profileId, {
         company,
         role,
         url: url || null,

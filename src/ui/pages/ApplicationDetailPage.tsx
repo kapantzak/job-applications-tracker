@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { ArrowLeftIcon } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { getApplication, patchApplication, type ApplicationDetail } from '../api/client.js';
+import { profilePath, useProfileId } from '../profile-route.js';
 import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
@@ -18,6 +19,7 @@ const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 
 export function ApplicationDetailPage() {
   const fieldId = useId();
+  const profileId = useProfileId();
   const { id = '' } = useParams();
   const [app, setApp] = useState<ApplicationDetail | null>(null);
   const [company, setCompany] = useState('');
@@ -33,7 +35,7 @@ export function ApplicationDetailPage() {
   useEffect(() => {
     let active = true;
     setApp(null);
-    getApplication(id)
+    getApplication(profileId, id)
       .then((a) => {
         if (!active) return;
         setApp(a);
@@ -50,7 +52,7 @@ export function ApplicationDetailPage() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [profileId, id]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -58,7 +60,7 @@ export function ApplicationDetailPage() {
     setSaved(false);
     setError(null);
     try {
-      await patchApplication(id, {
+      await patchApplication(profileId, id, {
         company,
         role,
         url: url || null,
@@ -79,7 +81,7 @@ export function ApplicationDetailPage() {
   return (
     <div>
       <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-        <Link to="/applications">
+        <Link to={profilePath(profileId, '/applications')}>
           <ArrowLeftIcon />
           Applications
         </Link>

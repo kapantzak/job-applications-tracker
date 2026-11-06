@@ -45,11 +45,10 @@ const dead = job({ id: 'j2', company: 'Deadco', verification_status: 'dead' });
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/jobs']}>
+    <MemoryRouter initialEntries={['/profiles/pf1/jobs']}>
       <Routes>
-        <Route path="/jobs" element={<JobsPage />} />
-        <Route path="/runs/:id" element={<p>Run page</p>} />
-        <Route path="/profile" element={<p>Profile page</p>} />
+        <Route path="/profiles/:profileId/jobs" element={<JobsPage />} />
+        <Route path="/profiles/:profileId/runs/:id" element={<p>Run page</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -59,14 +58,14 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(client.listJobs).mockImplementation(async (f) => (f?.includeDead ? [unverified, dead] : [unverified]));
+  vi.mocked(client.listJobs).mockImplementation(async (_profileId, f) => (f?.includeDead ? [unverified, dead] : [unverified]));
 });
 
 describe('JobsPage', () => {
   it('shows an unverified job and hides dead jobs by default', async () => {
     renderPage();
     expect(await screen.findByText('Could not verify')).toBeInTheDocument();
-    expect(client.listJobs).toHaveBeenCalledWith({ includeDead: false, includeDismissed: false });
+    expect(client.listJobs).toHaveBeenCalledWith('pf1', { includeDead: false, includeDismissed: false });
     expect(screen.queryByText('Deadco')).not.toBeInTheDocument();
   });
 
@@ -75,7 +74,7 @@ describe('JobsPage', () => {
     vi.mocked(client.markApplied).mockResolvedValue({ status: 'applied' } as never);
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Mark applied' }));
-    expect(client.markApplied).toHaveBeenCalledWith('j1');
+    expect(client.markApplied).toHaveBeenCalledWith('pf1', 'j1');
     expect(await screen.findByText('Applied')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark applied' })).not.toBeInTheDocument();
   });
@@ -117,7 +116,7 @@ describe('JobsPage', () => {
     expect(client.dismissJob).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('alertdialog', { name: 'Dismiss this job?' });
     await user.click(within(dialog).getByRole('button', { name: 'Dismiss job' }));
-    expect(client.dismissJob).toHaveBeenCalledWith('j1');
+    expect(client.dismissJob).toHaveBeenCalledWith('pf1', 'j1');
     await vi.waitFor(() => expect(client.listJobs).toHaveBeenCalledTimes(2));
   });
 
@@ -141,16 +140,16 @@ describe('JobsPage', () => {
     expect(screen.queryByRole('link', { name: 'Open' })).not.toBeInTheDocument();
   });
 
-  it('asks for a profile when discovery returns 422', async () => {
+  it('starts discovery for the profile in the URL and opens its run', async () => {
     const user = userEvent.setup();
-    vi.mocked(client.startDiscovery).mockRejectedValue(new client.ApiError(422, 'Profile is not set'));
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-9' } as never);
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
-    expect(await screen.findByText(/Fill in your profile first/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /profile/i })).toHaveAttribute('href', '/profile');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1');
   });
 
-  it('shows other 422 errors from discovery as they are, without the profile prompt', async () => {
+  it('shows 422 errors from discovery as they are', async () => {
     const user = userEvent.setup();
     vi.mocked(client.startDiscovery).mockRejectedValue(
       new client.ApiError(422, 'Agent "claude" is not installed: Not found on PATH'),
@@ -158,7 +157,5 @@ describe('JobsPage', () => {
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(await screen.findByText('Agent "claude" is not installed: Not found on PATH')).toBeInTheDocument();
-    expect(screen.queryByText(/Fill in your profile/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /profile/i })).not.toBeInTheDocument();
   });
 });

@@ -172,14 +172,15 @@ export function createRunQueue(opts: RunQueueOptions) {
     drainDone = drain();
   }
 
-  function enqueue(kind: RunKind): Run {
-    let active = runsRepo.findActive(kind);
+  // One queue for every profile (one agent at a time); "already active" is per profile and kind.
+  function enqueue(kind: RunKind, profileId: string): Run {
+    let active = runsRepo.findActive(kind, profileId);
     // A run being cancelled no longer counts: the new request queues behind it (user decision, SOW-0012).
     if (active && current?.id === active.id && current.cancelReason) {
-      active = runsRepo.findActiveExcept(kind, active.id);
+      active = runsRepo.findActiveExcept(kind, profileId, active.id);
     }
     if (active) return active;
-    const run = runsRepo.create(kind, { adapter_id: '', prompt_version: null });
+    const run = runsRepo.create(kind, profileId, { adapter_id: '', prompt_version: null });
     kick();
     return run;
   }

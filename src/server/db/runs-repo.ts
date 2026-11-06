@@ -37,23 +37,29 @@ const PATCHABLE = new Set<string>([
 
 export function createRunsRepo(db: Db) {
   const insert = db.prepare(
-    `INSERT INTO runs (id, kind, status, started_at, finished_at, adapter_id, prompt_version,
+    `INSERT INTO runs (id, profile_id, kind, status, started_at, finished_at, adapter_id, prompt_version,
        summary, error, created_at)
-     VALUES (@id, @kind, 'queued', NULL, NULL, @adapter_id, @prompt_version, NULL, NULL, @created_at)`,
+     VALUES (@id, @profile_id, @kind, 'queued', NULL, NULL, @adapter_id, @prompt_version, NULL, NULL, @created_at)`,
   );
   const selectById = db.prepare('SELECT * FROM runs WHERE id = ?');
-  const selectRecent = db.prepare('SELECT * FROM runs ORDER BY created_at DESC, rowid DESC LIMIT ?');
+  const selectRecent = db.prepare(
+    'SELECT * FROM runs WHERE profile_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?',
+  );
   const selectNextQueued = db.prepare(
     "SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at ASC, rowid ASC LIMIT 1",
   );
   const selectActive = db.prepare(
-    `SELECT * FROM runs WHERE kind = ? AND status IN ('queued','running')
+    `SELECT * FROM runs WHERE kind = ? AND profile_id = ? AND status IN ('queued','running')
      ORDER BY created_at ASC, rowid ASC LIMIT 1`,
   );
   const selectActiveExcept = db.prepare(
-    `SELECT * FROM runs WHERE kind = ? AND id != ? AND status IN ('queued','running')
+    `SELECT * FROM runs WHERE kind = ? AND profile_id = ? AND id != ? AND status IN ('queued','running')
      ORDER BY created_at ASC, rowid ASC LIMIT 1`,
   );
+  const selectActiveForProfile = db.prepare(
+    "SELECT 1 FROM runs WHERE profile_id = ? AND status IN ('queued','running') LIMIT 1",
+  );
+  const selectActiveIds = db.prepare("SELECT id FROM runs WHERE status IN ('queued','running')");
   const interruptRunning = db.prepare(
     "UPDATE runs SET status = 'aborted', error = 'server restarted', finished_at = ? WHERE status = 'running'",
   );
@@ -62,10 +68,15 @@ export function createRunsRepo(db: Db) {
     return (selectById.get(id) as Run | undefined) ?? null;
   }
 
-  function create(kind: RunKind, meta: { adapter_id: string; prompt_version: string | null }): Run {
+  function create(
+    kind: RunKind,
+    profileId: string,
+    meta: { adapter_id: string; prompt_version: string | null },
+  ): Run {
     const id = randomUUID();
     insert.run({
       id,
+      profile_id: profileId,
       kind,
       adapter_id: meta.adapter_id,
       prompt_version: meta.prompt_version,
@@ -87,8 +98,8 @@ export function createRunsRepo(db: Db) {
     return get(id) as Run;
   }
 
-  function list(limit = 50): Run[] {
-    return selectRecent.all(limit) as Run[];
+  function list(profileId: string, limit = 50): Run[] {
+    return selectRecent.all(profileId, limit) as Run[];
   }
 
   function nextQueued(): Run | null {
@@ -100,20 +111,41 @@ export function createRunsRepo(db: Db) {
     return interruptRunning.run(new Date().toISOString()).changes;
   }
 
-  function findActive(kind: RunKind): Run | null {
-    return (selectActive.get(kind) as Run | undefined) ?? null;
+  // "Already active" is per profile and kind (SOW-0014); the queue itself stays global.
+  function findActive(kind: RunKind, profileId: string): Run | null {
+    return (selectActive.get(kind, profileId) as Run | undefined) ?? null;
   }
 
   // Used while one run of the kind is being cancelled: another active run may be queued behind it.
-  function findActiveExcept(kind: RunKind, excludeId: string): Run | null {
-    return (selectActiveExcept.get(kind, excludeId) as Run | undefined) ?? null;
+  function findActiveExcept(kind: RunKind, profileId: string, excludeId: string): Run | null {
+    return (selectActiveExcept.get(kind, profileId, excludeId) as Run | undefined) ?? null;
   }
 
-  function hasActive(kind: RunKind): boolean {
-    return findActive(kind) !== null;
+  function hasActive(kind: RunKind, profileId: string): boolean {
+    return findActive(kind, profileId) !== null;
   }
 
-  return { create, update, get, list, nextQueued, markInterrupted, findActive, findActiveExcept, hasActive };
+  function hasActiveForProfile(profileId: string): boolean {
+    return selectActiveForProfile.get(profileId) !== undefined;
+  }
+
+  function listActiveIds(): string[] {
+    return (selectActiveIds.all() as { id: string }[]).map((r) => r.id);
+  }
+
+  return {
+    create,
+    update,
+    get,
+    list,
+    nextQueued,
+    markInterrupted,
+    findActive,
+    findActiveExcept,
+    hasActive,
+    hasActiveForProfile,
+    listActiveIds,
+  };
 }
 
 export type RunsRepo = ReturnType<typeof createRunsRepo>;

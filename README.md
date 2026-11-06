@@ -22,8 +22,17 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 ## First run
 
 1. Setup: pick the agent CLI the app should use (Claude Code, Codex, or a custom command). The app checks that it is installed and, for Claude Code and Codex, whether it is signed in.
-2. Profile: enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
-3. Find jobs: start a discovery run from the Jobs screen and follow its progress.
+2. Profile: the app opens on your profiles. With none yet, it shows the profile form: give the profile a name, then enter target roles, locations, remote preference, seniority, keywords and companies to exclude.
+3. Find jobs: open the profile and start a discovery run from its Dashboard or Jobs screen, then follow its progress.
+
+## Profiles
+
+- Keep one profile per search, for example "Platform roles" and "Data roles". Each profile has its own jobs, applications, proposals and runs; the agent and app settings are shared.
+- The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it; "Switch profile" in the sidebar takes you back.
+- The same job posting can show up in more than one profile.
+- Gmail sync runs per profile: it only looks at that profile's open applications. A scheduled sync runs once for each profile that has open applications.
+- Deleting a profile (Delete on its card, then confirm) removes the profile with all its jobs, applications, proposals, status history and run logs. It cannot be undone. While one of its runs is queued or running, cancel the run first.
+- Upgrading from a version with a single profile keeps your data: the existing profile becomes your first profile, named after its first target role.
 
 ## Cancelling a run
 
@@ -48,14 +57,14 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
   - **Could not verify**: the check failed or timed out (network error, site blocking automated requests). The job is kept.
   - **Dead link**: the page is gone. These jobs are hidden by default.
 - Clicking Save or Mark applied twice on a job never creates a duplicate application.
-- Duplicates are skipped across runs: jobs are matched by canonical URL, or by company, title and location when there is no usable URL.
+- Duplicates are skipped across runs of the same profile: jobs are matched by canonical URL, or by company, title and location when there is no usable URL.
 
 ## How Gmail sync works
 
 - A sync run asks your agent to search your mailbox for messages about the jobs you applied to.
 - Results appear as proposals, for example "move this application to interview". Nothing changes until you accept a proposal; you can also reject it.
 - Each proposal shows its evidence (sender, date, subject, snippet) and a link to the message so you can verify it.
-- Sync can run on demand, or on a schedule (Settings). Scheduled sync only runs while the app is running.
+- Sync can run on demand from a profile, or on a schedule (Settings). Scheduled sync only runs while the app is running, once per profile with open applications.
 
 ## Gmail access for other agents
 
@@ -77,7 +86,7 @@ Sync needs a Gmail tool in your agent.
 ## Data and logs
 
 - Data lives in `~/.job-applications-tracker/`:
-  - `data.db`: profile, jobs, applications, proposals, settings.
+  - `data.db`: profiles, jobs, applications, proposals, settings.
   - `runs/`: one log per run, plus a folder per run with the prompt, schema and agent output files.
 - Purge run logs from Settings. This deletes the run logs and the per-run prompt and output files of every run that is not queued or running.
 - Run logs can contain agent output, including mail snippets. Do not share them.

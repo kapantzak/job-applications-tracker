@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { BookmarkIcon, CheckIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
-  ApiError,
   dismissJob,
   listJobs,
   markApplied,
@@ -14,6 +13,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
+import { profilePath, useProfileId } from '../profile-route.js';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,17 +37,17 @@ const isHttpUrl = (u: string) => /^https?:\/\//i.test(u);
 
 export function JobsPage() {
   const id = useId();
+  const profileId = useProfileId();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobListItem[] | null>(null);
   const [includeDead, setIncludeDead] = useState(false);
   const [includeDismissed, setIncludeDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsProfile, setNeedsProfile] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let active = true;
-    listJobs({ includeDead, includeDismissed })
+    listJobs(profileId, { includeDead, includeDismissed })
       .then((list) => {
         if (active) setJobs(list);
       })
@@ -57,7 +57,7 @@ export function JobsPage() {
     return () => {
       active = false;
     };
-  }, [includeDead, includeDismissed, reloadTick]);
+  }, [profileId, includeDead, includeDismissed, reloadTick]);
 
   const run = useCallback(async <T,>(action: () => Promise<T>, after?: (result: T) => void) => {
     setError(null);
@@ -75,14 +75,11 @@ export function JobsPage() {
 
   const onFind = async () => {
     setError(null);
-    setNeedsProfile(false);
     try {
-      const started = await startDiscovery();
-      navigate(`/runs/${started.id}`);
+      const started = await startDiscovery(profileId);
+      navigate(profilePath(profileId, `/runs/${started.id}`));
     } catch (e) {
-      // Other 422s (e.g. agent not installed) carry their own message and must be shown as is.
-      if (e instanceof ApiError && e.status === 422 && e.message === 'Profile is not set') setNeedsProfile(true);
-      else setError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -99,16 +96,6 @@ export function JobsPage() {
         }
       />
       <div className="flex flex-col gap-4">
-        {needsProfile && (
-          <ErrorAlert>
-            <p>
-              Fill in your profile first:{' '}
-              <Link to="/profile" className="font-medium underline underline-offset-4">
-                Open profile
-              </Link>
-            </p>
-          </ErrorAlert>
-        )}
         {error && <ErrorAlert>{error}</ErrorAlert>}
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -178,7 +165,7 @@ export function JobsPage() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => run(() => saveJob(job.id), (a) => setStatus(job.id, a.status))}
+                              onClick={() => run(() => saveJob(profileId, job.id), (a) => setStatus(job.id, a.status))}
                             >
                               <BookmarkIcon />
                               Save
@@ -188,7 +175,7 @@ export function JobsPage() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => run(() => markApplied(job.id), (a) => setStatus(job.id, a.status))}
+                              onClick={() => run(() => markApplied(profileId, job.id), (a) => setStatus(job.id, a.status))}
                             >
                               <CheckIcon />
                               Mark applied
@@ -212,7 +199,7 @@ export function JobsPage() {
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => run(() => dismissJob(job.id), () => setReloadTick((t) => t + 1))}
+                                  onClick={() => run(() => dismissJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
                                 >
                                   Dismiss job
                                 </AlertDialogAction>

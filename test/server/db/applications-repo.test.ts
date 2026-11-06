@@ -7,17 +7,18 @@ import {
   createApplicationsRepo,
   inferSenderDomain,
 } from '../../../src/server/db/applications-repo.js';
+import { insertTestProfile } from './test-profile.js';
 
 function setup() {
   const db = openDatabase(':memory:');
   migrate(db);
-  return { db, repo: createApplicationsRepo(db) };
+  return { db, pid: insertTestProfile(db), repo: createApplicationsRepo(db) };
 }
 
 describe('applications repo', () => {
   it('defaults to applied with applied_at set', () => {
-    const { repo } = setup();
-    const app = repo.create({ company: 'Acme', role: 'Engineer' });
+    const { repo, pid } = setup();
+    const app = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
     expect(app.status).toBe('applied');
     expect(app.applied_at).not.toBeNull();
     expect(app.status_changed_at).toBe(app.created_at);
@@ -26,8 +27,8 @@ describe('applications repo', () => {
   });
 
   it('saved applications have no applied_at even if one is given', () => {
-    const { repo } = setup();
-    const app = repo.create({
+    const { repo, pid } = setup();
+    const app = repo.create({ profile_id: pid,
       company: 'Acme',
       role: 'Engineer',
       status: 'saved',
@@ -38,14 +39,14 @@ describe('applications repo', () => {
   });
 
   it('honours explicit applied_at and null for non-applied statuses', () => {
-    const { repo } = setup();
-    const a = repo.create({
+    const { repo, pid } = setup();
+    const a = repo.create({ profile_id: pid,
       company: 'A',
       role: 'R',
       applied_at: '2026-01-01T00:00:00.000Z',
     });
     expect(a.applied_at).toBe('2026-01-01T00:00:00.000Z');
-    const b = repo.create({ company: 'B', role: 'R', status: 'interview' });
+    const b = repo.create({ profile_id: pid, company: 'B', role: 'R', status: 'interview' });
     expect(b.applied_at).toBeNull();
   });
 
@@ -57,8 +58,8 @@ describe('applications repo', () => {
   });
 
   it('updates only provided keys and JSON-encodes sender_domains', () => {
-    const { repo } = setup();
-    const app = repo.create({ company: 'Acme', role: 'Engineer', notes: 'keep' });
+    const { repo, pid } = setup();
+    const app = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer', notes: 'keep' });
     const updated = repo.update(app.id, { role: 'Staff', sender_domains: ['acme.com'] });
     expect(updated.role).toBe('Staff');
     expect(updated.company).toBe('Acme');
@@ -67,8 +68,8 @@ describe('applications repo', () => {
   });
 
   it('setStatus writes one history row and is a no-op for the same status', () => {
-    const { repo } = setup();
-    const app = repo.create({ company: 'Acme', role: 'Engineer' });
+    const { repo, pid } = setup();
+    const app = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
     const moved = repo.setStatus(app.id, 'screening', 'user');
     expect(moved.status).toBe('screening');
     const again = repo.setStatus(app.id, 'screening', 'user');
@@ -85,13 +86,13 @@ describe('applications repo', () => {
   });
 
   it('records proposal ids in history', () => {
-    const { db, repo } = setup();
-    const app = repo.create({ company: 'Acme', role: 'Engineer' });
+    const { db, repo, pid } = setup();
+    const app = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
     const now = new Date().toISOString();
     const runId = 'run-1';
     db.prepare(
-      "INSERT INTO runs (id, kind, status, started_at, created_at) VALUES (?, 'sync_mail', 'succeeded', ?, ?)",
-    ).run(runId, now, now);
+      "INSERT INTO runs (id, profile_id, kind, status, started_at, created_at) VALUES (?, ?, 'sync_mail', 'succeeded', ?, ?)",
+    ).run(runId, pid, now, now);
     db.prepare(
       `INSERT INTO proposals (id, run_id, application_id, proposed_status, confidence, reason, created_at)
        VALUES ('p1', ?, ?, 'rejected', 0.9, 'r', ?)`,
@@ -101,9 +102,9 @@ describe('applications repo', () => {
   });
 
   it('list({ open: true }) filters by status and offer freshness', () => {
-    const { db, repo } = setup();
+    const { db, repo, pid } = setup();
     const mk = (status: Parameters<typeof repo.create>[0]['status']) =>
-      repo.create({ company: String(status), role: 'R', status });
+      repo.create({ profile_id: pid, company: String(status), role: 'R', status });
     mk('saved');
     mk('rejected');
     mk('withdrawn');
@@ -114,17 +115,17 @@ describe('applications repo', () => {
     const old = new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString();
     db.prepare('UPDATE applications SET status_changed_at = ? WHERE id = ?').run(old, stale.id);
 
-    const open = repo.list({ open: true });
+    const open = repo.list(pid, { open: true });
     const statuses = open.map((a) => a.status).sort();
     expect(statuses).toEqual(['applied', 'no_response', 'offer']);
     expect(open.map((a) => a.id)).toContain(fresh.id);
     expect(open.map((a) => a.id)).not.toContain(stale.id);
-    expect(repo.list()).toHaveLength(7);
+    expect(repo.list(pid)).toHaveLength(7);
   });
 
   it('findByJobId returns the newest application for a job, or null', () => {
-    const { db, repo } = setup();
-    const run = createRunsRepo(db).create('discover_jobs', { adapter_id: '', prompt_version: null });
+    const { db, repo, pid } = setup();
+    const run = createRunsRepo(db).create('discover_jobs', pid, { adapter_id: '', prompt_version: null });
     const [job] = createJobsRepo(db).insertMany(run.id, [
       {
         company: 'A',
@@ -144,16 +145,16 @@ describe('applications repo', () => {
       },
     ]);
     expect(repo.findByJobId(job.id)).toBeNull();
-    repo.create({ company: 'A', role: 'R', job_id: job.id });
-    const newer = repo.create({ company: 'A', role: 'R2', job_id: job.id });
+    repo.create({ profile_id: pid, company: 'A', role: 'R', job_id: job.id });
+    const newer = repo.create({ profile_id: pid, company: 'A', role: 'R2', job_id: job.id });
     expect(repo.findByJobId(job.id)?.id).toBe(newer.id);
   });
 
   it('lists newest first', () => {
-    const { repo } = setup();
-    const a = repo.create({ company: 'A', role: 'R' });
-    const b = repo.create({ company: 'B', role: 'R' });
-    expect(repo.list().map((x) => x.id)).toEqual([b.id, a.id]);
+    const { repo, pid } = setup();
+    const a = repo.create({ profile_id: pid, company: 'A', role: 'R' });
+    const b = repo.create({ profile_id: pid, company: 'B', role: 'R' });
+    expect(repo.list(pid).map((x) => x.id)).toEqual([b.id, a.id]);
   });
 });
 
@@ -173,5 +174,19 @@ describe('inferSenderDomain', () => {
   });
   it('exports the ATS list', () => {
     expect(ATS_DOMAINS).toHaveLength(8);
+  });
+
+  it('profileIdsWithOpen lists profiles with an open application only, by name', () => {
+    const { db, repo, pid } = setup();
+    const busy = insertTestProfile(db, 'A busy profile');
+    const closed = insertTestProfile(db, 'Closed profile');
+    insertTestProfile(db, 'Empty profile');
+    repo.create({ profile_id: pid, company: 'Acme', role: 'R', status: 'interview' });
+    repo.create({ profile_id: busy, company: 'Globex', role: 'R', status: 'applied' });
+    repo.create({ profile_id: closed, company: 'Initech', role: 'R', status: 'rejected' });
+    repo.create({ profile_id: closed, company: 'Hooli', role: 'R', status: 'saved' });
+    const staleOffer = repo.create({ profile_id: closed, company: 'Umbrella', role: 'R', status: 'offer' });
+    db.prepare('UPDATE applications SET status_changed_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', staleOffer.id);
+    expect(repo.profileIdsWithOpen()).toEqual([busy, pid]);
   });
 });

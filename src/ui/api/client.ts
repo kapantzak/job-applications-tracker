@@ -5,6 +5,7 @@ import type {
   JobListItem,
   ModelCatalog,
   Profile,
+  ProfileListItem,
   Proposal,
   Run,
   RunStatus,
@@ -43,7 +44,7 @@ export interface ModelCatalogs {
   codex: ModelCatalog;
 }
 
-export type ProfileInput = Omit<Profile, 'created_at'>;
+export type ProfileInput = Omit<Profile, 'id' | 'created_at'>;
 
 export interface NewApplicationInput {
   company: string;
@@ -99,71 +100,87 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 }
 
+const enc = encodeURIComponent;
+
+// Jobs, applications, proposals and runs live under their profile (SOW-0014).
+const scoped = (profileId: string, path: string) => `/api/profiles/${enc(profileId)}${path}`;
+
 // The log endpoint returns plain text, so it bypasses the JSON helper.
-export async function getRunLog(id: string): Promise<string> {
-  const res = await fetch(`/api/runs/${encodeURIComponent(id)}/log`);
+export async function getRunLog(profileId: string, id: string): Promise<string> {
+  const res = await fetch(scoped(profileId, `/runs/${enc(id)}/log`));
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return res.text();
 }
-
-const enc = encodeURIComponent;
 
 export const getHealth = (): Promise<Health> => request('GET', '/api/health');
 export const getAdapters = (): Promise<AdapterStatus[]> => request('GET', '/api/setup/adapters');
 export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/api/setup/models');
 
-export const getProfile = (): Promise<Profile | null> => request('GET', '/api/profile');
-export const putProfile = (profile: Partial<ProfileInput>): Promise<Profile> =>
-  request('PUT', '/api/profile', profile);
+export const listProfiles = (): Promise<ProfileListItem[]> => request('GET', '/api/profiles');
+export const createProfile = (profile: ProfileInput): Promise<Profile> => request('POST', '/api/profiles', profile);
+export const getProfile = (profileId: string): Promise<Profile> => request('GET', scoped(profileId, ''));
+export const updateProfile = (profileId: string, profile: ProfileInput): Promise<Profile> =>
+  request('PUT', scoped(profileId, ''), profile);
+// Removes the profile with its jobs, applications, proposals, runs and run logs.
+export const deleteProfile = (profileId: string): Promise<void> => request('DELETE', scoped(profileId, ''));
 
 export const getSettings = (): Promise<Settings> => request('GET', '/api/settings');
 export const patchSettings = (patch: Partial<Settings>): Promise<Settings> =>
   request('PATCH', '/api/settings', patch);
 
-export function listJobs(filters: JobFilters = {}): Promise<JobListItem[]> {
+export function listJobs(profileId: string, filters: JobFilters = {}): Promise<JobListItem[]> {
   const params = new URLSearchParams();
   if (filters.includeDead) params.set('includeDead', '1');
   if (filters.includeDismissed) params.set('includeDismissed', '1');
   const qs = params.toString();
-  return request('GET', qs ? `/api/jobs?${qs}` : '/api/jobs');
+  return request('GET', scoped(profileId, qs ? `/jobs?${qs}` : '/jobs'));
 }
-export const dismissJob = (id: string): Promise<void> => request('POST', `/api/jobs/${enc(id)}/dismiss`);
-export const saveJob = (id: string): Promise<Application> => request('POST', `/api/jobs/${enc(id)}/save`);
-export const markApplied = (id: string): Promise<Application> =>
-  request('POST', `/api/jobs/${enc(id)}/applied`);
+export const dismissJob = (profileId: string, id: string): Promise<void> =>
+  request('POST', scoped(profileId, `/jobs/${enc(id)}/dismiss`));
+export const saveJob = (profileId: string, id: string): Promise<Application> =>
+  request('POST', scoped(profileId, `/jobs/${enc(id)}/save`));
+export const markApplied = (profileId: string, id: string): Promise<Application> =>
+  request('POST', scoped(profileId, `/jobs/${enc(id)}/applied`));
 
-export const listApplications = (open = false): Promise<Application[]> =>
-  request('GET', open ? '/api/applications?open=1' : '/api/applications');
-export const createApplication = (input: NewApplicationInput): Promise<Application> =>
-  request('POST', '/api/applications', input);
-export const getApplication = (id: string): Promise<ApplicationDetail> =>
-  request('GET', `/api/applications/${enc(id)}`);
-export const patchApplication = (id: string, patch: ApplicationPatchInput): Promise<Application> =>
-  request('PATCH', `/api/applications/${enc(id)}`, patch);
-export const setApplicationStatus = (id: string, status: ApplicationStatus): Promise<Application> =>
-  request('POST', `/api/applications/${enc(id)}/status`, { status });
+export const listApplications = (profileId: string, open = false): Promise<Application[]> =>
+  request('GET', scoped(profileId, open ? '/applications?open=1' : '/applications'));
+export const createApplication = (profileId: string, input: NewApplicationInput): Promise<Application> =>
+  request('POST', scoped(profileId, '/applications'), input);
+export const getApplication = (profileId: string, id: string): Promise<ApplicationDetail> =>
+  request('GET', scoped(profileId, `/applications/${enc(id)}`));
+export const patchApplication = (profileId: string, id: string, patch: ApplicationPatchInput): Promise<Application> =>
+  request('PATCH', scoped(profileId, `/applications/${enc(id)}`), patch);
+export const setApplicationStatus = (profileId: string, id: string, status: ApplicationStatus): Promise<Application> =>
+  request('POST', scoped(profileId, `/applications/${enc(id)}/status`), { status });
 
-export const listProposals = (): Promise<ProposalWithApplication[]> => request('GET', '/api/proposals');
-export const acceptProposal = (id: string): Promise<{ proposal: Proposal; application: Application }> =>
-  request('POST', `/api/proposals/${enc(id)}/accept`);
-export const rejectProposal = (id: string): Promise<{ proposal: Proposal }> =>
-  request('POST', `/api/proposals/${enc(id)}/reject`);
+export const listProposals = (profileId: string): Promise<ProposalWithApplication[]> =>
+  request('GET', scoped(profileId, '/proposals'));
+export const acceptProposal = (
+  profileId: string,
+  id: string,
+): Promise<{ proposal: Proposal; application: Application }> =>
+  request('POST', scoped(profileId, `/proposals/${enc(id)}/accept`));
+export const rejectProposal = (profileId: string, id: string): Promise<{ proposal: Proposal }> =>
+  request('POST', scoped(profileId, `/proposals/${enc(id)}/reject`));
 
-export const listRuns = (limit?: number): Promise<Run[]> =>
-  request('GET', limit === undefined ? '/api/runs' : `/api/runs?limit=${limit}`);
-export const getRun = (id: string): Promise<Run> => request('GET', `/api/runs/${enc(id)}`);
-export const startDiscovery = (): Promise<Run> => request('POST', '/api/runs/discover');
+export const listRuns = (profileId: string, limit?: number): Promise<Run[]> =>
+  request('GET', scoped(profileId, limit === undefined ? '/runs' : `/runs?limit=${limit}`));
+export const getRun = (profileId: string, id: string): Promise<Run> =>
+  request('GET', scoped(profileId, `/runs/${enc(id)}`));
+export const startDiscovery = (profileId: string): Promise<Run> => request('POST', scoped(profileId, '/runs/discover'));
 // 202 with the run: already `aborted` for a queued run, still `running` while the agent is stopped.
-export const cancelRun = (id: string): Promise<Run> => request('POST', `/api/runs/${enc(id)}/cancel`);
-export const startSync = (): Promise<Run> => request('POST', '/api/runs/sync');
+export const cancelRun = (profileId: string, id: string): Promise<Run> =>
+  request('POST', scoped(profileId, `/runs/${enc(id)}/cancel`));
+export const startSync = (profileId: string): Promise<Run> => request('POST', scoped(profileId, '/runs/sync'));
 export const purgeRunLogs = (): Promise<{ deleted: number }> => request('DELETE', '/api/runs/logs');
 
 export function subscribeRunEvents(
+  profileId: string,
   id: string,
   onLine: (line: string) => void,
   onDone: (status: RunStatus | 'unknown') => void,
 ): () => void {
-  const source = new EventSource(`/api/runs/${enc(id)}/events`);
+  const source = new EventSource(scoped(profileId, `/runs/${enc(id)}/events`));
   let finished = false;
   source.addEventListener('line', (event) => onLine((event as MessageEvent<string>).data));
   source.addEventListener('done', (event) => {

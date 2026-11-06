@@ -1,6 +1,6 @@
 import type { AgentAdapter } from '../agents/types.js';
 import type { createJobsRepo, NewJob } from '../db/jobs-repo.js';
-import type { createProfileRepo } from '../db/profile-repo.js';
+import type { ProfilesRepo } from '../db/profiles-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import type { Profile, RunKind, Settings, VerificationStatus } from '../domain/types.js';
 import { reportedAgent, requestedAgent, selectionLogLine } from '../runs/agent-record.js';
@@ -11,7 +11,7 @@ import { canonicalUrl, dedupeKey } from '../verify/canonicalize.js';
 import { verifyLink } from '../verify/links.js';
 
 export interface DiscoveryDeps {
-  profileRepo: ReturnType<typeof createProfileRepo>;
+  profilesRepo: Pick<ProfilesRepo, 'get'>;
   jobsRepo: ReturnType<typeof createJobsRepo>;
   settingsRepo: ReturnType<typeof createSettingsRepo>;
   adapterFactory: (settings: Settings, kind: RunKind) => AgentAdapter;
@@ -52,15 +52,15 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 }
 
 export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
-  const { profileRepo, jobsRepo, settingsRepo, adapterFactory } = deps;
+  const { profilesRepo, jobsRepo, settingsRepo, adapterFactory } = deps;
   const verify = deps.verify ?? verifyLink;
 
   return async (ctx) => {
-    const profile = profileRepo.get();
-    if (!profile) throw new Error('Profile is not set');
+    const profile = profilesRepo.get(ctx.run.profile_id);
+    if (!profile) throw new Error('Profile not found');
     const settings = settingsRepo.getAll();
 
-    const knownUrls = jobsRepo.recentCanonicalUrls(KNOWN_URLS_LIMIT);
+    const knownUrls = jobsRepo.recentCanonicalUrls(profile.id, KNOWN_URLS_LIMIT);
     const { text, version } = renderPrompt('discover_jobs', {
       profile: renderProfile(profile),
       known_urls: knownUrls.length ? knownUrls.join('\n') : '(none)',
@@ -116,7 +116,7 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
       verdict: await verify(entry.canonical),
     }));
 
-    const existing = jobsRepo.existingDedupeKeys();
+    const existing = jobsRepo.existingDedupeKeys(profile.id);
     const seen = new Set<string>();
     const newJobs: NewJob[] = [];
     const statuses: VerificationStatus[] = [];

@@ -9,6 +9,7 @@ import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
 import { formatTime } from '../format.js';
+import { profilePath, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import { Label } from '@/components/ui/label';
 const NO_GMAIL = 'Your agent has no Gmail tool';
 
 export function RunPage() {
+  const profileId = useProfileId();
   const { id = '' } = useParams();
   const [run, setRun] = useState<Run | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -40,13 +42,13 @@ export function RunPage() {
     setSaving(false);
 
     const refresh = () =>
-      getRun(id)
+      getRun(profileId, id)
         .then((fresh) => {
           if (active) setRun(fresh);
         })
         .catch(fail);
 
-    getRun(id)
+    getRun(profileId, id)
       .then(async (initial) => {
         if (!active) return;
         setRun(initial);
@@ -54,6 +56,7 @@ export function RunPage() {
           let agentSeen = false;
           // Subscribed once per mount; the client closes the stream itself after `done`.
           unsubscribe = subscribeRunEvents(
+            profileId,
             id,
             (line) => {
               if (!active) return;
@@ -68,7 +71,7 @@ export function RunPage() {
             () => void refresh(),
           );
         } else {
-          const text = await getRunLog(id);
+          const text = await getRunLog(profileId, id);
           if (active) setLines(text === '' ? [] : text.split('\n'));
         }
       })
@@ -78,7 +81,7 @@ export function RunPage() {
       active = false;
       unsubscribe?.();
     };
-  }, [id]);
+  }, [profileId, id]);
 
   if (!run) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
 
@@ -97,7 +100,7 @@ export function RunPage() {
     <div className="flex flex-col gap-6">
       <div>
         <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-          <Link to="/runs">
+          <Link to={profilePath(profileId, '/runs')}>
             <ArrowLeftIcon />
             Runs
           </Link>
@@ -108,6 +111,7 @@ export function RunPage() {
             <div className="flex items-start gap-3">
               {!terminal && (
                 <CancelRunButton
+                  profileId={profileId}
                   runId={run.id}
                   saving={saving}
                   // A queued run comes back already aborted; a running one ends through the event stream.
@@ -172,8 +176,8 @@ export function RunPage() {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {terminal && (
         <div className="flex flex-wrap gap-2">
-          {run.kind === 'discover_jobs' && followUp('/jobs', 'View jobs')}
-          {run.kind === 'sync_mail' && followUp('/review', 'Review proposals')}
+          {run.kind === 'discover_jobs' && followUp(profilePath(profileId, '/jobs'), 'View jobs')}
+          {run.kind === 'sync_mail' && followUp(profilePath(profileId, '/review'), 'Review proposals')}
           {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}
         </div>
       )}

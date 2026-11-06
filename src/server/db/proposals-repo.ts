@@ -30,15 +30,19 @@ export function createProposalsRepo(db: Db) {
   );
   const selectById = db.prepare("SELECT * FROM proposals WHERE id = ?");
   // rowid tiebreak keeps same-millisecond inserts in insertion order.
+  // Proposals belong to the profile of their application.
   const selectPending = db.prepare(
-    "SELECT * FROM proposals WHERE state = 'pending' ORDER BY created_at ASC, rowid ASC",
+    `SELECT p.* FROM proposals p JOIN applications a ON a.id = p.application_id
+     WHERE p.state = 'pending' AND a.profile_id = ?
+     ORDER BY p.created_at ASC, p.rowid ASC`,
   );
   const updateState = db.prepare(
     "UPDATE proposals SET state = ?, decided_at = ? WHERE id = ?",
   );
   const selectReviewed = db.prepare(
-    `SELECT DISTINCT json_extract(evidence, '$.message_id') AS message_id
-     FROM proposals WHERE state != 'pending'`,
+    `SELECT DISTINCT json_extract(p.evidence, '$.message_id') AS message_id
+     FROM proposals p JOIN applications a ON a.id = p.application_id
+     WHERE p.state != 'pending' AND a.profile_id = ?`,
   );
   const selectHasPending = db.prepare(
     `SELECT 1 FROM proposals
@@ -70,8 +74,8 @@ export function createProposalsRepo(db: Db) {
     })();
   }
 
-  function listPending(): Proposal[] {
-    return (selectPending.all() as ProposalRow[]).map(toProposal);
+  function listPending(profileId: string): Proposal[] {
+    return (selectPending.all(profileId) as ProposalRow[]).map(toProposal);
   }
 
   function decide(
@@ -83,8 +87,9 @@ export function createProposalsRepo(db: Db) {
     return get(id) as Proposal;
   }
 
-  function reviewedMessageIds(): string[] {
-    return (selectReviewed.all() as { message_id: string | null }[])
+  // Per profile: a message reviewed for one profile may still matter to another.
+  function reviewedMessageIds(profileId: string): string[] {
+    return (selectReviewed.all(profileId) as { message_id: string | null }[])
       .map((r) => r.message_id)
       .filter((m): m is string => m !== null);
   }

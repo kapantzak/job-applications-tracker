@@ -7,11 +7,11 @@ import type { AdapterHealth, AgentAdapter, ModelCatalog } from '../../../src/ser
 import { createApplicationsRepo } from '../../../src/server/db/applications-repo.js';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../../src/server/db/jobs-repo.js';
-import { createProfileRepo, type ProfileInput } from '../../../src/server/db/profile-repo.js';
+import { createProfilesRepo, type ProfileInput } from '../../../src/server/db/profiles-repo.js';
 import { createProposalsRepo } from '../../../src/server/db/proposals-repo.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
-import type { Job, RunKind, Settings } from '../../../src/server/domain/types.js';
+import type { Job, Profile, RunKind, Settings } from '../../../src/server/domain/types.js';
 import { createLogStore } from '../../../src/server/runs/log-store.js';
 import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
 import { createSyncScheduler } from '../../../src/server/runs/scheduler.js';
@@ -29,6 +29,9 @@ export interface Harness {
   // The bare Hono app, for requests that must omit Host.
   raw: Hono;
   deps: AppDeps;
+  // Created by makeHarness so profile-scoped routes work without setup; `base` is its API prefix.
+  profile: Profile;
+  base: string;
   // Swap per test to control how runs behave.
   handlers: Record<RunKind, RunHandler>;
   factoryCalls: { settings: Settings; kind: RunKind }[];
@@ -38,6 +41,7 @@ export interface Harness {
 }
 
 export const SAMPLE_PROFILE: ProfileInput = {
+  name: 'Platform roles',
   target_roles: ['Platform Engineer'],
   locations: ['Lisbon'],
   remote: 'remote',
@@ -51,7 +55,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const db = openDatabase(':memory:');
   migrate(db);
   const runsDir = mkdtempSync(join(tmpdir(), 'jobtrack-api-runs-'));
-  const profileRepo = createProfileRepo(db);
+  const profilesRepo = createProfilesRepo(db);
   const settingsRepo = createSettingsRepo(db);
   const jobsRepo = createJobsRepo(db);
   const applicationsRepo = createApplicationsRepo(db);
@@ -74,7 +78,11 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     },
     stopTimeoutMs: 50,
   });
-  const scheduler = createSyncScheduler({ settingsRepo, queue });
+  const scheduler = createSyncScheduler({
+    settingsRepo,
+    queue,
+    syncProfileIds: () => applicationsRepo.profileIdsWithOpen(),
+  });
   const factoryCalls: Harness['factoryCalls'] = [];
   const healthFor: Harness['healthFor'] = {};
   const catalogFor: Harness['catalogFor'] = {};
@@ -100,7 +108,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     db,
     dataDir: '/invented/data-dir',
     runsDir,
-    profileRepo,
+    profilesRepo,
     settingsRepo,
     jobsRepo,
     applicationsRepo,
@@ -123,10 +131,13 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
       return raw.request(path, { ...init, headers });
     },
   };
+  const profile = profilesRepo.create(SAMPLE_PROFILE);
   return {
     app,
     raw,
     deps,
+    profile,
+    base: `/api/profiles/${profile.id}`,
     handlers,
     factoryCalls,
     healthFor,
@@ -160,8 +171,8 @@ export function sampleJob(overrides: Partial<NewJob> = {}): NewJob {
   };
 }
 
-export function insertJob(h: Harness, overrides: Partial<NewJob> = {}): Job {
-  const run = h.deps.runsRepo.create('discover_jobs', { adapter_id: 'claude', prompt_version: null });
+export function insertJob(h: Harness, overrides: Partial<NewJob> = {}, profileId = h.profile.id): Job {
+  const run = h.deps.runsRepo.create('discover_jobs', profileId, { adapter_id: 'claude', prompt_version: null });
   const [job] = h.deps.jobsRepo.insertMany(run.id, [sampleJob(overrides)]);
   return job;
 }

@@ -30,6 +30,8 @@ export type JobRemote = 'remote' | 'hybrid' | 'onsite' | 'unknown';
 
 // List fields are JSON text in SQLite; row types describe the parsed shape.
 export interface Profile {
+  id: string;
+  name: string;
   target_roles: string[];
   locations: string[];
   remote: RemotePreference;
@@ -38,6 +40,17 @@ export interface Profile {
   excluded_companies: string[];
   notes: string;
   created_at: string;
+}
+
+// What deleting a profile removes; shown in the confirmation dialog.
+export interface ProfileCounts {
+  jobs: number;
+  applications: number;
+  runs: number;
+}
+
+export interface ProfileListItem extends Profile {
+  counts: ProfileCounts;
 }
 
 export interface ModelOption {
@@ -81,6 +94,7 @@ export interface Settings {
 
 export interface Run {
   id: string;
+  profile_id: string;
   kind: RunKind;
   status: RunStatus;
   started_at: string | null;
@@ -100,6 +114,7 @@ export interface Run {
 
 export interface Job {
   id: string;
+  profile_id: string;
   run_id: string;
   company: string;
   title: string;
@@ -126,6 +141,7 @@ export interface JobListItem extends Job {
 
 export interface Application {
   id: string;
+  profile_id: string;
   job_id: string | null;
   company: string;
   role: string;

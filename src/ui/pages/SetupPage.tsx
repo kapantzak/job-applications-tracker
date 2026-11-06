@@ -74,8 +74,8 @@ export function SetupPage() {
               {status && <SuccessMessage>{status}</SuccessMessage>}
               {status === 'Saved' && (
                 <Button asChild variant="outline">
-                  <Link to="/profile">
-                    Continue to Profile
+                  <Link to="/">
+                    Continue to Profiles
                     <ArrowRightIcon />
                   </Link>
                 </Button>

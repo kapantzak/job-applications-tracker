@@ -9,7 +9,7 @@ import { createApp, type AppDeps } from './app.js';
 import { createApplicationsRepo } from './db/applications-repo.js';
 import { migrate, openDatabase } from './db/connection.js';
 import { createJobsRepo } from './db/jobs-repo.js';
-import { createProfileRepo } from './db/profile-repo.js';
+import { createProfilesRepo } from './db/profiles-repo.js';
 import { createProposalsRepo } from './db/proposals-repo.js';
 import { createRunsRepo } from './db/runs-repo.js';
 import { createSettingsRepo } from './db/settings-repo.js';
@@ -112,7 +112,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   const db = openDatabase(dbFile);
   migrate(db);
 
-  const profileRepo = createProfileRepo(db);
+  const profilesRepo = createProfilesRepo(db);
   const settingsRepo = createSettingsRepo(db);
   const jobsRepo = createJobsRepo(db);
   const applicationsRepo = createApplicationsRepo(db);
@@ -121,7 +121,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   const proposalService = createProposalService({ db, proposalsRepo, applicationsRepo });
 
   const adapterFactory = createAdapter;
-  const discovery = createDiscoveryHandler({ profileRepo, jobsRepo, settingsRepo, adapterFactory });
+  const discovery = createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory });
   const sync = createMailSyncHandler({
     applicationsRepo,
     proposalsRepo,
@@ -136,13 +136,18 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     runsDir,
     handlers: { discover_jobs: discovery, sync_mail: sync },
   });
-  const scheduler = createSyncScheduler({ settingsRepo, queue });
+  const scheduler = createSyncScheduler({
+    settingsRepo,
+    queue,
+    // Profiles without open applications have nothing to check; skip them instead of queueing a no-op.
+    syncProfileIds: () => applicationsRepo.profileIdsWithOpen(),
+  });
 
   const deps: AppDeps = {
     db,
     dataDir,
     runsDir,
-    profileRepo,
+    profilesRepo,
     settingsRepo,
     jobsRepo,
     applicationsRepo,

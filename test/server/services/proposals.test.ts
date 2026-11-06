@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { migrate, openDatabase } from "../../../src/server/db/connection.js";
 import { createApplicationsRepo } from "../../../src/server/db/applications-repo.js";
 import { createProposalsRepo } from "../../../src/server/db/proposals-repo.js";
+import { insertTestProfile } from "../db/test-profile.js";
 import {
   ProposalNotPendingError,
   createProposalService,
@@ -15,14 +16,16 @@ function setup(
 ) {
   const db = openDatabase(":memory:");
   migrate(db);
+  const pid = insertTestProfile(db);
   const runId = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    "INSERT INTO runs (id, kind, status, started_at, created_at) VALUES (?, 'sync_mail', 'succeeded', ?, ?)",
-  ).run(runId, now, now);
+    "INSERT INTO runs (id, profile_id, kind, status, started_at, created_at) VALUES (?, ?, 'sync_mail', 'succeeded', ?, ?)",
+  ).run(runId, pid, now, now);
   const applicationsRepo = createApplicationsRepo(db);
   const proposalsRepo = createProposalsRepo(db);
   const app = applicationsRepo.create({
+    profile_id: pid,
     company: "Acme",
     role: "Engineer",
     status: appStatus,

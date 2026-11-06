@@ -8,6 +8,7 @@ import type {
 import type { Db } from './connection.js';
 
 export type NewApplication = {
+  profile_id: string;
   job_id?: string | null;
   company: string;
   role: string;
@@ -58,9 +59,9 @@ function toApplication(row: AppRow): Application {
 
 export function createApplicationsRepo(db: Db) {
   const insert = db.prepare(
-    `INSERT INTO applications (id, job_id, company, role, url, status, applied_at,
+    `INSERT INTO applications (id, profile_id, job_id, company, role, url, status, applied_at,
        status_changed_at, notes, sender_domains, created_at)
-     VALUES (@id, @job_id, @company, @role, @url, @status, @applied_at,
+     VALUES (@id, @profile_id, @job_id, @company, @role, @url, @status, @applied_at,
        @status_changed_at, @notes, @sender_domains, @created_at)`,
   );
   const selectById = db.prepare('SELECT * FROM applications WHERE id = ?');
@@ -98,6 +99,7 @@ export function createApplicationsRepo(db: Db) {
     const id = randomUUID();
     insert.run({
       id,
+      profile_id: input.profile_id,
       job_id: input.job_id ?? null,
       company: input.company,
       role: input.role,
@@ -119,24 +121,42 @@ export function createApplicationsRepo(db: Db) {
     return row ? toApplication(row) : null;
   }
 
-  function list(filter: { open?: boolean } = {}): Application[] {
+  function list(profileId: string, filter: { open?: boolean } = {}): Application[] {
     // rowid tiebreak keeps same-millisecond inserts newest first.
     const order = 'ORDER BY created_at DESC, rowid DESC';
     if (!filter.open) {
-      return (db.prepare(`SELECT * FROM applications ${order}`).all() as AppRow[]).map(
-        toApplication,
-      );
+      return (
+        db.prepare(`SELECT * FROM applications WHERE profile_id = ? ${order}`).all(profileId) as AppRow[]
+      ).map(toApplication);
     }
     const cutoff = new Date(Date.now() - OFFER_WINDOW_MS).toISOString();
     const marks = OPEN_STATUSES.map(() => '?').join(', ');
     const rows = db
       .prepare(
         `SELECT * FROM applications
-         WHERE status IN (${marks}) OR (status = 'offer' AND status_changed_at >= ?)
+         WHERE profile_id = ?
+           AND (status IN (${marks}) OR (status = 'offer' AND status_changed_at >= ?))
          ${order}`,
       )
-      .all(...OPEN_STATUSES, cutoff) as AppRow[];
+      .all(profileId, ...OPEN_STATUSES, cutoff) as AppRow[];
     return rows.map(toApplication);
+  }
+
+  // Profiles the scheduled mail sync should check: those with at least one open application, using the
+  // same rule as list({ open: true }). Ordered by profile name for a stable queue order.
+  function profileIdsWithOpen(): string[] {
+    const cutoff = new Date(Date.now() - OFFER_WINDOW_MS).toISOString();
+    const marks = OPEN_STATUSES.map(() => '?').join(', ');
+    const rows = db
+      .prepare(
+        `SELECT p.id FROM profiles p
+         WHERE EXISTS (
+           SELECT 1 FROM applications a WHERE a.profile_id = p.id
+             AND (a.status IN (${marks}) OR (a.status = 'offer' AND a.status_changed_at >= ?)))
+         ORDER BY p.name COLLATE NOCASE ASC, p.rowid ASC`,
+      )
+      .all(...OPEN_STATUSES, cutoff) as { id: string }[];
+    return rows.map((r) => r.id);
   }
 
   function update(id: string, patch: ApplicationPatch): Application {
@@ -184,5 +204,5 @@ export function createApplicationsRepo(db: Db) {
     return selectHistory.all(id) as StatusHistoryEntry[];
   }
 
-  return { create, get, findByJobId, list, update, setStatus, history };
+  return { create, get, findByJobId, list, profileIdsWithOpen, update, setStatus, history };
 }
