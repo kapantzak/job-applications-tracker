@@ -45,8 +45,26 @@ export const SyncMailOutput = z.object({
 export type DiscoverJobsResult = z.infer<typeof DiscoverJobsOutput>;
 export type SyncMailResult = z.infer<typeof SyncMailOutput>;
 
-// Input view: fields with defaults stay optional for the agent.
+// Claude Code's validator rejects zod's draft-2020-12 `$schema` pointer, and the OpenAI
+// structured-output API behind Codex requires `additionalProperties: false` plus every property
+// in `required`. Both accept this strict shape, so every adapter gets it; our own zod parse keeps
+// its defaults and stays tolerant.
+function toAgentSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toAgentSchema);
+  if (!node || typeof node !== 'object') return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === '$schema' || key === 'default') continue;
+    out[key] = toAgentSchema(value);
+  }
+  if (out.type === 'object' && out.properties && typeof out.properties === 'object') {
+    out.additionalProperties = false;
+    out.required = Object.keys(out.properties as object);
+  }
+  return out;
+}
+
 export function outputJsonSchema(kind: RunKind): Record<string, unknown> {
   const schema = kind === 'discover_jobs' ? DiscoverJobsOutput : SyncMailOutput;
-  return z.toJSONSchema(schema, { io: 'input' }) as Record<string, unknown>;
+  return toAgentSchema(z.toJSONSchema(schema, { io: 'output' })) as Record<string, unknown>;
 }

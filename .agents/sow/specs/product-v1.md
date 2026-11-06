@@ -16,7 +16,7 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 
 - The app never calls a model. It spawns the user's agent CLI (`claude`, `codex`, or a custom command) without a shell. The `custom` adapter is always offered in Setup; `check()` reports installed/version and, for the `claude` and `codex` presets, a sign-in state from `claude auth status` / `codex login status` (exit 0 = signed in, non-zero = not signed in with the first output line, probe failure or timeout = unknown); custom has no probe. A run is refused with 422 when the selected agent is not installed or the custom command is invalid.
 - Timeouts and aborts kill the agent's whole process group on POSIX and the process tree on Windows. On Windows the command is resolved through `PATH` and `PATHEXT`, and an npm `.cmd` shim is started as `node <cli.js>` without a shell; this is tested with simulated shims only, not on a real Windows machine.
-- Two task kinds: `discover_jobs`, `sync_mail`. Each has a versioned prompt template and a JSON output schema the agent must satisfy.
+- Two task kinds: `discover_jobs`, `sync_mail`. Each has a versioned prompt template and a JSON output schema the agent must satisfy. The schema given to the agent is strict: no `$schema` pointer, no `default` keywords, `additionalProperties: false` on every object, every property required (so agents emit empty strings and nulls explicitly). The app's own parse of the agent output still applies defaults for missing optional fields.
 - Every prompt states: read only; never apply; never send, draft or label mail.
 - `sync_mail` output carries a required `mail_access` boolean. `false` fails the run with "Your agent has no Gmail tool".
 
