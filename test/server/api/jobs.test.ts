@@ -28,6 +28,21 @@ describe('jobs', () => {
     expect(await ids('/api/jobs?includeDead=0&includeDismissed=false')).toEqual([live.id]);
   });
 
+  it('GET reports the latest application status per job', async () => {
+    const applied = insertJob(h);
+    const untouched = insertJob(h);
+    await h.app.request(`/api/jobs/${applied.id}/applied`, { method: 'POST' });
+
+    const list = (await (await h.app.request('/api/jobs')).json()) as (Job & { application_status: string | null })[];
+    const byId = Object.fromEntries(list.map((j) => [j.id, j.application_status]));
+    expect(byId).toEqual({ [applied.id]: 'applied', [untouched.id]: null });
+
+    const app = h.deps.applicationsRepo.findByJobId(applied.id) as Application;
+    h.deps.applicationsRepo.setStatus(app.id, 'interview', 'user');
+    const again = (await (await h.app.request('/api/jobs')).json()) as (Job & { application_status: string | null })[];
+    expect(again.find((j) => j.id === applied.id)?.application_status).toBe('interview');
+  });
+
   it('POST applied creates an applied application with inferred sender domains', async () => {
     const job = insertJob(h);
     const res = await h.app.request(`/api/jobs/${job.id}/applied`, { method: 'POST' });

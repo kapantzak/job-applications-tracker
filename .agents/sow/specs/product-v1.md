@@ -29,6 +29,7 @@ Source of truth for the full design: `docs/superpowers/specs/2026-11-05-job-appl
 - `saved` has no applied date and is excluded from mail sync.
 - `no_response` is user-set only.
 - Save and Mark applied on a job are idempotent: they return the existing application for that job, advancing `saved` to `applied` when asked; manual applications infer `sender_domains` from their URL.
+- `GET /api/jobs` items are `JobListItem`: the job row plus `application_status`, the status of the latest application linked to that job (`null` when none). The Jobs page derives its Saved/Applied/Interview… badge and its Save and Mark applied buttons from this field, so the state survives reloads.
 - Status changes from mail are proposals; nothing changes until the user accepts one. Every change is recorded in `status_history` with source `user` or `proposal`.
 
 ## Discovery results

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Job } from '../domain/types.js';
+import type { Job, JobListItem } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type NewJob = Omit<Job, 'id' | 'run_id' | 'dismissed_at' | 'created_at'>;
@@ -50,15 +50,21 @@ export function createJobsRepo(db: Db) {
     })();
   }
 
-  function list(opts: ListJobsOptions = {}): Job[] {
+  function list(opts: ListJobsOptions = {}): JobListItem[] {
     const where: string[] = [];
-    if (!opts.includeDead) where.push("verification_status != 'dead'");
-    if (!opts.includeDismissed) where.push('dismissed_at IS NULL');
+    if (!opts.includeDead) where.push("j.verification_status != 'dead'");
+    if (!opts.includeDismissed) where.push('j.dismissed_at IS NULL');
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    // Latest application per job, same ordering as applicationsRepo.findByJobId.
     // rowid tiebreak keeps same-millisecond inserts newest first.
     return db
-      .prepare(`SELECT * FROM jobs ${clause} ORDER BY created_at DESC, rowid DESC`)
-      .all() as Job[];
+      .prepare(
+        `SELECT j.*,
+           (SELECT a.status FROM applications a WHERE a.job_id = j.id
+            ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status
+         FROM jobs j ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
+      )
+      .all() as JobListItem[];
   }
 
   function dismiss(id: string): void {

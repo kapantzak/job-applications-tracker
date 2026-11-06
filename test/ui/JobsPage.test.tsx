@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JobsPage } from '../../src/ui/pages/JobsPage.js';
 import * as client from '../../src/ui/api/client.js';
-import type { Job } from '../../src/server/domain/types.js';
+import type { JobListItem } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -15,7 +15,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   startDiscovery: vi.fn(),
 }));
 
-function job(over: Partial<Job>): Job {
+function job(over: Partial<JobListItem>): JobListItem {
   return {
     id: 'j1',
     run_id: 'r1',
@@ -35,8 +35,9 @@ function job(over: Partial<Job>): Job {
     dedupe_key: 'k',
     dismissed_at: null,
     created_at: '2026-01-01T00:00:00Z',
+    application_status: null,
     ...over,
-  } as Job;
+  } as JobListItem;
 }
 
 const unverified = job({ id: 'j1', company: 'Acme', verification_status: 'unverified' });
@@ -91,6 +92,21 @@ describe('JobsPage', () => {
     expect(await screen.findByText('Applied')).toBeInTheDocument();
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark applied' })).not.toBeInTheDocument();
+  });
+
+  it('shows the persisted application status on load and hides Save and Mark applied', async () => {
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j4', company: 'Keepco', application_status: 'interview' }),
+      job({ id: 'j5', company: 'Savedco', application_status: 'saved' }),
+      job({ id: 'j6', company: 'Noreply', application_status: 'no_response' }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Interview')).toBeInTheDocument();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(screen.getByText('No response')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    // Only the saved row may still be marked applied.
+    expect(screen.getAllByRole('button', { name: 'Mark applied' })).toHaveLength(1);
   });
 
   it('only renders the Open link for http(s) URLs', async () => {

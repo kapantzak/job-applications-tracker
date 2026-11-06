@@ -85,6 +85,11 @@ export interface Job {
   created_at: string;
 }
 
+// Jobs list row: the job plus the latest application's status, so the UI can show persisted state.
+export interface JobListItem extends Job {
+  application_status: ApplicationStatus | null;
+}
+
 export interface Application {
   id: string;
   job_id: string | null;

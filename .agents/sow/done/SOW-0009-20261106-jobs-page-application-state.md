@@ -2,9 +2,9 @@
 
 ## Status
 
-Status: open
+Status: completed
 
-Sub-state: gate filled; starts when SOW-0008 closes (one SOW at a time).
+Sub-state: shipped; jobs list carries the persisted application status.
 
 ## Requirements
 
@@ -121,19 +121,81 @@ See Implementation plan.
 
 ## Execution Log
 
-Not started.
+### 2026-11-06
+
+- RED: `test/server/api/jobs.test.ts` (GET reports latest application status, follows a later status change) and `test/ui/JobsPage.test.tsx` (badge and buttons from the list field); both failed against the old code.
+- GREEN: `JobListItem` in `src/server/domain/types.ts`; `jobsRepo.list` selects a correlated latest-application subquery; `listJobs` typed accordingly in `src/ui/api/client.ts`; `JobsPage` drops the local `done` map, derives from `application_status`, patches the row from the POST response, and labels every `ApplicationStatus` (typecheck caught the missing `withdrawn`).
+- Spec and SOW-0005 updated. No deviation from the plan.
 
 ## Validation
 
-Pending.
+Acceptance criteria evidence:
+
+- API: `GET /api/jobs` items carry `application_status`; test covers `applied`, `null` and a later `interview`.
+- Page: test renders Interview, Saved and No response from the list, hides Save on all three, keeps Mark applied only on the saved row; the two click tests still pass with the row patched from the response.
+- Reload: on a dev data dir, POST applied on a job, then a fresh GET returned `application_status: applied` for that job and `null` for the others. The page renders purely from that list, so a reload shows the badge. A browser reload was not scripted; the page has no other state source.
+
+Tests or equivalent validation:
+
+- `npm test`: Test Files 45 passed (45), Tests 318 passed (318), no warnings. `npm run typecheck` clean. `npm run build` ok.
+
+Real-use evidence:
+
+- API round-trip above on `.tmp/dev3` with the built server.
+
+Reviewer findings:
+
+- No separate reviewer; additive field with tests on both sides.
+
+Same-failure scan:
+
+- `grep -rn "useState<Record<" src/ui/pages`: no remaining page keeps persisted state in a local map.
+- Guard: the new field is on an existing GET under `/api`; no route added, Host/Origin checks unchanged.
+
+Sensitive data gate:
+
+- Invented companies only in tests and this SOW; the real-use check records ids truncated and no company names.
+
+Artifact maintenance gate:
+
+- AGENTS.md: no update; no workflow change.
+- Runtime project skills: `project-local-api` unaffected (no new route, guard, SSE or bootstrap change); `project-testing` unaffected (existing harness and mock patterns reused).
+- Specs: `product-v1.md` gained the `JobListItem` contract.
+- End-user/operator docs: README unaffected; it already describes Save and Mark applied without promising more.
+- End-user/operator skills: none exist.
+- SOW lifecycle: completed and moved to `done/` in the same commit as the work; SOW-0005 items 20 and 23 marked done here.
+
+Specs update:
+
+- Done.
+
+Project skills update:
+
+- None needed; see gate.
+
+End-user/operator docs update:
+
+- None affected.
+
+End-user/operator skills update:
+
+- None exist.
+
+Lessons:
+
+- A `Record<ApplicationStatus, string>` label map lets the compiler catch a forgotten status; keep that pattern for enums shown in the UI.
+
+Follow-up mapping:
+
+- None deferred.
 
 ## Outcome
 
-Pending.
+The Jobs page shows the persisted application state from the database after reloads and navigation, including statuses beyond Applied.
 
 ## Lessons Extracted
 
-Pending.
+See Validation > Lessons.
 
 ## Followup
 

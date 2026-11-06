@@ -8,18 +8,28 @@ import {
   saveJob,
   startDiscovery,
 } from '../api/client.js';
-import type { ApplicationStatus, Job } from '../../server/domain/types.js';
+import type { ApplicationStatus, JobListItem } from '../../server/domain/types.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
 
 // Job URLs come from an agent and are untrusted; never render javascript: and similar schemes.
 const isHttpUrl = (u: string) => /^https?:\/\//i.test(u);
 
+const STATUS_LABELS: Record<ApplicationStatus, string> = {
+  saved: 'Saved',
+  applied: 'Applied',
+  screening: 'Screening',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  no_response: 'No response',
+  withdrawn: 'Withdrawn',
+};
+
 export function JobsPage() {
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [jobs, setJobs] = useState<JobListItem[] | null>(null);
   const [includeDead, setIncludeDead] = useState(false);
   const [includeDismissed, setIncludeDismissed] = useState(false);
-  const [done, setDone] = useState<Record<string, ApplicationStatus>>({});
   const [error, setError] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -47,6 +57,10 @@ export function JobsPage() {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  // The list carries the persisted status; a click only patches the row it changed.
+  const setStatus = (jobId: string, status: ApplicationStatus) =>
+    setJobs((list) => list && list.map((j) => (j.id === jobId ? { ...j, application_status: status } : j)));
 
   const onFind = async () => {
     setError(null);
@@ -119,24 +133,22 @@ export function JobsPage() {
                         Open
                       </a>
                     )}{' '}
-                    {done[job.id] && <span>{done[job.id] === 'saved' ? 'Saved' : 'Applied'}</span>}{' '}
-                    {!done[job.id] && (
+                    {job.application_status && <span>{STATUS_LABELS[job.application_status]}</span>}{' '}
+                    {!job.application_status && (
                       <>
                         <button
                           type="button"
-                          onClick={() => run(() => saveJob(job.id), (a) => setDone((d) => ({ ...d, [job.id]: a.status })))}
+                          onClick={() => run(() => saveJob(job.id), (a) => setStatus(job.id, a.status))}
                         >
                           Save
                         </button>{' '}
                       </>
                     )}
-                    {(!done[job.id] || done[job.id] === 'saved') && (
+                    {(!job.application_status || job.application_status === 'saved') && (
                       <>
                         <button
                           type="button"
-                          onClick={() =>
-                            run(() => markApplied(job.id), (a) => setDone((d) => ({ ...d, [job.id]: a.status })))
-                          }
+                          onClick={() => run(() => markApplied(job.id), (a) => setStatus(job.id, a.status))}
                         >
                           Mark applied
                         </button>{' '}

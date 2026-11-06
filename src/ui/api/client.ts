@@ -2,6 +2,7 @@ import type {
   Application,
   ApplicationStatus,
   Job,
+  JobListItem,
   Profile,
   Proposal,
   Run,
@@ -112,7 +113,7 @@ export const getSettings = (): Promise<Settings> => request('GET', '/api/setting
 export const patchSettings = (patch: Partial<Settings>): Promise<Settings> =>
   request('PATCH', '/api/settings', patch);
 
-export function listJobs(filters: JobFilters = {}): Promise<Job[]> {
+export function listJobs(filters: JobFilters = {}): Promise<JobListItem[]> {
   const params = new URLSearchParams();
   if (filters.includeDead) params.set('includeDead', '1');
   if (filters.includeDismissed) params.set('includeDismissed', '1');

@@ -17,10 +17,10 @@ Collect every reviewer finding from SOW-0001 that was accepted as real but defer
 Settings and UI:
 - Show prompt template versions in use and an "Open logs folder" action in Settings (design 6.5).
 - Show `match_reason` and `description_excerpt` on the Jobs screen.
-- Keep "Saved"/"Applied" state after remount (derive from applications instead of local state); let a saved job be marked applied.
+- Done in SOW-0009: Saved/Applied state derived from `application_status` on the jobs list; a saved job can be marked applied.
 - Hide "Dismiss" on already dismissed rows; show the list (not "Loading") when the initial job load fails.
 - Detail page heading should refresh after save; add a detail-page test; disable Save buttons while a request is in flight.
-- Applied label: Mark applied on a job whose application is already past `applied` (e.g. interview) shows "Applied"; show the real status.
+- Done in SOW-0009: the Jobs page shows the real status label (Interview, Offer, …) from `application_status`.
 - Sync-interval options derived from a shared constant.
 
 Server:
