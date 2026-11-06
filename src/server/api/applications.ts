@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import type { ApplicationPatch, NewApplication } from '../db/applications-repo.js';
+import { inferSenderDomain, type ApplicationPatch, type NewApplication } from '../db/applications-repo.js';
 import { APPLICATION_STATUSES, type Application } from '../domain/types.js';
 import { HttpError, readJson } from './errors.js';
 
@@ -25,6 +25,7 @@ const NewApplicationBody = z
     status: z.enum(APPLICATION_STATUSES).optional(),
     applied_at: z.string().nullable().optional(),
     notes: z.string().optional(),
+    sender_domains: z.array(z.string().min(1)).max(20).optional(),
   })
   .strict();
 
@@ -56,6 +57,10 @@ export function createApplicationsRouter(deps: AppDeps): Hono {
 
   router.post('/', async (c) => {
     const input: NewApplication = await readJson(c, NewApplicationBody);
+    if (input.sender_domains === undefined) {
+      const domain = input.url ? inferSenderDomain(input.url) : null;
+      input.sender_domains = domain ? [domain] : [];
+    }
     return c.json(deps.applicationsRepo.create(input), 201);
   });
 

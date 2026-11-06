@@ -33,6 +33,7 @@ Server:
 - Data directory: expand a leading `~`; close the db if migration fails before listen.
 
 Tests:
+- Auth-probe `hang` test should record the child pid and assert it is dead (SOW-0003 review).
 - Migration tests: positive controls, CHECK/FK/unique/rollback assertions.
 - Repository tests: rollback paths, boundary dates, unknown-id paths, `reviewedMessageIds` with accepted proposals.
 - Scheduler: `unref`, swallowed enqueue, 1h→6h refresh.

@@ -33,6 +33,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
   - **Redirected**: the link led somewhere else; the final address is stored.
   - **Could not verify**: the check failed or timed out (network error, site blocking automated requests). The job is kept.
   - **Dead link**: the page is gone. These jobs are hidden by default.
+- Clicking Save or Mark applied twice on a job never creates a duplicate application.
 - Duplicates are skipped across runs: jobs are matched by canonical URL, or by company, title and location when there is no usable URL.
 
 ## How Gmail sync works

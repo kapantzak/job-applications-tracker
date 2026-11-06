@@ -8,7 +8,7 @@ import {
   saveJob,
   startDiscovery,
 } from '../api/client.js';
-import type { Job } from '../../server/domain/types.js';
+import type { ApplicationStatus, Job } from '../../server/domain/types.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
 
 // Job URLs come from an agent and are untrusted; never render javascript: and similar schemes.
@@ -19,7 +19,7 @@ export function JobsPage() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [includeDead, setIncludeDead] = useState(false);
   const [includeDismissed, setIncludeDismissed] = useState(false);
-  const [done, setDone] = useState<Record<string, 'Saved' | 'Applied'>>({});
+  const [done, setDone] = useState<Record<string, ApplicationStatus>>({});
   const [error, setError] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -38,11 +38,11 @@ export function JobsPage() {
     };
   }, [includeDead, includeDismissed, reloadTick]);
 
-  const run = useCallback(async (action: () => Promise<unknown>, after?: () => void) => {
+  const run = useCallback(async <T,>(action: () => Promise<T>, after?: (result: T) => void) => {
     setError(null);
     try {
-      await action();
-      after?.();
+      const result = await action();
+      after?.(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -119,20 +119,23 @@ export function JobsPage() {
                         Open
                       </a>
                     )}{' '}
-                    {done[job.id] ? (
-                      <span>{done[job.id]}</span>
-                    ) : (
+                    {done[job.id] && <span>{done[job.id] === 'saved' ? 'Saved' : 'Applied'}</span>}{' '}
+                    {!done[job.id] && (
                       <>
                         <button
                           type="button"
-                          onClick={() => run(() => saveJob(job.id), () => setDone((d) => ({ ...d, [job.id]: 'Saved' })))}
+                          onClick={() => run(() => saveJob(job.id), (a) => setDone((d) => ({ ...d, [job.id]: a.status })))}
                         >
                           Save
                         </button>{' '}
+                      </>
+                    )}
+                    {(!done[job.id] || done[job.id] === 'saved') && (
+                      <>
                         <button
                           type="button"
                           onClick={() =>
-                            run(() => markApplied(job.id), () => setDone((d) => ({ ...d, [job.id]: 'Applied' })))
+                            run(() => markApplied(job.id), (a) => setDone((d) => ({ ...d, [job.id]: a.status })))
                           }
                         >
                           Mark applied

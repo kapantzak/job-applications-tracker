@@ -112,6 +112,13 @@ export function createApplicationsRepo(db: Db) {
     return get(id) as Application;
   }
 
+  function findByJobId(jobId: string): Application | null {
+    const row = db
+      .prepare('SELECT * FROM applications WHERE job_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1')
+      .get(jobId) as AppRow | undefined;
+    return row ? toApplication(row) : null;
+  }
+
   function list(filter: { open?: boolean } = {}): Application[] {
     // rowid tiebreak keeps same-millisecond inserts newest first.
     const order = 'ORDER BY created_at DESC, rowid DESC';
@@ -177,5 +184,5 @@ export function createApplicationsRepo(db: Db) {
     return selectHistory.all(id) as StatusHistoryEntry[];
   }
 
-  return { create, get, list, update, setStatus, history };
+  return { create, get, findByJobId, list, update, setStatus, history };
 }

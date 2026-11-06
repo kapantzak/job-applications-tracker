@@ -97,7 +97,7 @@ Real-use evidence:
 
 Reviewer findings:
 
-- none (controller review pending).
+- Independent review 2026-11-06: approved; no Critical/Important findings. Minors: the auth `hang` test does not assert the child is dead (tracked in SOW-0005); stderr buffered unbounded within the 3 s probe; unknown-state message not shown in the UI by design; serial probe adds up to 3 s per preset on Setup load.
 
 Same-failure scan:
 

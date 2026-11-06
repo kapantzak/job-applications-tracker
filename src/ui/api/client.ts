@@ -45,6 +45,7 @@ export interface NewApplicationInput {
   status?: ApplicationStatus;
   applied_at?: string | null;
   notes?: string;
+  sender_domains?: string[];
 }
 
 export interface ApplicationPatchInput {

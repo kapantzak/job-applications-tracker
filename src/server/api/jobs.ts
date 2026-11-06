@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppDeps } from '../app.js';
 import { inferSenderDomain } from '../db/applications-repo.js';
 import type { ApplicationStatus, Job } from '../domain/types.js';
@@ -17,11 +17,21 @@ export function createJobsRouter(deps: AppDeps): Hono {
     return job;
   }
 
+  // Returns the application plus whether it was newly created, so repeated clicks stay idempotent.
   function createFromJob(id: string, status: ApplicationStatus) {
     const job = requireJob(id);
+    const existing = deps.applicationsRepo.findByJobId(job.id);
+    if (existing) {
+      if (status === 'applied' && existing.status === 'saved') {
+        deps.applicationsRepo.setStatus(existing.id, 'applied', 'user');
+        const advanced = deps.applicationsRepo.update(existing.id, { applied_at: new Date().toISOString() });
+        return { app: advanced, created: false };
+      }
+      return { app: existing, created: false };
+    }
     const url = job.canonical_url ?? job.url;
     const domain = inferSenderDomain(url);
-    return deps.applicationsRepo.create({
+    const app = deps.applicationsRepo.create({
       job_id: job.id,
       company: job.company,
       role: job.title,
@@ -29,6 +39,12 @@ export function createJobsRouter(deps: AppDeps): Hono {
       status,
       sender_domains: domain ? [domain] : [],
     });
+    return { app, created: true };
+  }
+
+  function respond(c: Context, id: string, status: ApplicationStatus) {
+    const { app, created } = createFromJob(id, status);
+    return c.json(app, created ? 201 : 200);
   }
 
   router.get('/', (c) =>
@@ -45,9 +61,9 @@ export function createJobsRouter(deps: AppDeps): Hono {
     return c.body(null, 204);
   });
 
-  router.post('/:id/save', (c) => c.json(createFromJob(c.req.param('id'), 'saved'), 201));
+  router.post('/:id/save', (c) => respond(c, c.req.param('id'), 'saved'));
 
-  router.post('/:id/applied', (c) => c.json(createFromJob(c.req.param('id'), 'applied'), 201));
+  router.post('/:id/applied', (c) => respond(c, c.req.param('id'), 'applied'));
 
   return router;
 }

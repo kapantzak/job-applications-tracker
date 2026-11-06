@@ -71,11 +71,25 @@ describe('JobsPage', () => {
 
   it('marks a job applied and replaces its buttons', async () => {
     const user = userEvent.setup();
-    vi.mocked(client.markApplied).mockResolvedValue({} as never);
+    vi.mocked(client.markApplied).mockResolvedValue({ status: 'applied' } as never);
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Mark applied' }));
     expect(client.markApplied).toHaveBeenCalledWith('j1');
     expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark applied' })).not.toBeInTheDocument();
+  });
+
+  it('shows Saved but keeps Mark applied, then Applied after marking the same row', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.saveJob).mockResolvedValue({ status: 'saved' } as never);
+    vi.mocked(client.markApplied).mockResolvedValue({ status: 'applied' } as never);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mark applied' }));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark applied' })).not.toBeInTheDocument();
   });
 

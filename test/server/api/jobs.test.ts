@@ -58,6 +58,55 @@ describe('jobs', () => {
     expect(await res.json()).toMatchObject({ job_id: job.id, status: 'saved', applied_at: null });
   });
 
+  it('POST save twice returns the same application and creates no duplicate', async () => {
+    const job = insertJob(h);
+    const first = await h.app.request(`/api/jobs/${job.id}/save`, { method: 'POST' });
+    const second = await h.app.request(`/api/jobs/${job.id}/save`, { method: 'POST' });
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as Application).id).toBe(((await first.json()) as Application).id);
+    expect(h.deps.applicationsRepo.list()).toHaveLength(1);
+  });
+
+  it('POST applied after save advances the same application to applied', async () => {
+    const job = insertJob(h);
+    const saved = (await (await h.app.request(`/api/jobs/${job.id}/save`, { method: 'POST' })).json()) as Application;
+    const res = await h.app.request(`/api/jobs/${job.id}/applied`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const app = (await res.json()) as Application;
+    expect(app).toMatchObject({ id: saved.id, status: 'applied' });
+    expect(app.applied_at).not.toBeNull();
+    expect(h.deps.applicationsRepo.list()).toHaveLength(1);
+    expect(h.deps.applicationsRepo.history(saved.id)).toMatchObject([
+      { from_status: 'saved', to_status: 'applied', source: 'user' },
+    ]);
+  });
+
+  it('POST applied twice returns the existing application unchanged', async () => {
+    const job = insertJob(h);
+    const first = (await (await h.app.request(`/api/jobs/${job.id}/applied`, { method: 'POST' })).json()) as Application;
+    const res = await h.app.request(`/api/jobs/${job.id}/applied`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(first);
+    expect(h.deps.applicationsRepo.list()).toHaveLength(1);
+  });
+
+  it('POST save and applied leave an application in a later status unchanged', async () => {
+    const job = insertJob(h);
+    const existing = h.deps.applicationsRepo.create({
+      job_id: job.id,
+      company: 'Globex',
+      role: 'Backend Engineer',
+      status: 'interview',
+    });
+    for (const action of ['save', 'applied']) {
+      const res = await h.app.request(`/api/jobs/${job.id}/${action}`, { method: 'POST' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(existing);
+    }
+    expect(h.deps.applicationsRepo.list()).toHaveLength(1);
+  });
+
   it('POST dismiss is 204 and hides the job', async () => {
     const job = insertJob(h);
     const res = await h.app.request(`/api/jobs/${job.id}/dismiss`, { method: 'POST' });

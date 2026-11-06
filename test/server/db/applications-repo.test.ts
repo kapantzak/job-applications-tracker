@@ -120,6 +120,15 @@ describe('applications repo', () => {
     expect(repo.list()).toHaveLength(7);
   });
 
+  it('findByJobId returns the newest application for a job, or null', () => {
+    const { db, repo } = setup();
+    db.pragma('foreign_keys = OFF'); // job rows are irrelevant to this lookup
+    expect(repo.findByJobId('nope')).toBeNull();
+    repo.create({ company: 'A', role: 'R', job_id: 'j1' });
+    const newer = repo.create({ company: 'A', role: 'R2', job_id: 'j1' });
+    expect(repo.findByJobId('j1')?.id).toBe(newer.id);
+  });
+
   it('lists newest first', () => {
     const { repo } = setup();
     const a = repo.create({ company: 'A', role: 'R' });

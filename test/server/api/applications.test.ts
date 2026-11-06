@@ -45,6 +45,24 @@ describe('applications', () => {
     expect(bogus.status).toBe(400);
   });
 
+  it('POST infers sender_domains from the url unless the body supplies them', async () => {
+    const post = async (body: object) =>
+      (await (await h.app.request('/api/applications', json('POST', { company: 'V', role: 'R', ...body }))).json()) as Application;
+    expect((await post({ url: 'https://www.vandelay.example/jobs/1' })).sender_domains).toEqual(['vandelay.example']);
+    expect((await post({ url: 'https://boards.greenhouse.io/v/jobs/1' })).sender_domains).toEqual([]);
+    expect((await post({})).sender_domains).toEqual([]);
+    expect((await post({ url: 'https://vandelay.example/1', sender_domains: ['mail.v.example'] })).sender_domains).toEqual([
+      'mail.v.example',
+    ]);
+    const bad = await h.app.request('/api/applications', json('POST', { company: 'V', role: 'R', sender_domains: [''] }));
+    expect(bad.status).toBe(400);
+    const many = await h.app.request(
+      '/api/applications',
+      json('POST', { company: 'V', role: 'R', sender_domains: Array.from({ length: 21 }, (_, i) => `d${i}.example`) }),
+    );
+    expect(many.status).toBe(400);
+  });
+
   it('rejects non-http(s) url values on create and PATCH', async () => {
     for (const url of ['javascript:alert(1)', 'ftp://files.example/x', 'not a url']) {
       const res = await h.app.request('/api/applications', json('POST', { company: 'V', role: 'R', url }));
