@@ -8,6 +8,7 @@ import {
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, type ProfileInput } from '../api/client.js';
 import { ErrorAlert, SuccessMessage } from './feedback.js';
+import { SeniorityInput } from './SeniorityInput.js';
 import { TagInput } from './TagInput.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -28,7 +29,7 @@ export const EMPTY_PROFILE: ProfileInput = {
 };
 
 export function toProfileInput(profile: Profile): ProfileInput {
-  const { id: _id, slug: _slug, created_at: _createdAt, ...input } = profile;
+  const { id: _id, slug: _slug, created_at: _createdAt, cv: _cv, ...input } = profile;
   return input;
 }
 
@@ -40,7 +41,7 @@ interface ProfileFormProps {
   successMessage?: string;
 }
 
-// Shared by the first-run screen, New profile and the profile's own edit page.
+// Shared by the first-run screen, New profile (by hand or from a CV analysis) and the profile's own edit page.
 export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: ProfileFormProps) {
   const id = useId();
   const [form, setForm] = useState<ProfileInput>(initial);
@@ -48,7 +49,8 @@ export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const set = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) => setForm({ ...form, [key]: value });
+  const set = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   // Same rule as the server (SOW-0015). Checked as the user types; surrounding spaces are trimmed on save.
   const name = normalizeProfileName(form.name);
@@ -102,29 +104,20 @@ export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: 
             </Field>
             <TagInput label="Target roles" value={form.target_roles} onChange={(v) => set('target_roles', v)} />
             <TagInput label="Locations" value={form.locations} onChange={(v) => set('locations', v)} />
-            <div className="grid grid-cols-2 gap-4">
-              <Field>
-                <FieldLabel htmlFor={`${id}-remote`}>Remote</FieldLabel>
-                <NativeSelect
-                  id={`${id}-remote`}
-                  value={form.remote}
-                  onChange={(e) => set('remote', e.target.value as ProfileInput['remote'])}
-                >
-                  <NativeSelectOption value="any">Any</NativeSelectOption>
-                  <NativeSelectOption value="remote">Remote</NativeSelectOption>
-                  <NativeSelectOption value="hybrid">Hybrid</NativeSelectOption>
-                  <NativeSelectOption value="onsite">On-site</NativeSelectOption>
-                </NativeSelect>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`${id}-seniority`}>Seniority</FieldLabel>
-                <Input
-                  id={`${id}-seniority`}
-                  value={form.seniority}
-                  onChange={(e) => set('seniority', e.target.value)}
-                />
-              </Field>
-            </div>
+            <Field className="sm:max-w-xs">
+              <FieldLabel htmlFor={`${id}-remote`}>Remote</FieldLabel>
+              <NativeSelect
+                id={`${id}-remote`}
+                value={form.remote}
+                onChange={(e) => set('remote', e.target.value as ProfileInput['remote'])}
+              >
+                <NativeSelectOption value="any">Any</NativeSelectOption>
+                <NativeSelectOption value="remote">Remote</NativeSelectOption>
+                <NativeSelectOption value="hybrid">Hybrid</NativeSelectOption>
+                <NativeSelectOption value="onsite">On-site</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <SeniorityInput value={form.seniority} onChange={(v) => set('seniority', v)} />
             <TagInput label="Keywords" value={form.keywords} onChange={(v) => set('keywords', v)} />
             <TagInput
               label="Excluded companies"

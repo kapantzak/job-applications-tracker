@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { createApp, type AppDeps } from '../../../src/server/app.js';
 import type { AdapterHealth, AgentAdapter, ModelCatalog } from '../../../src/server/agents/index.js';
+import { createCvService } from '../../../src/server/cv/service.js';
+import { createCvAnalysesRepo } from '../../../src/server/db/cv-analyses-repo.js';
 import { createApplicationsRepo } from '../../../src/server/db/applications-repo.js';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../../src/server/db/jobs-repo.js';
@@ -11,7 +13,7 @@ import { createProfilesRepo, type ProfileInput } from '../../../src/server/db/pr
 import { createProposalsRepo } from '../../../src/server/db/proposals-repo.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
-import type { Job, Profile, RunKind, Settings } from '../../../src/server/domain/types.js';
+import type { AgentTaskKind, Job, Profile, RunKind, Settings } from '../../../src/server/domain/types.js';
 import { createLogStore } from '../../../src/server/runs/log-store.js';
 import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
 import { createSyncScheduler } from '../../../src/server/runs/scheduler.js';
@@ -34,7 +36,9 @@ export interface Harness {
   base: string;
   // Swap per test to control how runs behave.
   handlers: Record<RunKind, RunHandler>;
-  factoryCalls: { settings: Settings; kind: RunKind }[];
+  factoryCalls: { settings: Settings; kind: AgentTaskKind }[];
+  // What the stub adapter's run() does; swap per test (CV analysis tests). Throws by default.
+  agentRun: AgentAdapter['run'];
   healthFor: Record<string, AdapterHealth | Error>;
   catalogFor: Record<string, ModelCatalog>;
   cleanup(): Promise<void>;
@@ -55,6 +59,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const db = openDatabase(':memory:');
   migrate(db);
   const runsDir = mkdtempSync(join(tmpdir(), 'jobtrack-api-runs-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'jobtrack-api-data-'));
   const profilesRepo = createProfilesRepo(db);
   const settingsRepo = createSettingsRepo(db);
   const jobsRepo = createJobsRepo(db);
@@ -86,7 +91,12 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const factoryCalls: Harness['factoryCalls'] = [];
   const healthFor: Harness['healthFor'] = {};
   const catalogFor: Harness['catalogFor'] = {};
-  const adapterFactory = (settings: Settings, kind: RunKind): AgentAdapter => {
+  const control = {
+    agentRun: (async () => {
+      throw new Error('stub adapter does not run');
+    }) as AgentAdapter['run'],
+  };
+  const adapterFactory = (settings: Settings, kind: AgentTaskKind): AgentAdapter => {
     factoryCalls.push({ settings, kind });
     const id = settings.adapter_id;
     return {
@@ -99,14 +109,21 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
       async listModels() {
         return catalogFor[id] ?? { source: 'unavailable', models: [], efforts: [] };
       },
-      async run() {
-        throw new Error('stub adapter does not run');
-      },
+      run: (task, runOpts) => control.agentRun(task, runOpts),
     };
   };
+  const cvService = createCvService({
+    db,
+    dataDir,
+    cvAnalysesRepo: createCvAnalysesRepo(db),
+    profilesRepo,
+    settingsRepo,
+    adapterFactory,
+    stopTimeoutMs: 50,
+  });
   const deps: AppDeps = {
     db,
-    dataDir: '/invented/data-dir',
+    dataDir,
     runsDir,
     profilesRepo,
     settingsRepo,
@@ -118,6 +135,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     queue,
     logStore,
     scheduler,
+    cvService,
     adapterFactory,
     uiDir: opts.uiDir ?? null,
     ssePollMs: 20,
@@ -140,12 +158,20 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     base: `/api/profiles/${profile.id}`,
     handlers,
     factoryCalls,
+    get agentRun() {
+      return control.agentRun;
+    },
+    set agentRun(fn) {
+      control.agentRun = fn;
+    },
     healthFor,
     catalogFor,
     async cleanup() {
       scheduler.stop();
       await queue.stop();
+      await cvService.stop();
       rmSync(runsDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
       db.close();
     },
   };

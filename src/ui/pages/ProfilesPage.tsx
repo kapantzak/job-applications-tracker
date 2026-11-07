@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowRightIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { ProfileCounts, ProfileListItem } from '../../server/domain/types.js';
-import { createProfile, deleteProfile, listProfiles } from '../api/client.js';
+import { deleteProfile, listProfiles } from '../api/client.js';
+import { CreateProfileFlow, type CreateProfileLocationState } from '../components/CreateProfileFlow.js';
+import { CvAnalysisCard } from '../components/CvAnalysisCard.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
-import { EMPTY_PROFILE, ProfileForm } from '../components/ProfileForm.js';
+import { useCvAnalysis } from '../hooks/use-cv-analysis.js';
 import { profilePath } from '../profile-route.js';
 import {
   AlertDialog,
@@ -29,26 +31,29 @@ function countsText({ jobs, applications, runs }: ProfileCounts): string {
   return `${plural(jobs, 'job')}, ${plural(applications, 'application')} and ${plural(runs, 'run')}`;
 }
 
-// Creates a profile and opens it; used by the first-run screen and by New profile.
-function CreateProfileForm() {
-  const navigate = useNavigate();
+export function NewProfilePage() {
   return (
-    <ProfileForm
-      initial={EMPTY_PROFILE}
-      submitLabel="Create profile"
-      onSubmit={async (input) => {
-        const created = await createProfile(input);
-        navigate(profilePath(created.slug));
-      }}
-    />
+    <div className="max-w-4xl">
+      <PageHeader title="New profile" description="A separate search with its own jobs, applications and runs." />
+      <CreateProfileFlow />
+    </div>
   );
 }
 
-export function NewProfilePage() {
+// A CV analysis started earlier is shown above the list (SOW-0023, decision 23).
+function PendingCvAnalysis() {
+  const navigate = useNavigate();
+  const cv = useCvAnalysis();
+  if (!cv.analysis) return null;
+  const review: CreateProfileLocationState = { review: true };
   return (
-    <div className="max-w-2xl">
-      <PageHeader title="New profile" description="A separate search with its own jobs, applications and runs." />
-      <CreateProfileForm />
+    <div className="mb-6 max-w-4xl">
+      <CvAnalysisCard
+        analysis={cv.analysis}
+        onChange={cv.set}
+        onReview={() => navigate('/profiles/new', { state: review })}
+        onStale={() => void cv.refresh()}
+      />
     </div>
   );
 }
@@ -82,8 +87,8 @@ function DeleteProfileButton({ profile, onDeleted }: { profile: ProfileListItem;
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {profile.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes the profile and its {countsText(profile.counts)}, with their proposals, status history and
-              run logs. It cannot be undone.
+              This deletes the profile{profile.cv ? ', its CV' : ''} and its {countsText(profile.counts)}, with their
+              proposals, status history and run logs. It cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -126,12 +131,12 @@ export function ProfilesPage() {
 
   if (profiles.length === 0) {
     return (
-      <div className="max-w-2xl">
+      <div className="max-w-4xl">
         <PageHeader
           title="Create your first profile"
           description="Describe the jobs you are looking for. You can add more profiles for other searches later."
         />
-        <CreateProfileForm />
+        <CreateProfileFlow />
       </div>
     );
   }
@@ -150,6 +155,7 @@ export function ProfilesPage() {
           </Button>
         }
       />
+      <PendingCvAnalysis />
       <ul className="grid gap-4 sm:grid-cols-2" aria-label="Profiles">
         {profiles.map((p) => (
           <li key={p.id}>

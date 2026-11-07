@@ -2,6 +2,7 @@ import { startTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { updateProfile } from '../api/client.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { ProfileCvCard } from '../components/ProfileCvCard.js';
 import { ProfileForm, toProfileInput } from '../components/ProfileForm.js';
 import { profilePath, useCurrentProfile, useProfileShell } from '../profile-route.js';
 
@@ -14,6 +15,7 @@ export function ProfilePage() {
   return (
     <div className="max-w-2xl">
       <PageHeader title="Profile" description="What you are looking for. Discovery runs use this to search." />
+      <ProfileCvCard profile={profile} onChange={profileChanged} />
       <ProfileForm
         key={profile.id}
         initial={toProfileInput(profile)}

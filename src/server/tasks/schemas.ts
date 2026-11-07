@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FIT_VERDICTS, type RunKind } from '../domain/types.js';
+import { FIT_VERDICTS, type AgentTaskKind } from '../domain/types.js';
 
 const verdict = z.enum(FIT_VERDICTS).default('unknown');
 const FitChecks = z
@@ -49,7 +49,19 @@ export const SyncMailOutput = z.object({
   notes: z.string().default(''),
 });
 
+// A CV analysis (SOW-0023). Seniority is a list of levels; the app joins it into the profile's text field.
+export const AnalyseCvOutput = z.object({
+  name: z.string().default(''),
+  target_roles: z.array(z.string()).default([]),
+  locations: z.array(z.string()).default([]),
+  remote: z.enum(['remote', 'hybrid', 'onsite', 'any']).default('any'),
+  seniority: z.array(z.string()).default([]),
+  keywords: z.array(z.string()).default([]),
+  notes: z.string().default(''),
+});
+
 export type DiscoverJobsResult = z.infer<typeof DiscoverJobsOutput>;
+export type AnalyseCvResult = z.infer<typeof AnalyseCvOutput>;
 export type SyncMailResult = z.infer<typeof SyncMailOutput>;
 
 // Claude Code's validator rejects zod's draft-2020-12 `$schema` pointer, and the OpenAI
@@ -71,7 +83,9 @@ function toAgentSchema(node: unknown): unknown {
   return out;
 }
 
-export function outputJsonSchema(kind: RunKind): Record<string, unknown> {
-  const schema = kind === 'discover_jobs' ? DiscoverJobsOutput : SyncMailOutput;
+const OUTPUT_SCHEMAS = { discover_jobs: DiscoverJobsOutput, sync_mail: SyncMailOutput, analyse_cv: AnalyseCvOutput };
+
+export function outputJsonSchema(kind: AgentTaskKind): Record<string, unknown> {
+  const schema = OUTPUT_SCHEMAS[kind];
   return toAgentSchema(z.toJSONSchema(schema, { io: 'output' })) as Record<string, unknown>;
 }

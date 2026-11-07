@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RunKind } from '../domain/types.js';
+import type { AgentTaskKind } from '../domain/types.js';
 
 const PACKAGE_NAME = 'job-applications-tracker';
 
@@ -28,7 +28,7 @@ function findPromptsDir(): string {
 export const PROMPTS_DIR = findPromptsDir();
 
 export function renderPrompt(
-  kind: RunKind,
+  kind: AgentTaskKind,
   vars: Record<string, unknown>,
 ): { text: string; version: string } {
   const raw = fs.readFileSync(path.join(PROMPTS_DIR, `${kind}.md`), 'utf8');

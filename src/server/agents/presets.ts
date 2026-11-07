@@ -1,4 +1,4 @@
-import type { RunKind, Settings } from '../domain/types.js';
+import type { AgentTaskKind, RunKind, Settings } from '../domain/types.js';
 import type { AgentSelection, CliAdapterConfig, ModelCatalog } from './types.js';
 
 // Model ids and effort levels become argv elements; a leading '-' would be read as a flag, and
@@ -100,7 +100,53 @@ export function splitShellWords(input: string): string[] {
   return words;
 }
 
-export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapterConfig {
+// A CV analysis (SOW-0023) needs no tools: the CV text is in the prompt. It runs on the agent's own default
+// model and effort (decision 7), and Codex reads the prompt from stdin (`-`) because a CV can exceed the
+// per-argument limit on Linux (128 KiB) and the whole command line on Windows (32,767 characters).
+function cvAdapterConfig(settings: Settings): CliAdapterConfig {
+  const selection: AgentSelection = { model: '', effort: '' };
+  switch (settings.adapter_id) {
+    case 'claude':
+      return {
+        id: 'claude',
+        argv: [
+          'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
+          '--setting-sources', 'user', '--settings', CLAUDE_ISOLATION_SETTINGS,
+          '--disallowedTools', 'Agent,Task', '--tools', '', '--strict-mcp-config',
+        ],
+        promptVia: 'stdin',
+        resultFrom: 'claude-stream-json',
+        usageFrom: 'claude-stream-json',
+        versionArgv: ['claude', '--version'],
+        authArgv: ['claude', 'auth', 'status'],
+        selection,
+        modelCatalog: CLAUDE_MODEL_CATALOG,
+      };
+    case 'codex':
+      return {
+        id: 'codex',
+        argv: [
+          'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
+          '--sandbox', 'read-only', '-o', '{output_file}', '--disable', 'multi_agent',
+          // Codex's own default is a cached web search; this task gets none (A6).
+          '-c', 'web_search="disabled"', '-',
+        ],
+        promptVia: 'stdin',
+        resultFrom: 'output-file',
+        usageFrom: 'codex-json',
+        versionArgv: ['codex', '--version'],
+        authArgv: ['codex', 'login', 'status'],
+        selection,
+        modelsArgv: ['codex', 'debug', 'models'],
+      };
+    default:
+      // A custom command carries its own flags for every kind; an unknown id fails there too.
+      return buildAdapterConfig(settings, 'sync_mail');
+  }
+}
+
+export function buildAdapterConfig(settings: Settings, kind: AgentTaskKind): CliAdapterConfig {
+  if (kind === 'analyse_cv') return cvAdapterConfig(settings);
   const discover = kind === 'discover_jobs';
   switch (settings.adapter_id) {
     case 'claude': {

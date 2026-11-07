@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Profile, ProfileListItem } from '../../src/server/domain/types.js';
+import type { CvAnalysis, Profile, ProfileListItem } from '../../src/server/domain/types.js';
 import { NewProfilePage, ProfilesPage } from '../../src/ui/pages/ProfilesPage.js';
 import * as client from '../../src/ui/api/client.js';
 
@@ -11,6 +11,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listProfiles: vi.fn(),
   createProfile: vi.fn(),
   deleteProfile: vi.fn(),
+  getCvAnalysis: vi.fn(),
+  discardCvAnalysis: vi.fn(),
 }));
 
 function profile(id: string, name: string, counts = { jobs: 0, applications: 0, runs: 0 }): ProfileListItem {
@@ -25,12 +27,33 @@ function profile(id: string, name: string, counts = { jobs: 0, applications: 0, 
     keywords: [],
     excluded_companies: [],
     notes: '',
+    cv: null,
     created_at: '2026-11-01T00:00:00.000Z',
     counts,
   };
 }
 
 const ALPHA = profile('pa', 'Alpha roles', { jobs: 12, applications: 1, runs: 7 });
+
+const READY: CvAnalysis = {
+  id: 'cva1',
+  status: 'succeeded',
+  file_name: 'Alex CV.pdf',
+  file_type: 'pdf',
+  started_at: '2026-11-07T10:00:00.000Z',
+  finished_at: '2026-11-07T10:00:20.000Z',
+  draft: {
+    name: 'Backend roles',
+    target_roles: ['Backend Engineer'],
+    locations: ['Lisbon'],
+    remote: 'remote',
+    seniority: 'Senior',
+    keywords: ['TypeScript'],
+    notes: 'Eight years of backend work.',
+  },
+  error: null,
+  created_at: '2026-11-07T10:00:00.000Z',
+};
 const BETA = profile('pb', 'Beta roles');
 
 function renderAt(path: string) {
@@ -46,6 +69,7 @@ function renderAt(path: string) {
 }
 
 async function fillAndCreate(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Open the form' }));
   await user.type(await screen.findByLabelText('Name'), 'Data roles');
   await user.type(screen.getByLabelText('Target roles'), 'Data Engineer{Enter}');
   await user.click(screen.getByRole('button', { name: 'Create profile' }));
@@ -56,6 +80,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(client.listProfiles).mockResolvedValue([ALPHA, BETA]);
+  vi.mocked(client.getCvAnalysis).mockResolvedValue(null);
   vi.mocked(client.createProfile).mockResolvedValue({ ...BETA, id: 'pc', name: 'Data roles', slug: 'data-roles' } as Profile);
 });
 
@@ -117,6 +142,28 @@ describe('ProfilesPage', () => {
     expect(client.deleteProfile).toHaveBeenCalledWith('pa');
     expect(await screen.findByRole('link', { name: 'Open Beta roles' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Alpha roles' })).not.toBeInTheDocument();
+  });
+
+  it('names the CV in the delete confirmation of a profile that keeps one', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listProfiles).mockResolvedValue([
+      { ...ALPHA, cv: { file_name: 'Alex CV.pdf', added_at: '2026-11-07T10:00:00.000Z' } },
+    ]);
+    renderAt('/');
+    await user.click(await screen.findByRole('button', { name: 'Delete Alpha roles' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete Alpha roles?' });
+    expect(dialog).toHaveTextContent('This deletes the profile, its CV and its 12 jobs, 1 application and 7 runs,');
+  });
+
+  it('shows a ready CV analysis above the list and opens its review', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getCvAnalysis).mockResolvedValue(READY);
+    renderAt('/');
+    expect(await screen.findByRole('heading', { name: 'Your CV is analysed' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Profiles' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Review and create' }));
+    expect(await screen.findByLabelText('Name')).toHaveValue('Backend roles');
+    expect(screen.getByRole('heading', { name: 'New profile' })).toBeInTheDocument();
   });
 
   it('keeps the profile when the delete confirmation is cancelled', async () => {

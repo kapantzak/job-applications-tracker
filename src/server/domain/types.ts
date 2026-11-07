@@ -10,6 +10,8 @@ export const APPLICATION_STATUSES = [
   'no_response',
 ] as const;
 export const RUN_KINDS = ['discover_jobs', 'sync_mail'] as const;
+// What the app asks an agent to do: a queued run, or a CV analysis outside the queue (SOW-0023).
+export type AgentTaskKind = RunKind | 'analyse_cv';
 // Logged when a run starts saving its results; the UI matches it exactly to lock the cancel control.
 export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be cancelled';
 
@@ -67,6 +69,45 @@ export interface Profile {
   keywords: string[];
   excluded_companies: string[];
   notes: string;
+  // The CV kept with the profile (SOW-0023); null when the profile has none.
+  cv: ProfileCv | null;
+  created_at: string;
+}
+
+export interface ProfileCv {
+  file_name: string;
+  added_at: string;
+}
+
+// File types a CV may have (SOW-0023, decision 2); detected from the content, not the name.
+export const CV_FILE_TYPES = ['pdf', 'docx', 'txt', 'md'] as const;
+export type CvFileType = (typeof CV_FILE_TYPES)[number];
+
+// interrupted: the server stopped while the agent ran; never restarted automatically (decision 26).
+export const CV_ANALYSIS_STATUSES = ['running', 'succeeded', 'failed', 'interrupted'] as const;
+export type CvAnalysisStatus = (typeof CV_ANALYSIS_STATUSES)[number];
+
+// What the analysis suggests for a new profile; the user reviews it in the profile form.
+export interface CvProfileDraft {
+  name: string;
+  target_roles: string[];
+  locations: string[];
+  remote: RemotePreference;
+  seniority: string;
+  keywords: string[];
+  notes: string;
+}
+
+// At most one exists at a time (decision 24); it is deleted on Create profile or Discard.
+export interface CvAnalysis {
+  id: string;
+  status: CvAnalysisStatus;
+  file_name: string;
+  file_type: CvFileType;
+  started_at: string;
+  finished_at: string | null;
+  draft: CvProfileDraft | null;
+  error: string | null;
   created_at: string;
 }
 

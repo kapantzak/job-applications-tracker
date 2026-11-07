@@ -62,7 +62,7 @@ function assertAgentCompatible(node: unknown, path = '$'): void {
 }
 
 describe('agent-compatible json schema', () => {
-  it.each(['discover_jobs', 'sync_mail'] as const)('%s schema is strict and carries no $schema pointer', (kind) => {
+  it.each(['discover_jobs', 'sync_mail', 'analyse_cv'] as const)('%s schema is strict and carries no $schema pointer', (kind) => {
     assertAgentCompatible(outputJsonSchema(kind));
   });
 
@@ -76,5 +76,12 @@ describe('agent-compatible json schema', () => {
     const checks = (outputJsonSchema('discover_jobs') as any).properties.jobs.items.properties.checks;
     expect(checks.required).toEqual(['location', 'remote', 'seniority']);
     expect(checks.properties.remote).toEqual({ type: 'string', enum: ['pass', 'fail', 'unknown'] });
+  });
+
+  it('analyse_cv schema asks for every profile field the CV can fill, and never excluded companies', () => {
+    const s = outputJsonSchema('analyse_cv') as any;
+    expect(s.required).toEqual(['name', 'target_roles', 'locations', 'remote', 'seniority', 'keywords', 'notes']);
+    expect(s.properties.remote).toEqual({ type: 'string', enum: ['remote', 'hybrid', 'onsite', 'any'] });
+    expect(s.properties.seniority).toEqual({ type: 'array', items: { type: 'string' } });
   });
 });

@@ -13,6 +13,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listProposals: vi.fn(),
   listJobs: vi.fn(),
   updateProfile: vi.fn(),
+  getCvAnalysis: vi.fn(),
 }));
 
 // App keeps a once-per-load flag at module level; a fresh module per test is a fresh page load.
@@ -22,6 +23,7 @@ async function renderApp(path: string, configure?: (client: typeof ClientModule)
   vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'claude' } as never);
   vi.mocked(client.getAdapters).mockResolvedValue([{ id: 'claude', installed, gmail_guide: false }]);
   vi.mocked(client.listProfiles).mockResolvedValue([]);
+  vi.mocked(client.getCvAnalysis).mockResolvedValue(null);
   vi.mocked(client.getProfileBySlug).mockResolvedValue({
     id: 'pf1',
     name: 'Platform roles',
@@ -33,6 +35,7 @@ async function renderApp(path: string, configure?: (client: typeof ClientModule)
     keywords: [],
     excluded_companies: [],
     notes: '',
+    cv: null,
     created_at: '2026-11-01T00:00:00.000Z',
   });
   vi.mocked(client.listProposals).mockResolvedValue([]);
@@ -106,6 +109,7 @@ describe('App routing', () => {
         keywords: [],
         excluded_companies: [],
         notes: '',
+        cv: null,
         created_at: '2026-11-01T00:00:00.000Z',
       });
       vi.mocked(c.listJobs).mockResolvedValue([]);
@@ -123,6 +127,7 @@ describe('App routing', () => {
         ...input,
         id,
         slug: 'lead-roles',
+        cv: null,
         created_at: '2026-11-01T00:00:00.000Z',
       }));
     });

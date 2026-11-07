@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { getRequestListener } from '@hono/node-server';
 import { createAdapter } from './agents/index.js';
 import { createApp, type AppDeps } from './app.js';
+import { createCvService } from './cv/service.js';
 import { createApplicationsRepo } from './db/applications-repo.js';
+import { createCvAnalysesRepo } from './db/cv-analyses-repo.js';
 import { migrate, openDatabase } from './db/connection.js';
 import { createJobsRepo } from './db/jobs-repo.js';
 import { createProfilesRepo } from './db/profiles-repo.js';
@@ -136,6 +138,16 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     runsDir,
     handlers: { discover_jobs: discovery, sync_mail: sync },
   });
+  const cvService = createCvService({
+    db,
+    dataDir,
+    cvAnalysesRepo: createCvAnalysesRepo(db),
+    profilesRepo,
+    settingsRepo,
+    adapterFactory,
+  });
+  // Before the server listens: an analysis left running by the last process is shown as interrupted.
+  cvService.startup();
   const scheduler = createSyncScheduler({
     settingsRepo,
     queue,
@@ -157,6 +169,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     queue,
     logStore,
     scheduler,
+    cvService,
     adapterFactory,
     uiDir: opts.uiDir === undefined ? defaultUiDir() : opts.uiDir,
   };
@@ -173,6 +186,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     // Do not leak the background loops or the db handle when binding fails.
     scheduler.stop();
     await queue.stop();
+    await cvService.stop();
     db.close();
     throw err;
   }
@@ -182,6 +196,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     closing ??= (async () => {
       scheduler.stop();
       await queue.stop();
+      await cvService.stop();
       // Ends open SSE streams, which would otherwise keep server.close pending.
       server.closeAllConnections();
       await new Promise<void>((res) => server.close(() => res()));

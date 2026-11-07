@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,7 @@ import { InProfile, TEST_PROFILE } from './profile-shell.js';
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   updateProfile: vi.fn(),
+  removeProfileCv: vi.fn(),
 }));
 
 const profileChanged = vi.fn();
@@ -113,5 +114,48 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('A profile named "Data roles" already exists')).toBeInTheDocument();
     expect(profileChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProfilePage: the kept CV', () => {
+  const WITH_CV = { ...TEST_PROFILE, cv: { file_name: 'Alex CV.pdf', added_at: '2026-11-07T10:00:00.000Z' } };
+
+  it('shows no CV section for a profile without a CV', () => {
+    renderPage();
+    expect(screen.queryByRole('heading', { name: 'CV' })).not.toBeInTheDocument();
+  });
+
+  it('shows the CV with a download link under its original name', () => {
+    renderPage(WITH_CV);
+    expect(screen.getByRole('heading', { name: 'CV' })).toBeInTheDocument();
+    expect(screen.getByText('Alex CV.pdf')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Download' });
+    expect(link).toHaveAttribute('href', '/api/profiles/pf1/cv');
+    expect(link).toHaveAttribute('download', 'Alex CV.pdf');
+  });
+
+  it('removes the CV only after confirmation and tells the shell', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.removeProfileCv).mockResolvedValue({ ...WITH_CV, cv: null });
+    renderPage(WITH_CV);
+    await user.click(screen.getByRole('button', { name: 'Remove CV' }));
+    let dialog = await screen.findByRole('alertdialog', { name: 'Remove the CV?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Keep the CV' }));
+    expect(client.removeProfileCv).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Remove CV' }));
+    dialog = await screen.findByRole('alertdialog', { name: 'Remove the CV?' });
+    expect(dialog).toHaveTextContent('The file and the text read from it are deleted.');
+    await user.click(within(dialog).getByRole('button', { name: 'Remove CV' }));
+    expect(client.removeProfileCv).toHaveBeenCalledWith('pf1');
+    expect(profileChanged).toHaveBeenCalledWith({ ...WITH_CV, cv: null });
+  });
+
+  it('keeps the edited fields out of the CV: Save sends no cv field', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.updateProfile).mockResolvedValue(WITH_CV);
+    renderPage(WITH_CV);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(vi.mocked(client.updateProfile).mock.calls[0]![1]).not.toHaveProperty('cv');
   });
 });

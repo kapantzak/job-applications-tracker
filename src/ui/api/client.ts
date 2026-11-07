@@ -1,6 +1,7 @@
 import type {
   Application,
   ApplicationStatus,
+  CvAnalysis,
   EffortMode,
   Job,
   JobListItem,
@@ -45,7 +46,7 @@ export interface ModelCatalogs {
   codex: ModelCatalog;
 }
 
-export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at'>;
+export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at' | 'cv'>;
 
 export interface NewApplicationInput {
   company: string;
@@ -118,7 +119,9 @@ export const getAdapters = (): Promise<AdapterStatus[]> => request('GET', '/api/
 export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/api/setup/models');
 
 export const listProfiles = (): Promise<ProfileListItem[]> => request('GET', '/api/profiles');
-export const createProfile = (profile: ProfileInput): Promise<Profile> => request('POST', '/api/profiles', profile);
+// `cvAnalysisId` keeps the reviewed CV with the new profile (SOW-0023).
+export const createProfile = (profile: ProfileInput, cvAnalysisId?: string): Promise<Profile> =>
+  request('POST', '/api/profiles', cvAnalysisId ? { ...profile, cv_analysis_id: cvAnalysisId } : profile);
 export const getProfile = (profileId: string): Promise<Profile> => request('GET', scoped(profileId, ''));
 export const getProfileBySlug = (slug: string): Promise<Profile> =>
   request('GET', `/api/profiles/by-slug/${enc(slug)}`);
@@ -126,6 +129,26 @@ export const updateProfile = (profileId: string, profile: ProfileInput): Promise
   request('PUT', scoped(profileId, ''), profile);
 // Removes the profile with its jobs, applications, proposals, runs and run logs.
 export const deleteProfile = (profileId: string): Promise<void> => request('DELETE', scoped(profileId, ''));
+export const removeProfileCv = (profileId: string): Promise<Profile> => request('DELETE', scoped(profileId, '/cv'));
+// A plain link: the browser downloads the file under its original name.
+export const profileCvUrl = (profileId: string): string => scoped(profileId, '/cv');
+
+// One CV analysis at a time (SOW-0023); null when there is none.
+export const getCvAnalysis = (): Promise<CvAnalysis | null> => request('GET', '/api/cv-analysis');
+export const retryCvAnalysis = (): Promise<CvAnalysis> => request('POST', '/api/cv-analysis/retry');
+// Cancel and Discard: the server stops the agent and deletes the analysis with its files.
+export const discardCvAnalysis = (): Promise<void> => request('DELETE', '/api/cv-analysis');
+
+// The file goes as raw bytes, not JSON or a form post; the server reads its type from the content.
+export async function uploadCv(file: File): Promise<CvAnalysis> {
+  const res = await fetch('/api/cv-analysis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+    body: file,
+  });
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return (await res.json()) as CvAnalysis;
+}
 
 export const getSettings = (): Promise<Settings> => request('GET', '/api/settings');
 export const patchSettings = (patch: Partial<Settings>): Promise<Settings> =>

@@ -13,8 +13,8 @@ The app never calls a model; it spawns the user's own CLI (Claude Code, Codex, o
 Use this skill when:
 
 - editing `src/server/agents/cli-adapter.ts`, `presets.ts`, `extract-json.ts`, `index.ts`;
-- editing `prompts/discover_jobs.md`, `prompts/sync_mail.md`, or `src/server/tasks/schemas.ts`;
-- editing `src/server/services/discovery.ts`, `src/server/services/mail-sync.ts`, `src/server/mail/agent-source.ts`;
+- editing `prompts/discover_jobs.md`, `prompts/sync_mail.md`, `prompts/analyse_cv.md`, or `src/server/tasks/schemas.ts`;
+- editing `src/server/services/discovery.ts`, `src/server/services/mail-sync.ts`, `src/server/mail/agent-source.ts`, `src/server/cv/*`;
 - claiming that a preset works on a developer machine.
 
 Do not use this skill for:
@@ -48,6 +48,8 @@ Do not use this skill for:
 - The Run page's readable log (`src/ui/log-format.ts`, SOW-0013) depends on the Claude stream-json and Codex `--json` event shapes. When a preset's output format or a CLI version changes, update the formatter and `test/ui/log-format.test.ts` with it; unknown event types are hidden, so drift shows up as missing rows, not errors.
 - The output schema handed to agents (`outputJsonSchema` in `src/server/tasks/schemas.ts`) must stay in the strict shape: no `$schema` pointer, no `default` keywords, `additionalProperties: false` on every object, every property in `required`. Claude Code's validator rejects zod's draft-2020-12 `$schema` pointer, and the OpenAI API behind Codex rejects anything non-strict with HTTP 400 `invalid_json_schema`. `test/server/tasks/schemas.test.ts` pins this. Evidence: SOW-0007.
 - Claude Code's Gmail path depends on the claude.ai Gmail connector tools named in `DEFAULT_SETTINGS.allowed_tools_sync`. Smoke-run status (2026-11-06, claude 2.1.319, codex 0.163.0): both presets accept both task schemas and return structured output for a trivial prompt. A full discovery or sync run with real web search or Gmail has NOT been recorded yet; do not claim that without one. Evidence: SOW-0007 Validation.
+
+- CV analysis (SOW-0023) is a third task kind, `analyse_cv` (`AgentTaskKind = RunKind | 'analyse_cv'`; the adapter factory, `renderPrompt` and `outputJsonSchema` take it). It runs from `src/server/cv/service.ts`, outside the run queue, with a fixed 5-minute timeout and its own abort controller; shutdown aborts it and leaves the row `running` for the next start to mark `interrupted`, and after `stop()` the service refuses `start()` (also one still extracting text) and `retry()`, so no agent is spawned during shutdown. pdf.js documents from `unpdf` are released with `pdf.loadingTask.destroy()`; the proxy has no `destroy()` at runtime although its type declares one. `cvAdapterConfig()` in `presets.ts`: Claude gets the isolation settings, `--disallowedTools Agent,Task`, `--tools ""` and `--strict-mcp-config`, and no `--permission-mode`/`--allowedTools`; Codex gets `--sandbox read-only`, `-c web_search="disabled"` (its default is a cached search, not off; probed on 0.163.0 2026-11-07: valid draft in 11.9 s), `--disable multi_agent` and `-` as the prompt with `promptVia: 'stdin'` (a CV prompt in argv would hit Linux's 128 KiB per-argument limit or Windows' 32,767-character command line; `codex exec --help` 0.163.0: "If not provided as an argument (or if `-` is used), instructions are read from stdin"); both get selection `{ model: '', effort: '' }` (agent defaults). Custom commands run as configured. Discovery and sync argv are pinned unchanged by tests. Real probe 2026-11-07 with an invented CV: Claude Code 2.1.319 returned a valid draft in 7.3 s (about $0.05, 4,740 input tokens); codex-cli 0.163.0 in 13.5 s. The CV text reaches the agent only in the prompt (the app extracts it with `unpdf`/`mammoth`); the run folder `cv-analyses/<id>/work/` holding `prompt.md` is deleted when the agent ends. Agent output is bounded by `toProfileDraft()` (`src/server/cv/draft.ts`).
 
 ## Best Practices
 
