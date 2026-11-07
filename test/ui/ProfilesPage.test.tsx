@@ -30,6 +30,7 @@ function profile(id: string, name: string, counts = { jobs: 0, applications: 0, 
     cv: null,
     created_at: '2026-11-01T00:00:00.000Z',
     counts,
+    cv_analysis_status: null,
   };
 }
 
@@ -37,6 +38,7 @@ const ALPHA = profile('pa', 'Alpha roles', { jobs: 12, applications: 1, runs: 7 
 
 const READY: CvAnalysis = {
   id: 'cva1',
+  profile_id: null,
   status: 'succeeded',
   file_name: 'Alex CV.pdf',
   file_type: 'pdf',
@@ -153,6 +155,19 @@ describe('ProfilesPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Delete Alpha roles' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete Alpha roles?' });
     expect(dialog).toHaveTextContent('This deletes the profile, its CV and its 12 jobs, 1 application and 7 runs,');
+  });
+
+  it("points at a profile's own CV analysis from its row, and names it in the delete confirmation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listProfiles).mockResolvedValue([{ ...ALPHA, cv_analysis_status: 'succeeded' }]);
+    renderAt('/');
+    const badge = await screen.findByRole('link', { name: 'CV changes to review' });
+    expect(badge).toHaveAttribute('href', '/profiles/alpha-roles/profile');
+    // The new-profile card above the list is only for an analysis without a profile.
+    expect(client.getCvAnalysis).toHaveBeenCalledWith(undefined);
+    await user.click(screen.getByRole('button', { name: 'Delete Alpha roles' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete Alpha roles?' });
+    expect(dialog).toHaveTextContent('This deletes the profile, its CV analysis and its 12 jobs');
   });
 
   it('shows a ready CV analysis above the list and opens its review', async () => {

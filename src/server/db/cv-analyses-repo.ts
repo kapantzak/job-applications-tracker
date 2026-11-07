@@ -4,6 +4,7 @@ import type { Db } from './connection.js';
 
 interface CvAnalysisRow {
   id: string;
+  profile_id: string | null;
   status: CvAnalysisStatus;
   file_name: string;
   file_type: CvFileType;
@@ -22,6 +23,7 @@ export type CvAnalysisPatch = Partial<Pick<CvAnalysis, 'status' | 'started_at' |
 function fromRow(row: CvAnalysisRow): CvAnalysis {
   return {
     id: row.id,
+    profile_id: row.profile_id,
     status: row.status,
     file_name: row.file_name,
     file_type: row.file_type,
@@ -33,15 +35,19 @@ function fromRow(row: CvAnalysisRow): CvAnalysis {
   };
 }
 
-// Rows for the one CV analysis that may exist at a time (SOW-0023, decision 24). The service enforces
-// "one"; the table itself allows more so a crash between two writes never blocks a new upload.
+// Rows for the CV analyses: one per owner, a profile or none for a new profile (SOW-0024, decision 30).
+// The service enforces "one"; the table itself allows more so a crash between two writes never blocks
+// a new upload, and the latest row of an owner is its analysis.
 export function createCvAnalysesRepo(db: Db) {
   const insert = db.prepare(
-    `INSERT INTO cv_analyses (id, status, file_name, file_type, started_at, created_at)
-     VALUES (@id, 'running', @file_name, @file_type, @now, @now)`,
+    `INSERT INTO cv_analyses (id, profile_id, status, file_name, file_type, started_at, created_at)
+     VALUES (@id, @profile_id, 'running', @file_name, @file_type, @now, @now)`,
   );
   const selectById = db.prepare('SELECT * FROM cv_analyses WHERE id = ?');
-  const selectLatest = db.prepare('SELECT * FROM cv_analyses ORDER BY created_at DESC, rowid DESC LIMIT 1');
+  // `IS` matches NULL too, so one statement serves both owners.
+  const selectLatest = db.prepare(
+    'SELECT * FROM cv_analyses WHERE profile_id IS ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
+  );
   const selectIds = db.prepare('SELECT id FROM cv_analyses');
   const deleteById = db.prepare('DELETE FROM cv_analyses WHERE id = ?');
   const interruptRunning = db.prepare(
@@ -57,12 +63,15 @@ export function createCvAnalysesRepo(db: Db) {
     return row ? fromRow(row) : null;
   }
 
-  function current(): CvAnalysis | null {
-    const row = selectLatest.get() as CvAnalysisRow | undefined;
+  function current(profileId: string | null): CvAnalysis | null {
+    const row = selectLatest.get(profileId) as CvAnalysisRow | undefined;
     return row ? fromRow(row) : null;
   }
 
-  function create(input: { file_name: string; file_type: CvFileType }, id: string = randomUUID()): CvAnalysis {
+  function create(
+    input: { file_name: string; file_type: CvFileType; profile_id: string | null },
+    id: string = randomUUID(),
+  ): CvAnalysis {
     insert.run({ ...input, id, now: new Date().toISOString() });
     return get(id) as CvAnalysis;
   }

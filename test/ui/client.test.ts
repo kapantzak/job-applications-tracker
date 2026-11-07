@@ -9,7 +9,11 @@ import {
   startDiscovery,
   createProfile,
   deleteProfile,
+  discardCvAnalysis,
+  getCvAnalysis,
+  retryCvAnalysis,
   updateProfile,
+  uploadCv,
   subscribeRunEvents,
 } from '../../src/ui/api/client.js';
 
@@ -73,6 +77,32 @@ describe('api client', () => {
       ['/api/profiles', 'POST'],
       ['/api/profiles/p1', 'DELETE'],
     ]);
+  });
+
+  it('sends the CV analysis calls to the new-profile routes, or to the profile with an id (SOW-0024)', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(null));
+    await getCvAnalysis();
+    await getCvAnalysis('p 1');
+    await retryCvAnalysis('p 1');
+    await discardCvAnalysis('p 1');
+    await uploadCv(new File(['x'], 'CV é.pdf'), 'p 1');
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['/api/cv-analysis', 'GET'],
+      ['/api/profiles/p%201/cv-analysis', 'GET'],
+      ['/api/profiles/p%201/cv-analysis/retry', 'POST'],
+      ['/api/profiles/p%201/cv-analysis', 'DELETE'],
+      ['/api/profiles/p%201/cv-analysis', 'POST'],
+    ]);
+    expect(fetchMock.mock.calls[4]![1]!.headers).toEqual({
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': 'CV%20%C3%A9.pdf',
+    });
+  });
+
+  it('updateProfile sends the applied CV analysis with the fields', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ id: 'p1' }));
+    await updateProfile('p1', PROFILE_INPUT, 'cva1');
+    expect(fetchMock.mock.calls[0]![1]!.body).toBe(JSON.stringify({ ...PROFILE_INPUT, cv_analysis_id: 'cva1' }));
   });
 
   it('getModelCatalogs calls GET /api/setup/models', async () => {

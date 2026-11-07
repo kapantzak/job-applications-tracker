@@ -6,9 +6,10 @@ export const CV_POLL_MS = 1000;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-// The one CV analysis (SOW-0023), re-read every second while the agent runs. The analysis lives on the
-// server, so leaving the page loses nothing (A3).
-export function useCvAnalysis() {
+// The CV analysis for a new profile (SOW-0023), or a profile's own with `profileId` (SOW-0024), re-read
+// every second while the agent runs. The analysis lives on the server, so leaving the page loses nothing
+// (A3).
+export function useCvAnalysis(profileId?: string) {
   const [state, setState] = useState<{ analysis: CvAnalysis | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -19,14 +20,14 @@ export function useCvAnalysis() {
   const refresh = useCallback(async () => {
     const asked = generation.current;
     try {
-      const analysis = await getCvAnalysis();
+      const analysis = await getCvAnalysis(profileId);
       if (!mounted.current || asked !== generation.current) return;
       setState({ analysis });
       setError(null);
     } catch (e) {
       if (mounted.current && asked === generation.current) setError(message(e));
     }
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
     mounted.current = true;

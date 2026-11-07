@@ -11,6 +11,7 @@ import {
 } from '../domain/profile-name.js';
 import type { CvFileType, Profile } from '../domain/types.js';
 import { createApplicationsRouter } from './applications.js';
+import { createCvAnalysisRouter } from './cv-analysis.js';
 import { HttpError, readJson } from './errors.js';
 import { createJobsRouter } from './jobs.js';
 import { createProposalsRouter } from './proposals.js';
@@ -33,9 +34,9 @@ const profileFields = {
   notes: z.string(),
 };
 
-const ProfileBody = z.object(profileFields).strict();
-// Create profile may take the CV analysis it was reviewed from (SOW-0023); edits never carry one.
-const CreateProfileBody = z.object({ ...profileFields, cv_analysis_id: z.string().min(1).optional() }).strict();
+// Create profile may take the new-profile CV analysis it was reviewed from (SOW-0023); Save may take the
+// profile's own analysis whose suggestions were applied, which also replaces its CV (SOW-0024).
+const ProfileBody = z.object({ ...profileFields, cv_analysis_id: z.string().min(1).optional() }).strict();
 
 const CV_CONTENT_TYPES: Record<CvFileType, string> = {
   pdf: 'application/pdf',
@@ -71,7 +72,7 @@ export function createProfilesRouter(deps: AppDeps): Hono {
   router.get('/', (c) => c.json(deps.profilesRepo.list()));
 
   router.post('/', async (c) => {
-    const { cv_analysis_id: analysisId, ...input } = await readJson(c, CreateProfileBody);
+    const { cv_analysis_id: analysisId, ...input } = await readJson(c, ProfileBody);
     requireFreeName(input.name);
     const profile = analysisId
       ? deps.cvService.createProfile(input, analysisId, randomUUID())
@@ -100,18 +101,22 @@ export function createProfilesRouter(deps: AppDeps): Hono {
 
   scoped.put('/:pid', async (c) => {
     const { id } = c.get('profile');
-    const input: ProfileInput = await readJson(c, ProfileBody);
+    const { cv_analysis_id: analysisId, ...input } = await readJson(c, ProfileBody);
     requireFreeName(input.name, id);
-    return c.json(deps.profilesRepo.update(id, input));
+    return c.json(
+      analysisId ? deps.cvService.applyToProfile(input, analysisId, id) : deps.profilesRepo.update(id, input),
+    );
   });
 
   // Refused while a run is queued or running, so no handler writes into a deleted profile (SOW-0014).
   // The check and the delete run in the same tick, so the queue cannot start a run in between.
-  scoped.delete('/:pid', (c) => {
+  scoped.delete('/:pid', async (c) => {
     const { id } = c.get('profile');
     if (deps.runsRepo.hasActiveForProfile(id)) {
       throw new HttpError(409, 'This profile has a queued or running run; cancel it first');
     }
+    // Read before the rows go: the transaction below deletes the analysis row with the profile.
+    const analysis = deps.cvService.current(id);
     const runIds = deps.profilesRepo.remove(id);
     try {
       deps.logStore.remove(runIds);
@@ -119,12 +124,9 @@ export function createProfilesRouter(deps: AppDeps): Hono {
       // The rows are gone; a leftover log file is harmless and Purge run logs removes it later.
       console.error(`profile ${id}: failed to remove run logs: ${err instanceof Error ? err.message : err}`);
     }
-    try {
-      deps.cvService.removeProfileFiles(id);
-    } catch (err) {
-      // The next start-up sweeps a CV folder whose profile is gone.
-      console.error(`profile ${id}: failed to remove the CV: ${err instanceof Error ? err.message : err}`);
-    }
+    // After the rows are gone, so nothing can start in between; a folder it cannot remove is logged and
+    // swept at the next start-up.
+    await deps.cvService.removeProfileFiles(id, analysis?.id ?? null);
     return c.body(null, 204);
   });
 
@@ -151,6 +153,10 @@ export function createProfilesRouter(deps: AppDeps): Hono {
     return c.json(deps.cvService.removeProfileCv(id));
   });
 
+  scoped.route(
+    '/:pid/cv-analysis',
+    createCvAnalysisRouter(deps, (c) => c.get('profile').id),
+  );
   scoped.route('/:pid/jobs', createJobsRouter(deps));
   scoped.route('/:pid/applications', createApplicationsRouter(deps));
   scoped.route('/:pid/proposals', createProposalsRouter(deps));

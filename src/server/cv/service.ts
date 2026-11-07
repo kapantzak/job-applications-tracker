@@ -3,10 +3,17 @@ import { join } from 'node:path';
 import type { AgentAdapter } from '../agents/index.js';
 import type { Db } from '../db/connection.js';
 import type { CvAnalysesRepo } from '../db/cv-analyses-repo.js';
-import type { ProfileInput, ProfilesRepo, StoredCv } from '../db/profiles-repo.js';
+import { ProfileNotFoundError, type ProfileInput, type ProfilesRepo, type StoredCv } from '../db/profiles-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import { SENIORITY_LEVELS } from '../domain/seniority.js';
-import type { AgentTaskKind, CvAnalysis, CvFileType, Profile, Settings } from '../domain/types.js';
+import {
+  CV_FILE_TYPES,
+  type AgentTaskKind,
+  type CvAnalysis,
+  type CvFileType,
+  type Profile,
+  type Settings,
+} from '../domain/types.js';
 import { renderPrompt } from '../tasks/prompts.js';
 import { AnalyseCvOutput, outputJsonSchema } from '../tasks/schemas.js';
 import { toProfileDraft } from './draft.js';
@@ -23,6 +30,12 @@ const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const originalName = (type: CvFileType) => `cv.${type}`;
 const TEXT_NAME = 'cv-text.txt';
 const WORK_DIR = 'work';
+// A replacing CV waits under this suffix in the profile folder until the database points at it (SOW-0024).
+const NEW_SUFFIX = '.new';
+
+// Who an analysis is for: a profile id, or null for a profile that does not exist yet (decision 30).
+export type CvOwner = string | null;
+const ownerKey = (owner: CvOwner) => owner ?? '';
 
 // The request is valid but the analysis is in the wrong state for it; the API answers 409.
 export class CvAnalysisStateError extends Error {
@@ -61,7 +74,8 @@ function safeId(id: string): string {
   return id;
 }
 
-// One CV analysis at a time, outside the run queue (decisions 3 and 24). Rows and files survive
+// CV analyses outside the run queue (SOW-0023, decision 3): one per profile plus one for a new profile
+// (SOW-0024, decision 30), each with its own agent, side by side (decision 37). Rows and files survive
 // restarts (A2); an agent never does, so a restart leaves the analysis interrupted (decision 26).
 export function createCvService(deps: CvServiceDeps) {
   const { db, dataDir, cvAnalysesRepo, profilesRepo, settingsRepo, adapterFactory } = deps;
@@ -69,9 +83,11 @@ export function createCvService(deps: CvServiceDeps) {
   const stopTimeoutMs = deps.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
   const analysesRoot = join(dataDir, 'cv-analyses');
   const profilesRoot = join(dataDir, 'profiles');
-  let active: ActiveAnalysis | null = null;
-  // Covers the await on text extraction, so two uploads at once cannot both pass the "none yet" check.
-  let starting = false;
+  // Running agents by analysis id.
+  const active = new Map<string, ActiveAnalysis>();
+  // Owners with an upload still extracting text, so two uploads at once cannot both pass the "none yet"
+  // check.
+  const starting = new Set<string>();
   // Set by shutdown: an upload still extracting text, or a late retry, must not spawn an agent the
   // process would leave behind.
   let stopped = false;
@@ -79,9 +95,13 @@ export function createCvService(deps: CvServiceDeps) {
   const analysisDir = (id: string) => join(analysesRoot, safeId(id));
   const profileDir = (id: string) => join(profilesRoot, safeId(id));
 
-  function requireNoAnalysis(): void {
-    if (starting || cvAnalysesRepo.current()) {
-      throw new CvAnalysisStateError('A CV analysis already exists. Discard it before uploading another CV.');
+  function requireNoAnalysis(owner: CvOwner): void {
+    if (starting.has(ownerKey(owner)) || cvAnalysesRepo.current(owner)) {
+      throw new CvAnalysisStateError(
+        owner === null
+          ? 'A CV analysis already exists. Discard it before uploading another CV.'
+          : 'This profile already has a CV analysis. Discard it before uploading another CV.',
+      );
     }
   }
 
@@ -96,9 +116,9 @@ export function createCvService(deps: CvServiceDeps) {
       ignoreResult: false,
       settled: Promise.resolve(),
     };
-    active = entry;
+    active.set(id, entry);
     entry.settled = analyse(entry, text).finally(() => {
-      if (active === entry) active = null;
+      if (active.get(id) === entry) active.delete(id);
     });
   }
 
@@ -127,8 +147,10 @@ export function createCvService(deps: CvServiceDeps) {
     } catch (err) {
       outcome = { status: 'failed', error: messageOf(err) };
     } finally {
-      // The prompt file holds the CV text; it is never kept (decision 12).
-      rmSync(workDir, { recursive: true, force: true });
+      // The prompt file holds the CV text; it is never kept (decision 12). Never throws: nothing awaits a
+      // running analysis, so a rejection here would end the process; a folder left behind (Windows keeps
+      // a dead agent's working folder busy for a moment) goes with its analysis or at start-up.
+      removeQuietly(workDir);
     }
     if (entry.ignoreResult) return;
     try {
@@ -138,19 +160,22 @@ export function createCvService(deps: CvServiceDeps) {
     }
   }
 
-  function current(): CvAnalysis | null {
-    return cvAnalysesRepo.current();
+  function current(owner: CvOwner = null): CvAnalysis | null {
+    return cvAnalysesRepo.current(owner);
   }
 
-  async function start(bytes: Uint8Array, fileName: string): Promise<CvAnalysis> {
+  async function start(bytes: Uint8Array, fileName: string, owner: CvOwner = null): Promise<CvAnalysis> {
     requireRunning();
-    requireNoAnalysis();
-    starting = true;
+    requireNoAnalysis(owner);
+    const key = ownerKey(owner);
+    starting.add(key);
     try {
       const type = detectCvType(bytes, fileName);
       const text = await extractCvText(bytes, type);
       requireRunning();
-      const analysis = cvAnalysesRepo.create({ file_name: fileName, file_type: type });
+      // The profile may have been deleted while the text was read.
+      if (owner !== null && !profilesRepo.get(owner)) throw new ProfileNotFoundError(owner);
+      const analysis = cvAnalysesRepo.create({ file_name: fileName, file_type: type, profile_id: owner });
       try {
         const dir = analysisDir(analysis.id);
         mkdirSync(dir, { recursive: true });
@@ -164,14 +189,14 @@ export function createCvService(deps: CvServiceDeps) {
       launch(analysis.id, text);
       return analysis;
     } finally {
-      starting = false;
+      starting.delete(key);
     }
   }
 
   // Analyse again after a failure or a restart, from the kept text (decision 26).
-  function retry(): CvAnalysis {
+  function retry(owner: CvOwner = null): CvAnalysis {
     requireRunning();
-    const analysis = cvAnalysesRepo.current();
+    const analysis = cvAnalysesRepo.current(owner);
     if (!analysis) throw new CvAnalysisStateError('There is no CV analysis to run again.');
     if (analysis.status !== 'failed' && analysis.status !== 'interrupted') {
       throw new CvAnalysisStateError('Only a failed or interrupted CV analysis can be run again.');
@@ -194,18 +219,24 @@ export function createCvService(deps: CvServiceDeps) {
   }
 
   // Cancel and Discard: stops a running agent, then deletes the row and every file (decision 13).
-  async function discard(): Promise<boolean> {
-    const analysis = cvAnalysesRepo.current();
+  async function discard(owner: CvOwner = null): Promise<boolean> {
+    const analysis = cvAnalysesRepo.current(owner);
     if (!analysis) return false;
-    const entry = active?.id === analysis.id ? active : null;
-    if (entry) {
-      entry.ignoreResult = true;
-      entry.controller.abort();
-      await entry.settled;
-    }
+    const entry = halt(analysis.id);
+    if (entry) await entry.settled;
     cvAnalysesRepo.remove(analysis.id);
     rmSync(analysisDir(analysis.id), { recursive: true, force: true });
     return true;
+  }
+
+  // Stops an analysis's agent, if one runs, so its late result is never written.
+  function halt(analysisId: string): ActiveAnalysis | null {
+    const entry = active.get(analysisId) ?? null;
+    if (entry) {
+      entry.ignoreResult = true;
+      entry.controller.abort();
+    }
+    return entry;
   }
 
   // Create profile from a ready analysis: the files move to the profile's folder first and move back
@@ -213,6 +244,9 @@ export function createCvService(deps: CvServiceDeps) {
   function createProfile(input: ProfileInput, analysisId: string, profileId: string): Profile {
     const analysis = cvAnalysesRepo.get(analysisId);
     if (!analysis) throw new CvAnalysisStateError('This CV analysis no longer exists.');
+    if (analysis.profile_id !== null) {
+      throw new CvAnalysisStateError('This CV analysis suggests changes to an existing profile.');
+    }
     if (analysis.status !== 'succeeded') throw new CvAnalysisStateError('This CV analysis has not finished.');
     const from = analysisDir(analysis.id);
     const to = profileDir(profileId);
@@ -253,6 +287,126 @@ export function createCvService(deps: CvServiceDeps) {
     })();
   }
 
+  // Save of an applied review (SOW-0024, decisions 16 and 19): the new CV replaces the old one only
+  // here. The old files stay untouched until the database points at the new ones: the new files wait
+  // beside them as `*.new`, one transaction writes the profile, its CV columns and deletes the
+  // analysis, and only then are the `*.new` files renamed over the old ones.
+  function applyToProfile(input: ProfileInput, analysisId: string, profileId: string): Profile {
+    const analysis = cvAnalysesRepo.get(analysisId);
+    // Another profile's analysis reads as missing, as other profile-owned ids do.
+    if (!analysis || analysis.profile_id !== profileId) {
+      throw new CvAnalysisStateError('This CV analysis no longer exists.');
+    }
+    if (analysis.status !== 'succeeded') throw new CvAnalysisStateError('This CV analysis has not finished.');
+    const from = analysisDir(analysis.id);
+    const to = profileDir(profileId);
+    const names = [originalName(analysis.file_type), TEXT_NAME];
+    if (!names.every((name) => existsSync(join(from, name)))) {
+      throw new CvAnalysisStateError('The CV of this analysis is missing. Discard it and upload the CV again.');
+    }
+    // `*.new` files here belong to an earlier Save whose renames failed; staging over them would lose
+    // that CV, so they are put in place first.
+    const stored = profilesRepo.storedCv(profileId);
+    if (stored && pendingFiles(profileId).length > 0) finishSwap(profileId, stored.file_type);
+    if (pendingFiles(profileId).length > 0) {
+      throw new CvAnalysisStateError("The profile's current CV could not be put in place. Restart the app and try again.");
+    }
+    const moved: string[] = [];
+    const moveBack = () => {
+      for (const name of moved) renameSync(join(to, name + NEW_SUFFIX), join(from, name));
+    };
+    const cv: StoredCv = {
+      file_name: analysis.file_name,
+      file_type: analysis.file_type,
+      added_at: new Date().toISOString(),
+    };
+    let profile: Profile;
+    try {
+      mkdirSync(to, { recursive: true });
+      for (const name of names) {
+        renameSync(join(from, name), join(to, name + NEW_SUFFIX));
+        moved.push(name);
+      }
+      profile = db.transaction(() => {
+        profilesRepo.update(profileId, input);
+        const updated = profilesRepo.setCv(profileId, cv);
+        cvAnalysesRepo.remove(analysis.id);
+        return updated;
+      })();
+    } catch (err) {
+      try {
+        moveBack();
+      } catch (backErr) {
+        // `*.new` files in a profile folder must mean "committed or being committed"; leftovers would
+        // later be taken for a committed CV. The upload is lost and its analysis reports missing files.
+        console.error(`cv: could not return the uploaded CV of profile ${profileId}: ${messageOf(backErr)}`);
+        for (const name of moved) removeQuietly(join(to, name + NEW_SUFFIX));
+      }
+      throw err;
+    }
+    finishSwap(profileId, analysis.file_type);
+    removeQuietly(from);
+    return profile;
+  }
+
+  // Puts the committed `*.new` files in place and deletes an old CV of another type. A failure is
+  // logged and finished by the next start-up; the database already names the new CV.
+  function finishSwap(profileId: string, type: CvFileType): void {
+    const dir = profileDir(profileId);
+    try {
+      for (const name of [originalName(type), TEXT_NAME]) {
+        if (existsSync(join(dir, name + NEW_SUFFIX))) renameSync(join(dir, name + NEW_SUFFIX), join(dir, name));
+      }
+      for (const other of CV_FILE_TYPES) {
+        if (other !== type) {
+          rmSync(join(dir, originalName(other)), { force: true });
+          rmSync(join(dir, originalName(other) + NEW_SUFFIX), { force: true });
+        }
+      }
+    } catch (err) {
+      console.error(`cv: could not put the new CV of profile ${profileId} in place: ${messageOf(err)}`);
+    }
+  }
+
+  const pendingFiles = (profileId: string): string[] => {
+    try {
+      return readdirSync(profileDir(profileId)).filter((name) => name.endsWith(NEW_SUFFIX));
+    } catch {
+      return [];
+    }
+  };
+
+  // After a crash during Save: `*.new` files whose analysis still exists (and lacks its files) were never
+  // committed and go back to it; otherwise the commit happened and the swap is finished, which also
+  // deletes an old CV of another type that a crash right after the renames left behind. Returns false
+  // when an unsaved CV could not be returned, so the start-up sweep keeps its folder.
+  function recoverSwap(profileId: string): boolean {
+    const dir = profileDir(profileId);
+    const pending = pendingFiles(profileId);
+    const analysis = cvAnalysesRepo.current(profileId);
+    const staged = analysis ? [originalName(analysis.file_type), TEXT_NAME].map((n) => n + NEW_SUFFIX) : [];
+    if (
+      pending.length > 0 &&
+      pending.every((name) => staged.includes(name)) &&
+      analysis?.status === 'succeeded' &&
+      !existsSync(join(analysisDir(analysis.id), originalName(analysis.file_type)))
+    ) {
+      try {
+        mkdirSync(analysisDir(analysis.id), { recursive: true });
+        for (const name of pending) {
+          renameSync(join(dir, name), join(analysisDir(analysis.id), name.slice(0, -NEW_SUFFIX.length)));
+        }
+      } catch (err) {
+        console.error(`cv: could not return an unsaved CV of profile ${profileId}: ${messageOf(err)}`);
+        return false;
+      }
+    }
+    const stored = profilesRepo.storedCv(profileId);
+    if (stored) finishSwap(profileId, stored.file_type);
+    else for (const name of pendingFiles(profileId)) removeQuietly(join(dir, name));
+    return true;
+  }
+
   function profileCvPath(profileId: string): { path: string; cv: StoredCv } | null {
     const cv = profilesRepo.storedCv(profileId);
     return cv ? { path: join(profileDir(profileId), originalName(cv.file_type)), cv } : null;
@@ -266,8 +420,26 @@ export function createCvService(deps: CvServiceDeps) {
     return profile;
   }
 
-  function removeProfileFiles(profileId: string): void {
-    rmSync(profileDir(profileId), { recursive: true, force: true });
+  // Profile delete (SOW-0024, C3): the caller deletes the rows, including the analysis row, in one
+  // transaction first; this stops the profile's agent, waits for it (Windows cannot delete a folder a
+  // live process works in) and deletes each folder on its own, so one failure leaves only that folder
+  // for the start-up sweep.
+  async function removeProfileFiles(profileId: string, analysisId: string | null): Promise<void> {
+    if (analysisId) {
+      const entry = halt(analysisId);
+      if (entry) await settledWithin(entry);
+      removeQuietly(analysisDir(analysisId));
+    }
+    removeQuietly(profileDir(profileId));
+  }
+
+  async function settledWithin(...entries: ActiveAnalysis[]): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.all(entries.map((e) => e.settled)),
+      new Promise<void>((r) => (timer = setTimeout(r, stopTimeoutMs))),
+    ]);
+    clearTimeout(timer);
   }
 
   // Clean-up must never keep the app from starting: a folder it cannot remove is logged and left.
@@ -302,19 +474,17 @@ export function createCvService(deps: CvServiceDeps) {
     const analyses = new Set(cvAnalysesRepo.ids());
     sweep(analysesRoot, analyses);
     for (const id of analyses) removeQuietly(join(analysesRoot, id, WORK_DIR));
-    sweep(profilesRoot, new Set(profilesRepo.list().filter((p) => p.cv).map((p) => p.id)));
+    const profiles = profilesRepo.list();
+    const keep = new Set(profiles.filter((p) => p.cv).map((p) => p.id));
+    for (const profile of profiles) if (!recoverSwap(profile.id)) keep.add(profile.id);
+    sweep(profilesRoot, keep);
   }
 
   // Shutdown: the agent is killed and the row stays running, so the next start marks it interrupted.
   async function stop(): Promise<void> {
     stopped = true;
-    const entry = active;
-    if (!entry) return;
-    entry.ignoreResult = true;
-    entry.controller.abort();
-    let timer: NodeJS.Timeout | undefined;
-    await Promise.race([entry.settled, new Promise<void>((r) => (timer = setTimeout(r, stopTimeoutMs)))]);
-    clearTimeout(timer);
+    const entries = [...active.keys()].map((id) => halt(id)).filter((e): e is ActiveAnalysis => e !== null);
+    if (entries.length > 0) await settledWithin(...entries);
   }
 
   return {
@@ -323,6 +493,7 @@ export function createCvService(deps: CvServiceDeps) {
     retry,
     discard,
     createProfile,
+    applyToProfile,
     profileCvPath,
     removeProfileCv,
     removeProfileFiles,

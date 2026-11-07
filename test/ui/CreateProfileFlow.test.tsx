@@ -17,6 +17,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
 
 const RUNNING: CvAnalysis = {
   id: 'cva1',
+  profile_id: null,
   status: 'running',
   file_name: 'Alex CV.pdf',
   file_type: 'pdf',
@@ -95,7 +96,8 @@ describe('CreateProfileFlow: uploading', () => {
     expect(client.uploadCv).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Analyse CV' }));
-    expect(client.uploadCv).toHaveBeenCalledWith(file);
+    // No profile: the analysis becomes a new profile.
+    expect(client.uploadCv).toHaveBeenCalledWith(file, undefined);
     expect(await screen.findByRole('heading', { name: 'Analysing your CV' })).toBeInTheDocument();
     expect(screen.getByText('We are analysing your CV with AI. Your profile will be ready soon.')).toBeInTheDocument();
     expect(screen.getByRole('progressbar', { name: 'Analysing your CV' })).toBeInTheDocument();

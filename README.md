@@ -33,7 +33,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 - The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it.
 - The same job posting can show up in more than one profile.
 - Gmail sync runs per profile: it only looks at that profile's open applications. A scheduled sync runs once for each profile that has open applications.
-- Deleting a profile (Delete on its card, then confirm) removes the profile with its CV and all its jobs, applications, proposals, status history and run logs. It cannot be undone. While one of its runs is queued or running, cancel the run first.
+- Deleting a profile (Delete on its card, then confirm) removes the profile with its CV, its CV analysis and all its jobs, applications, proposals, status history and run logs. It cannot be undone. While one of its runs is queued or running, cancel the run first.
 - Seniority is a set of levels you can toggle (Intern, Junior, Mid-level, Senior, Staff, Principal, Lead, Manager, Director, Executive), plus an Other box for anything else. It is saved as text such as `Senior, Staff`; a value typed before this existed shows up in Other unchanged.
 - Upgrading from a version with a single profile keeps your data: the existing profile becomes your first profile, named after its first target role (characters other than letters, numbers and spaces are replaced by spaces).
 
@@ -44,9 +44,21 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 - The app reads the text out of the file itself and sends only that text to your agent, which uses its own default model and effort. Claude Code gets no tools for this task (no web search, no files, no MCP connectors). Codex runs with web search off and its read-only sandbox, so it can still read files on your computer if it decides to; a custom command runs as you configured it. A scanned PDF has no text to read: fill in the form by hand instead.
 - While the agent works, a progress bar shows how long it has been running. You can leave the page: the analysis keeps going and its card waits on the Profiles screen, the first-run screen and New profile. It stops after 5 minutes.
 - When it is ready, click Review and create: the profile form opens filled with a suggested name, target roles, locations, remote preference, seniority, keywords and a short summary of your experience in Notes. Excluded companies stay empty. Nothing is saved until you click Create profile.
-- One CV analysis exists at a time. To analyse another CV, Discard the current one first. Cancel stops a running analysis and deletes the uploaded file.
+- One CV analysis for a new profile exists at a time. To analyse another CV, Discard the current one first. Cancel stops a running analysis and deletes the uploaded file.
 - If the app stops while the agent is running, the analysis is shown as interrupted after the next start, with Analyse again and Discard. It never restarts on its own.
 - The CV stays with the profile you create from it. The Profile screen shows it with Download and Remove CV. Deleting the profile deletes its CV.
+
+## Replacing or adding a CV on a profile
+
+- On the Profile screen, Replace CV (or Add CV when the profile has none) opens the same upload card. Analyse CV runs your agent on the new file, as above.
+- Each profile has its own CV analysis, and analyses for different profiles (and for a new profile) run at the same time. A profile can have one at a time: Replace CV comes back once it is saved or discarded. The Profiles screen marks a profile whose analysis is running, ready or failed.
+- When it is ready, Review changes opens a side panel that compares the suggestions with what is in the form right now, including edits you have not saved:
+  - Replace CV lists only the fields that differ. Add CV lists only the fields the profile leaves empty.
+  - Only target roles, locations, remote, seniority and keywords are suggested. Name, excluded companies and notes are never changed.
+  - A field the CV says nothing about (no locations, no seniority, remote "Any") is never offered, so a suggestion cannot clear a field or loosen your search.
+  - Lists that hold the same items in another order or letter case count as the same.
+  - Each field offers Keep current or Use suggested; lists that would gain items also offer Add the new items, which keeps yours and appends the new ones. Replace CV starts every field on Keep current; Add CV starts on Use suggested.
+- Apply puts your choices into the form. Nothing is saved until you click Save, which stores the fields and replaces the profile's CV with the new file in one step. If you close the panel or leave the page, the profile and its old CV stay as they were, and the analysis waits on the Profile screen until you save it or discard it.
 - Every job search runs for its own profile only. The CV text is not sent to job searches; only the profile fields are, including the Notes summary.
 
 ## Cancelling a run
@@ -114,7 +126,7 @@ Sync needs a Gmail tool in your agent.
   - `data.db`: profiles, jobs, applications, proposals, settings.
   - `runs/`: one log per run, plus a folder per run with the prompt, schema and agent output files.
   - `profiles/<profile id>/`: the CV kept with a profile (`cv.pdf`, `cv.docx`, `cv.txt` or `cv.md`) and the text read from it (`cv-text.txt`).
-  - `cv-analyses/<id>/`: the uploaded CV and its text while an analysis is running or waiting for review. The agent's prompt, which holds the CV text, is deleted as soon as the agent finishes.
+  - `cv-analyses/<id>/`: the uploaded CV and its text while an analysis is running or waiting for review, for a new profile or for an existing one. The agent's prompt, which holds the CV text, is deleted as soon as the agent finishes.
 - Purge run logs from Settings. This deletes the run logs and the per-run prompt and output files of every run that is not queued or running.
 - Run logs can contain agent output, including mail snippets. Do not share them.
 - A CV is personal data and stays on your disk. Remove CV on the Profile screen, Discard on an analysis, and deleting a profile each delete the file and its text.

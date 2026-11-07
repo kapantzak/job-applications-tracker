@@ -76,7 +76,10 @@ export function createApp(deps: AppDeps): Hono {
   // Jobs, applications, proposals and runs live under their profile (SOW-0014).
   app.route('/api/profiles', createProfilesRouter(deps));
   app.route('/api/runs', createRunLogsRouter(deps));
-  app.route('/api/cv-analysis', createCvAnalysisRouter(deps));
+  app.route(
+    '/api/cv-analysis',
+    createCvAnalysisRouter(deps, () => null),
+  );
 
   if (deps.uiDir !== null) {
     const root = resolve(deps.uiDir);

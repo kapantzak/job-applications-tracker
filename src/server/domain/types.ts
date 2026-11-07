@@ -98,9 +98,12 @@ export interface CvProfileDraft {
   notes: string;
 }
 
-// At most one exists at a time (decision 24); it is deleted on Create profile or Discard.
+// One per profile plus one for a new profile (SOW-0024, decision 30); deleted on Create profile, on
+// Save of an applied review, on Discard and with its profile.
 export interface CvAnalysis {
   id: string;
+  // null: the analysis becomes a new profile; otherwise it suggests changes to this profile.
+  profile_id: string | null;
   status: CvAnalysisStatus;
   file_name: string;
   file_type: CvFileType;
@@ -120,6 +123,8 @@ export interface ProfileCounts {
 
 export interface ProfileListItem extends Profile {
   counts: ProfileCounts;
+  // The profile's own CV analysis, if any (SOW-0024), for the badge on the Profiles screen.
+  cv_analysis_status: CvAnalysisStatus | null;
 }
 
 export interface ModelOption {

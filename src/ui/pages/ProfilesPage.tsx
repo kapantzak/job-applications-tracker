@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRightIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { ProfileCounts, ProfileListItem } from '../../server/domain/types.js';
+import type { CvAnalysisStatus, ProfileCounts, ProfileListItem } from '../../server/domain/types.js';
 import { deleteProfile, listProfiles } from '../api/client.js';
 import { CreateProfileFlow, type CreateProfileLocationState } from '../components/CreateProfileFlow.js';
 import { CvAnalysisCard } from '../components/CvAnalysisCard.js';
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -30,6 +31,14 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 function countsText({ jobs, applications, runs }: ProfileCounts): string {
   return `${plural(jobs, 'job')}, ${plural(applications, 'application')} and ${plural(runs, 'run')}`;
 }
+
+// A profile's own CV analysis (SOW-0024) is handled on its Profile page; the list only points at it.
+const ANALYSIS_BADGES: Record<CvAnalysisStatus, { text: string; variant: 'default' | 'secondary' | 'outline' }> = {
+  running: { text: 'Analysing CV', variant: 'secondary' },
+  succeeded: { text: 'CV changes to review', variant: 'default' },
+  failed: { text: 'CV analysis failed', variant: 'outline' },
+  interrupted: { text: 'CV analysis interrupted', variant: 'outline' },
+};
 
 export function NewProfilePage() {
   return (
@@ -87,7 +96,8 @@ function DeleteProfileButton({ profile, onDeleted }: { profile: ProfileListItem;
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {profile.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes the profile{profile.cv ? ', its CV' : ''} and its {countsText(profile.counts)}, with their
+              This deletes the profile{profile.cv ? ', its CV' : ''}
+              {profile.cv_analysis_status ? ', its CV analysis' : ''} and its {countsText(profile.counts)}, with their
               proposals, status history and run logs. It cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -173,7 +183,14 @@ export function ProfilesPage() {
                   <DeleteProfileButton profile={p} onDeleted={() => load()} />
                 </CardAction>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">{countsText(p.counts)}</CardContent>
+              <CardContent className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                {countsText(p.counts)}
+                {p.cv_analysis_status && (
+                  <Badge asChild variant={ANALYSIS_BADGES[p.cv_analysis_status].variant}>
+                    <Link to={profilePath(p.slug, '/profile')}>{ANALYSIS_BADGES[p.cv_analysis_status].text}</Link>
+                  </Badge>
+                )}
+              </CardContent>
               <CardFooter className="mt-auto gap-2">
                 <Button asChild size="sm">
                   <Link to={profilePath(p.slug)} aria-label={`Open ${p.name}`}>
