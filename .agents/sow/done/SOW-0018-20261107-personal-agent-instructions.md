@@ -195,7 +195,7 @@ Lessons:
 
 Follow-up mapping:
 
-- SOW-0019 (sync MCP context): open in `pending/`. Its premise came from the 275k probe; the app's sync argv now starts at 27k tokens. Raised with the user to decide whether to keep or close it.
+- SOW-0019 (sync MCP context): its premise came from the 275k probe; the app's sync argv now starts at 27k tokens. Closed as rejected by user decision (2026-11-07).
 - SOW-0017: the Default Claude run above returned 2 dead Ashby links of 5, which weakens the evidence behind its decision 2A (Max worker only). Raised with the user.
 
 ## Outcome
@@ -208,8 +208,8 @@ Follow-up mapping:
 
 ## Followup
 
-- SOW-0019 (pending; premise to be confirmed by the user).
-- SOW-0017 (paused; decision 2A to be revisited by the user).
+- SOW-0019: closed as rejected (user decision, 2026-11-07).
+- SOW-0017: user kept decision 2A and added Default runs to its measurement (2026-11-07).
 
 ## Regression Log
 

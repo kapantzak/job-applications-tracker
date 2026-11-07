@@ -2,9 +2,9 @@
 
 ## Status
 
-Status: paused
+Status: in-progress
 
-Sub-state: decisions 1A, 2A, 3B recorded (2026-11-07). Paused before the measurement runs until SOW-0018 (personal CLAUDE.md loaded into agent runs) lands, so the before and after runs share one agent configuration.
+Sub-state: resumed 2026-11-07 after SOW-0018 landed; running the before measurements (decisions 1A, 2A as amended, 3B).
 
 ## Requirements
 
@@ -114,6 +114,8 @@ User decisions (2026-11-07):
 1. Measurement budget: A. Run the Max Ashby worker alone with the app's exact rendered prompt and flags; 2 invented profiles x 2 runs before the fix and the same after (8 runs, guessed at about $1 each).
 2. Fix: A. Max Ashby worker only: its scope text tells it to open each Ashby posting once before returning it and drop any that fails to load. The shared prompt template is unchanged.
 3. Delivery: B. Commit on the PR #11 branch (`multiple-levels-of-investigation-effort`).
+
+Amendment (2026-11-07, user decision 2A after new evidence): keep the Max-worker-only fix, and add Default discovery runs to the before measurement (2 profiles x 2 runs, about $1 each) to see whether Default needs the fix too. If it does, the fix choice goes back to the user.
 
 Ordering (assistant, within the approved plan): SOW-0018 runs first because it changes the Claude argv the measurements use.
 

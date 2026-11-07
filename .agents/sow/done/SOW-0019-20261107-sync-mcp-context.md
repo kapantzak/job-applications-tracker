@@ -2,9 +2,9 @@
 
 ## Status
 
-Status: open
+Status: closed
 
-Sub-state: created 2026-11-07 from SOW-0018 decision 4A; to start after SOW-0018 and SOW-0017.
+Sub-state: rejected 2026-11-07 (user decision 1A): its premise came from a probe that did not use the app's sync argv. No code change.
 
 ## Requirements
 
@@ -100,7 +100,9 @@ Open decisions:
 
 ## Implications And Decisions
 
-None yet.
+User decision (2026-11-07):
+
+1. A. Close as rejected with evidence. Measured with the app's exact sync argv (SOW-0018 Execution Log), a sync run started at 47,042 input tokens ($0.15) before SOW-0018 and 26,747 ($0.07) after, with MCP tools deferred. The 275,069-token figure in Facts came from a probe with `--tools WebFetch` and no `--allowedTools`, not from the app's argv. Loading only the Gmail connector would save part of the remaining 27k; judged not worth a SOW.
 
 ## Plan
 
@@ -111,22 +113,27 @@ See Implementation plan.
 ### 2026-11-07
 
 - Created from SOW-0018 decision 4A.
+- Closed the same day as rejected (decision 1A) after SOW-0018 measured the app's real sync argv.
 
 ## Validation
 
-Pending until the work is done.
+- No implementation; rejection evidence is in Implications And Decisions and SOW-0018.
 
 Sensitive data gate:
 
-- Checked at close.
+- The SOW holds flags, token counts and costs only.
+
+Artifact maintenance gate:
+
+- No artifact changes: nothing shipped. The measured sync context is recorded in the `project-agent-adapter` skill by SOW-0018.
 
 ## Outcome
 
-Pending.
+- Rejected; no change.
 
 ## Lessons Extracted
 
-Pending.
+- Measure with the app's exact argv before opening a cost SOW (recorded in `project-agent-adapter`).
 
 ## Followup
 
