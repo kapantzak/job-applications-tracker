@@ -62,6 +62,7 @@ function Confirm({ trigger, title, description, keepLabel, confirmLabel, onConfi
 }
 
 interface CvAnalysisCardProps {
+  // A profile's own analysis suggests changes to it (SOW-0024); `profile_id` null becomes a new profile.
   analysis: CvAnalysis;
   // Called with the new state after Analyse again (the analysis) or Cancel and Discard (null).
   onChange: (analysis: CvAnalysis | null) => void;
@@ -95,6 +96,8 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const running = analysis.status === 'running';
+  const profileId = analysis.profile_id ?? undefined;
+  const forProfile = profileId !== undefined;
   const elapsed = useElapsed(analysis.started_at, running);
 
   const act = async (action: () => Promise<CvAnalysis | null>) => {
@@ -111,7 +114,7 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
   };
   const discard = () =>
     act(async () => {
-      await discardCvAnalysis();
+      await discardCvAnalysis(profileId);
       return null;
     });
 
@@ -124,7 +127,11 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
         </Button>
       }
       title="Discard the CV analysis?"
-      description="The suggested profile and the uploaded CV are deleted. You can upload a CV again afterwards."
+      description={
+        forProfile
+          ? 'The suggested changes and the uploaded CV are deleted. Your profile and its current CV stay as they are.'
+          : 'The suggested profile and the uploaded CV are deleted. You can upload a CV again afterwards.'
+      }
       keepLabel="Keep it"
       confirmLabel="Discard"
       onConfirm={discard}
@@ -140,7 +147,11 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
             <CardTitle>
               <h2>Analysing your CV</h2>
             </CardTitle>
-            <CardDescription>We are analysing your CV with AI. Your profile will be ready soon.</CardDescription>
+            <CardDescription>
+              {forProfile
+                ? 'We are analysing your CV with AI. The suggested changes will be ready soon.'
+                : 'We are analysing your CV with AI. Your profile will be ready soon.'}
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -183,7 +194,9 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
             <h2>Your CV is analysed</h2>
           </CardTitle>
           <CardDescription>
-            The profile suggested from {analysis.file_name} is ready. Review it before it is saved.
+            {forProfile
+              ? `The changes suggested from ${analysis.file_name} are ready. Review them, then save the profile to keep them and the new CV.`
+              : `The profile suggested from ${analysis.file_name} is ready. Review it before it is saved.`}
           </CardDescription>
         </CardHeader>
         <CardFooter className="flex flex-col items-start gap-3">
@@ -191,7 +204,7 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={onReview} disabled={busy}>
               <SparklesIcon />
-              Review and create
+              {forProfile ? 'Review changes' : 'Review and create'}
             </Button>
             {discardButton}
           </div>
@@ -212,7 +225,7 @@ function AnalysisCard({ analysis, onChange, onReview, onStale }: CvAnalysisCardP
       <CardFooter className="flex flex-col items-start gap-3">
         {error && <ErrorAlert>{error}</ErrorAlert>}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" disabled={busy} onClick={() => act(retryCvAnalysis)}>
+          <Button type="button" disabled={busy} onClick={() => act(() => retryCvAnalysis(profileId))}>
             <RotateCcwIcon />
             Analyse again
           </Button>

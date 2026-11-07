@@ -176,6 +176,15 @@ CREATE TABLE cv_analyses (
 );
 `,
   },
+  {
+    // Replace or add a CV on an existing profile (SOW-0024): an analysis belongs to a profile, or to
+    // no profile when it will become a new one (the rows migration 6 created).
+    id: 7,
+    sql: `
+ALTER TABLE cv_analyses ADD COLUMN profile_id TEXT REFERENCES profiles(id);
+CREATE INDEX cv_analyses_profile ON cv_analyses (profile_id);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

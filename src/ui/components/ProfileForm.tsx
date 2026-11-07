@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useImperativeHandle, useState, type FormEvent, type Ref } from 'react';
 import {
   isValidProfileName,
   normalizeProfileName,
@@ -33,7 +33,15 @@ export function toProfileInput(profile: Profile): ProfileInput {
   return input;
 }
 
+// Lets the Profile page's CV review read the form as it is, saved or not, and write the chosen
+// suggestions back without the form losing its other edits (SOW-0024, decision 33).
+export interface ProfileFormHandle {
+  values(): ProfileInput;
+  apply(next: ProfileInput): void;
+}
+
 interface ProfileFormProps {
+  ref?: Ref<ProfileFormHandle>;
   initial: ProfileInput;
   submitLabel: string;
   onSubmit: (input: ProfileInput) => Promise<unknown>;
@@ -42,12 +50,27 @@ interface ProfileFormProps {
 }
 
 // Shared by the first-run screen, New profile (by hand or from a CV analysis) and the profile's own edit page.
-export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: ProfileFormProps) {
+export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessage }: ProfileFormProps) {
   const id = useId();
   const [form, setForm] = useState<ProfileInput>(initial);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // SeniorityInput keeps its chips and Other text from its first value; a new key after apply() starts it
+  // from the applied value.
+  const [applied, setApplied] = useState(0);
+  useImperativeHandle(
+    ref,
+    () => ({
+      values: () => form,
+      apply: (next) => {
+        setStatus(null);
+        setForm(next);
+        setApplied((n) => n + 1);
+      },
+    }),
+    [form],
+  );
 
   const set = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -117,7 +140,7 @@ export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: 
                 <NativeSelectOption value="onsite">On-site</NativeSelectOption>
               </NativeSelect>
             </Field>
-            <SeniorityInput value={form.seniority} onChange={(v) => set('seniority', v)} />
+            <SeniorityInput key={applied} value={form.seniority} onChange={(v) => set('seniority', v)} />
             <TagInput label="Keywords" value={form.keywords} onChange={(v) => set('keywords', v)} />
             <TagInput
               label="Excluded companies"

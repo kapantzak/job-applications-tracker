@@ -408,10 +408,12 @@ describe('profiles with a CV', () => {
     expect(existsSync(profileDir(profile.id))).toBe(false);
   });
 
-  it('PUT never takes a CV analysis', async () => {
+  it('Save never takes the analysis meant for a new profile', async () => {
     const analysis = await readyAnalysis();
     const res = await h.app.request(h.base, json('PUT', { ...PROFILE_FIELDS, cv_analysis_id: analysis.id }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'This CV analysis no longer exists.' });
     expect(current()!.id).toBe(analysis.id);
+    expect(h.deps.profilesRepo.get(h.profile.id)!.name).toBe(h.profile.name);
   });
 });

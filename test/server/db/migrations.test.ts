@@ -41,7 +41,7 @@ function ownerIds(db: Db, table: string): string[] {
 describe('migrate', () => {
   it('applies every migration and creates the nine tables', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(6);
+    expect(migrate(db)).toBe(7);
 
     const names = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
@@ -76,7 +76,7 @@ describe('migrate', () => {
     db.close();
   });
 
-  it('migrations 2 to 6 upgrade a version 1 database and leave existing runs unrecorded', () => {
+  it('migrations 2 to 7 upgrade a version 1 database and leave existing runs unrecorded', () => {
     const db = openDatabase(':memory:');
     db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
     db.exec(migrations.find((m) => m.id === 1)!.sql!);
@@ -84,7 +84,7 @@ describe('migrate', () => {
     db.prepare(
       "INSERT INTO runs (id, kind, status, adapter_id, created_at) VALUES ('run-1', 'sync_mail', 'succeeded', 'claude', 't')",
     ).run();
-    expect(migrate(db)).toBe(5);
+    expect(migrate(db)).toBe(6);
     expect(
       db.prepare('SELECT adapter_id, agent_model, agent_effort, agent_model_reported FROM runs').get(),
     ).toEqual({ adapter_id: 'claude', agent_model: null, agent_effort: null, agent_model_reported: null });
@@ -134,7 +134,7 @@ describe('migrate', () => {
     ).run();
     populate(db);
 
-    expect(migrate(db)).toBe(4);
+    expect(migrate(db)).toBe(5);
 
     const profiles = db.prepare('SELECT * FROM profiles').all() as Record<string, unknown>[];
     expect(profiles).toHaveLength(1);
@@ -256,7 +256,7 @@ describe('migrate', () => {
     add.run('p5', 'Cafe');
     add.run('p6', 'New');
 
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
 
     expect(db.prepare('SELECT id, name, slug FROM profiles ORDER BY rowid').all()).toEqual([
       { id: 'p1', name: 'SRE Platform 2', slug: 'sre-platform-2' },
@@ -289,7 +289,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
   VALUES ('job-1', 'p1', 'run-1', 'Acme', 'SRE', 'https://acme.example/1', 'https://acme.example/1', 'k1', 'ok', 't');
 `);
 
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
 
     expect(
       db.prepare('SELECT effort_mode, usage_cost_usd, usage_input_tokens, usage_output_tokens FROM runs').get(),
@@ -302,20 +302,11 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
   });
 
   it('migration 6 adds empty CV columns to existing profiles and the CV analysis table', () => {
-    const db = openDatabase(':memory:');
-    db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
-    for (const m of migrations.filter((x) => x.id <= 5)) {
-      if (m.sql) db.exec(m.sql);
-      if (m.up) {
-        db.pragma('foreign_keys = OFF');
-        m.up(db);
-        db.pragma('foreign_keys = ON');
-      }
-      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, 't')").run(m.id);
-    }
+    const db = upTo(5);
     db.exec("INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't')");
 
-    expect(migrate(db)).toBe(1);
+    // Migration 7 follows.
+    expect(migrate(db)).toBe(2);
 
     expect(db.prepare('SELECT name, cv_file_name, cv_file_type, cv_added_at FROM profiles').get()).toEqual({
       name: 'Platform',
@@ -331,4 +322,38 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
     expect(() => insert.run('a2', 'queued')).toThrow(/CHECK/);
     db.close();
   });
+
+  it('migration 7 ties CV analyses to a profile, keeping existing ones as new-profile analyses', () => {
+    const db = upTo(6);
+    db.exec("INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't')");
+    db.exec(
+      "INSERT INTO cv_analyses (id, status, file_name, file_type, started_at, created_at) VALUES ('a1', 'succeeded', 'cv.pdf', 'pdf', 't', 't')",
+    );
+
+    expect(migrate(db)).toBe(1);
+
+    expect(db.prepare('SELECT id, profile_id FROM cv_analyses').all()).toEqual([{ id: 'a1', profile_id: null }]);
+    const insert = db.prepare(
+      "INSERT INTO cv_analyses (id, status, file_name, file_type, started_at, created_at, profile_id) VALUES (?, 'running', 'cv.pdf', 'pdf', 't', 't', ?)",
+    );
+    insert.run('a2', 'p1');
+    expect(() => insert.run('a3', 'missing')).toThrow(/FOREIGN KEY/);
+    db.close();
+  });
 });
+
+// A database migrated up to and including `version`, as an older release left it.
+function upTo(version: number): Db {
+  const db = openDatabase(':memory:');
+  db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+  for (const m of migrations.filter((x) => x.id <= version)) {
+    if (m.sql) db.exec(m.sql);
+    if (m.up) {
+      db.pragma('foreign_keys = OFF');
+      m.up(db);
+      db.pragma('foreign_keys = ON');
+    }
+    db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, 't')").run(m.id);
+  }
+  return db;
+}

@@ -1,9 +1,11 @@
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppDeps } from '../app.js';
+import type { CvOwner } from '../cv/service.js';
 import { CV_MAX_BYTES } from '../cv/extract.js';
 import { requireUsableAgent } from './agent-check.js';
 import { HttpError } from './errors.js';
+import type { ProfileEnv } from './profiles.js';
 
 export const CV_FILE_NAME_HEADER = 'x-file-name';
 const FILE_NAME_MAX = 200;
@@ -37,12 +39,15 @@ const tooLarge = () => {
   throw new HttpError(413, 'The file is larger than 10 MB');
 };
 
-// Global: the analysis happens before the profile exists, and only one exists at a time (decision 24).
-export function createCvAnalysisRouter(deps: AppDeps): Hono {
-  const router = new Hono();
+// Mounted twice (SOW-0024, decision 30): globally at /api/cv-analysis for the analysis that becomes a new
+// profile (`ownerOf` returns null), and at /api/profiles/:pid/cv-analysis for that profile's own, where
+// the profile middleware has already answered 404 for an unknown profile.
+// Both mounts share the profile env; the global one never reads the profile.
+export function createCvAnalysisRouter(deps: AppDeps, ownerOf: (c: Context<ProfileEnv>) => CvOwner): Hono<ProfileEnv> {
+  const router = new Hono<ProfileEnv>();
   const service = deps.cvService;
 
-  router.get('/', (c) => c.json(service.current()));
+  router.get('/', (c) => c.json(service.current(ownerOf(c))));
 
   router.post('/', bodyLimit({ maxSize: CV_MAX_BYTES, onError: tooLarge }), async (c) => {
     requireOctetStream(c);
@@ -51,17 +56,17 @@ export function createCvAnalysisRouter(deps: AppDeps): Hono {
     if (bytes.length === 0) throw new HttpError(400, 'The file is empty');
     if (bytes.length > CV_MAX_BYTES) tooLarge();
     await requireUsableAgent(deps, 'analyse_cv');
-    return c.json(await service.start(bytes, fileName), 202);
+    return c.json(await service.start(bytes, fileName, ownerOf(c)), 202);
   });
 
   router.post('/retry', async (c) => {
     await requireUsableAgent(deps, 'analyse_cv');
-    return c.json(service.retry(), 202);
+    return c.json(service.retry(ownerOf(c)), 202);
   });
 
   // Cancel and Discard: stops a running agent and deletes the analysis with its files.
   router.delete('/', async (c) => {
-    if (!(await service.discard())) throw new HttpError(404, 'There is no CV analysis');
+    if (!(await service.discard(ownerOf(c)))) throw new HttpError(404, 'There is no CV analysis');
     return c.body(null, 204);
   });
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { slugBase, uniqueSlug } from '../domain/profile-name.js';
-import type { CvFileType, Profile, ProfileCounts, ProfileListItem } from '../domain/types.js';
+import type { CvAnalysisStatus, CvFileType, Profile, ProfileCounts, ProfileListItem } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at' | 'cv'>;
@@ -94,6 +94,9 @@ export function createProfilesRepo(db: Db) {
        (SELECT COUNT(*) FROM applications WHERE profile_id = @id) AS applications,
        (SELECT COUNT(*) FROM runs WHERE profile_id = @id) AS runs`,
   );
+  const selectAnalysisStatus = db.prepare(
+    'SELECT status FROM cv_analyses WHERE profile_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
+  );
   const selectRunIds = db.prepare('SELECT id FROM runs WHERE profile_id = ?');
   // Children first: no foreign key cascades, so the order must follow the references.
   const deleteSteps = [
@@ -104,6 +107,8 @@ export function createProfilesRepo(db: Db) {
     'DELETE FROM applications WHERE profile_id = @id',
     'DELETE FROM jobs WHERE profile_id = @id',
     'DELETE FROM runs WHERE profile_id = @id',
+    // The profile's CV analysis (SOW-0024); the CV service stops its agent and deletes its files.
+    'DELETE FROM cv_analyses WHERE profile_id = @id',
     'DELETE FROM profiles WHERE id = @id',
   ].map((sql) => db.prepare(sql));
 
@@ -134,7 +139,12 @@ export function createProfilesRepo(db: Db) {
   }
 
   function list(): ProfileListItem[] {
-    return (selectAll.all() as ProfileRow[]).map((row) => ({ ...fromRow(row), counts: counts(row.id) }));
+    return (selectAll.all() as ProfileRow[]).map((row) => ({
+      ...fromRow(row),
+      counts: counts(row.id),
+      cv_analysis_status:
+        (selectAnalysisStatus.get(row.id) as { status: CvAnalysisStatus } | undefined)?.status ?? null,
+    }));
   }
 
   // True when another profile already uses this name, ignoring ASCII case.

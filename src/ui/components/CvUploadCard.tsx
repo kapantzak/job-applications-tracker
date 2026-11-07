@@ -23,13 +23,17 @@ function formatSize(bytes: number): string {
 }
 
 // The prominent choice on the create-profile screens (decision 8): drop or pick a CV, then analyse it.
+// With a profile, the same card runs Replace CV or Add CV on that profile (SOW-0024).
 interface CvUploadCardProps {
   onStarted: (analysis: CvAnalysis) => void;
   // A 409 means an analysis already exists (another tab started one); re-reading shows it.
   onStale: () => void;
+  profile?: { id: string; hasCv: boolean };
+  // Shown as a Cancel button; the Profile page uses it to close the card.
+  onCancel?: () => void;
 }
 
-export function CvUploadCard({ onStarted, onStale }: CvUploadCardProps) {
+export function CvUploadCard({ onStarted, onStale, profile, onCancel }: CvUploadCardProps) {
   const inputId = useId();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -59,7 +63,7 @@ export function CvUploadCard({ onStarted, onStale }: CvUploadCardProps) {
     setBusy(true);
     setError(null);
     try {
-      onStarted(await uploadCv(file));
+      onStarted(await uploadCv(file, profile?.id));
     } catch (e) {
       setError(message(e));
       setBusy(false);
@@ -67,17 +71,22 @@ export function CvUploadCard({ onStarted, onStale }: CvUploadCardProps) {
     }
   };
 
+  const title = !profile ? 'Start from your CV' : profile.hasCv ? 'Replace your CV' : 'Add your CV';
+  const description = !profile
+    ? 'AI reads your CV and fills in the profile. You review every field before it is saved.'
+    : profile.hasCv
+      ? 'AI reads the new CV and suggests changes to this profile. Nothing changes until you review them and save.'
+      : 'AI reads your CV and suggests values for the fields this profile leaves empty. Nothing changes until you review them and save.';
+
   return (
     <Card className="border-primary/40 bg-gradient-to-b from-primary/5 to-card shadow-md">
       <CardHeader className="flex flex-col items-center gap-2 text-center">
-        <CvIllustration className="w-44" />
+        <CvIllustration className={profile ? 'w-28' : 'w-44'} />
         <CardTitle className="flex items-center gap-2 text-lg">
-          <h2>Start from your CV</h2>
-          <Badge>Recommended</Badge>
+          <h2>{title}</h2>
+          {!profile && <Badge>Recommended</Badge>}
         </CardTitle>
-        <CardDescription className="max-w-sm">
-          AI reads your CV and fills in the profile. You review every field before it is saved.
-        </CardDescription>
+        <CardDescription className="max-w-sm">{description}</CardDescription>
       </CardHeader>
       <CardContent>
         <div
@@ -137,7 +146,7 @@ export function CvUploadCard({ onStarted, onStale }: CvUploadCardProps) {
           )}
         </div>
       </CardContent>
-      {(file || error) && (
+      {(file || error || onCancel) && (
         <CardFooter className="flex flex-col items-stretch gap-3">
           {error && <ErrorAlert>{error}</ErrorAlert>}
           {/* Shown once a file is chosen: the analysis starts only on this click. */}
@@ -145,6 +154,11 @@ export function CvUploadCard({ onStarted, onStale }: CvUploadCardProps) {
             <Button type="button" size="lg" disabled={busy} onClick={analyse}>
               <SparklesIcon />
               Analyse CV
+            </Button>
+          )}
+          {onCancel && (
+            <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
+              Cancel
             </Button>
           )}
         </CardFooter>
