@@ -123,6 +123,7 @@ export function SettingsPage() {
           getPatch={() => ({
             run_timeout_ms: values.run_timeout_ms,
             sync_interval: values.sync_interval,
+            claude_max_budget_usd_discover: values.claude_max_budget_usd_discover,
           })}
         >
           <div className="grid grid-cols-2 gap-4">
@@ -148,6 +149,22 @@ export function SettingsPage() {
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
+            </Field>
+            <Field className="col-span-2">
+              <FieldLabel htmlFor={`${id}-budget`}>Claude spend cap per discovery agent (USD)</FieldLabel>
+              <Input
+                id={`${id}-budget`}
+                className="max-w-xs font-mono"
+                inputMode="decimal"
+                placeholder="No cap"
+                value={values.claude_max_budget_usd_discover}
+                onChange={(e) => set('claude_max_budget_usd_discover', e.target.value.trim())}
+              />
+              <FieldDescription>
+                Claude only. Stops a discovery agent once Claude Code&apos;s own cost estimate passes this amount; each
+                Max-effort worker has its own cap. A stopped agent returns no jobs, so treat this as a safety net. Leave
+                empty for no cap.
+              </FieldDescription>
             </Field>
           </div>
         </SettingsSection>

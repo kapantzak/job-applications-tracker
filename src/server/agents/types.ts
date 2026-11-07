@@ -36,6 +36,13 @@ export interface RunOptions {
   signal?: AbortSignal;
 }
 
+// What the agent reports about one run. Claude's cost is Claude Code's own list-price estimate, not a bill.
+export interface AgentUsage {
+  costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
 export interface AgentResult {
   ok: boolean;
   output?: unknown;
@@ -46,6 +53,8 @@ export interface AgentResult {
   error?: string;
   // Model named by the agent's own output (Claude Code init event); set on failures too when seen.
   reportedModel?: string;
+  // Read on failures too: a capped or timed-out run has still spent tokens.
+  usage?: AgentUsage;
 }
 
 export interface AgentAdapter {
@@ -65,6 +74,8 @@ export interface CliAdapterConfig {
   argv: string[];
   promptVia: 'stdin' | 'argv' | 'file';
   resultFrom: 'claude-stream-json' | 'output-file' | 'stdout-json';
+  // Where stdout reports usage; unset for custom commands.
+  usageFrom?: 'claude-stream-json' | 'codex-json';
   versionArgv?: string[];
   // Sign-in status command; exit 0 means signed in. Unset for custom commands.
   authArgv?: string[];

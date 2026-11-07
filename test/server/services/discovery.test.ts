@@ -1,16 +1,16 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AgentAdapter, AgentResult } from '../../../src/server/agents/types.js';
+import type { AgentAdapter, AgentResult, AgentTask, RunOptions } from '../../../src/server/agents/types.js';
 import { migrate, openDatabase, type Db } from '../../../src/server/db/connection.js';
 import { createJobsRepo } from '../../../src/server/db/jobs-repo.js';
 import { createProfilesRepo, type ProfileInput } from '../../../src/server/db/profiles-repo.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
-import type { VerificationStatus } from '../../../src/server/domain/types.js';
+import type { EffortMode, VerificationStatus } from '../../../src/server/domain/types.js';
 import type { RunContext } from '../../../src/server/runs/queue.js';
-import { createDiscoveryHandler } from '../../../src/server/services/discovery.js';
+import { createDiscoveryHandler, DEFAULT_SCOPE, MAX_WORKERS } from '../../../src/server/services/discovery.js';
 import type { verifyLink } from '../../../src/server/verify/links.js';
 
 let db: Db;
@@ -81,14 +81,19 @@ function okResult(jobs: unknown[]): AgentResult {
   return { ok: true, output: { jobs }, rawStdout: '', rawStderr: '', exitCode: 0, durationMs: 1 };
 }
 
-function ctx(): RunContext {
-  const run = runsRepo.create('discover_jobs', profileId, { adapter_id: 'custom', prompt_version: null });
+function ctx(effortMode: EffortMode = 'default'): RunContext {
+  const run = runsRepo.create('discover_jobs', profileId, {
+    adapter_id: 'custom',
+    prompt_version: null,
+    effort_mode: effortMode,
+  });
   return {
     run,
     log: (l) => logs.push(l),
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'discovery-')),
     recordAgent: (record) => runsRepo.update(run.id, record),
+    recordUsage: (record) => runsRepo.update(run.id, record),
     beginSaving: () => {},
   };
 }
@@ -155,6 +160,25 @@ describe('discovery handler', () => {
     const res = await makeHandler(okResult([job(1), job(2), job(2)]))(ctx());
     expect(res.summary).toBe('1 new, 2 duplicates, 0 dead, 0 unverified');
     expect(jobsRepo.list(profileId)).toHaveLength(2);
+  });
+
+  it('checks each distinct link once, also when workers return it several times', async () => {
+    saveProfile();
+    const checked: string[] = [];
+    const adapter: AgentAdapter = {
+      id: 'custom',
+      check: async () => ({ id: 'custom', installed: true }),
+      listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+      run: async () => okResult([job(1), job(1, { title: 'Engineer 1 (EU)' }), job(2), job(1)]),
+    };
+    const verify = (async (url: string) => {
+      checked.push(url);
+      return { status: 'ok', finalUrl: url, httpStatus: 200 };
+    }) as typeof verifyLink;
+    const h = createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
+    const res = await h(ctx());
+    expect(checked.sort()).toEqual(['https://jobs.example.com/1', 'https://jobs.example.com/2']);
+    expect(res.summary).toBe('2 new, 2 duplicates, 0 dead, 0 unverified');
   });
 
   it('stores dead jobs and counts them', async () => {
@@ -321,5 +345,202 @@ describe('discovery handler', () => {
       'Agent run failed',
     );
     expect(saving).toBe(0);
+  });
+});
+
+// Scope text identifies the worker in fake adapters below.
+function workerOf(prompt: string): number {
+  const i = MAX_WORKERS.findIndex((w) => prompt.includes(w.scope));
+  if (i === -1) throw new Error('prompt carries no worker scope');
+  return i + 1;
+}
+
+function scriptedAdapter(byWorker: (n: number, task: AgentTask, opts: RunOptions) => Promise<AgentResult>): AgentAdapter {
+  return {
+    id: 'custom',
+    check: async () => ({ id: 'custom', installed: true }),
+    listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+    run: (task, opts) => byWorker(workerOf(task.prompt), task, opts),
+  };
+}
+
+function handlerFor(adapter: AgentAdapter) {
+  const verify = (async (url: string) => ({ status: 'ok', finalUrl: url, httpStatus: 200 })) as typeof verifyLink;
+  return createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
+}
+
+describe('discovery effort levels', () => {
+  it('a default run is one agent call with the full scope in the run directory', async () => {
+    saveProfile();
+    const calls: { prompt: string; cwd: string }[] = [];
+    const c = ctx();
+    await makeHandler(okResult([job(1)]), {}, {
+      run: async (task, opts) => {
+        calls.push({ prompt: task.prompt, cwd: opts.cwd });
+        return okResult([job(1)]);
+      },
+    })(c);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.prompt).toContain(DEFAULT_SCOPE);
+    expect(calls[0]!.cwd).toBe(c.runDir);
+    expect(logs.some((l) => l.startsWith('[worker'))).toBe(false);
+  });
+
+  it('a max run sends five scoped workers, at most three at a time, each in its own directory', async () => {
+    saveProfile();
+    let running = 0;
+    let peak = 0;
+    const seen: { n: number; cwd: string }[] = [];
+    const c = ctx('max');
+    const adapter = scriptedAdapter(async (n, _task, opts) => {
+      running++;
+      peak = Math.max(peak, running);
+      seen.push({ n, cwd: opts.cwd });
+      opts.onLog?.(`line from ${n}`);
+      await new Promise((r) => setTimeout(r, 20));
+      running--;
+      return okResult([job(n)]);
+    });
+    const res = await handlerFor(adapter)(c);
+    expect(seen.map((s) => s.n).sort()).toEqual([1, 2, 3, 4, 5]);
+    expect(peak).toBe(3);
+    for (const { n, cwd } of seen) expect(cwd).toBe(join(c.runDir, `worker-${n}`));
+    expect(logs).toContain('[worker 2] line from 2');
+    expect(logs).toContain(`Max effort: ${MAX_WORKERS.length} workers, up to 3 at a time`);
+    expect(logs).toContain(`Worker 1 (${MAX_WORKERS[0]!.name}) started`);
+    expect(res.summary).toBe('5 new, 0 duplicates, 0 dead, 0 unverified');
+  });
+
+  it('a max run merges workers and drops the same job found twice', async () => {
+    saveProfile();
+    const adapter = scriptedAdapter(async (n) => okResult(n <= 2 ? [job(1), job(n + 10)] : []));
+    const res = await handlerFor(adapter)(ctx('max'));
+    expect(res.summary).toBe('3 new, 1 duplicates, 0 dead, 0 unverified');
+    expect(jobsRepo.list(profileId).map((j) => j.url).sort()).toEqual([
+      'https://jobs.example.com/1',
+      'https://jobs.example.com/11',
+      'https://jobs.example.com/12',
+    ]);
+  });
+
+  it('a max run keeps the jobs of workers that succeeded and names the ones that failed', async () => {
+    saveProfile();
+    const adapter = scriptedAdapter(async (n) => {
+      if (n === 2) return { ...okResult([]), ok: false, error: 'Timed out after 1000 ms' };
+      if (n === 4) return okResult([{ title: 'no company' }]);
+      return okResult([job(n)]);
+    });
+    const res = await handlerFor(adapter)(ctx('max'));
+    expect(res.summary).toBe('3 new, 0 duplicates, 0 dead, 0 unverified; 2 of 5 workers failed');
+    expect(logs).toContain(`Worker 2 (${MAX_WORKERS[1]!.name}) failed: Agent run failed: Timed out after 1000 ms`);
+    expect(logs.some((l) => l.startsWith(`Worker 4 (${MAX_WORKERS[3]!.name}) failed: Agent output did not match schema`))).toBe(true);
+    expect(jobsRepo.list(profileId)).toHaveLength(3);
+  });
+
+  it('a max run fails with the first worker error when every worker fails, and saves nothing', async () => {
+    saveProfile();
+    let saving = 0;
+    const adapter = scriptedAdapter(async (n) => ({ ...okResult([]), ok: false, error: `boom ${n}` }));
+    await expect(handlerFor(adapter)({ ...ctx('max'), beginSaving: () => void saving++ })).rejects.toThrow(
+      'Agent run failed: boom 1',
+    );
+    expect(saving).toBe(0);
+  });
+
+  it('records usage summed over max workers, also when some fail', async () => {
+    saveProfile();
+    const c = ctx('max');
+    const adapter = scriptedAdapter(async (n) =>
+      n === 5
+        ? { ...okResult([]), ok: false, error: 'Exited with code 1', usage: { costUsd: 0.5, inputTokens: 100 } }
+        : { ...okResult([job(n)]), usage: { costUsd: 0.25, inputTokens: 1000, outputTokens: 10 } },
+    );
+    await handlerFor(adapter)(c);
+    expect(runsRepo.get(c.run.id)).toMatchObject({
+      usage_cost_usd: 1.5,
+      usage_input_tokens: 4100,
+      usage_output_tokens: 40,
+    });
+  });
+
+  it('records usage of a default run that failed', async () => {
+    saveProfile();
+    const c = ctx();
+    const failed: AgentResult = { ...okResult([]), ok: false, error: 'Exited with code 1', usage: { outputTokens: 7 } };
+    await expect(makeHandler(failed)(c)).rejects.toThrow('Agent run failed');
+    expect(runsRepo.get(c.run.id)).toMatchObject({
+      usage_cost_usd: null,
+      usage_input_tokens: null,
+      usage_output_tokens: 7,
+    });
+  });
+
+  it('a worker that throws outside the agent counts as failed and the others finish first', async () => {
+    saveProfile();
+    const c = ctx('max');
+    const finished: number[] = [];
+    const adapter = scriptedAdapter(async (n) => {
+      await new Promise((r) => setTimeout(r, 20));
+      finished.push(n);
+      return okResult([job(n)]);
+    });
+    const res = await handlerFor(adapter)({
+      ...c,
+      log: (l) => {
+        if (l === `Worker 4 (${MAX_WORKERS[3]!.name}) started`) throw new Error('disk full');
+        logs.push(l);
+      },
+    });
+    expect(finished.sort()).toEqual([1, 2, 3, 5]);
+    expect(res.summary).toBe('4 new, 0 duplicates, 0 dead, 0 unverified; 1 of 5 workers failed');
+    expect(logs).toContain(`Worker 4 (${MAX_WORKERS[3]!.name}) failed: disk full`);
+  });
+
+  it('a cancel during a max run starts no further worker and saves nothing', async () => {
+    saveProfile();
+    const controller = new AbortController();
+    const c = { ...ctx('max'), signal: controller.signal };
+    const called: number[] = [];
+    const adapter = scriptedAdapter((n, _task, opts) => {
+      called.push(n);
+      if (called.length === 3) controller.abort();
+      // Like the real adapter: a running agent ends with 'Aborted' once the signal fires.
+      return new Promise((resolve) => {
+        const end = () => resolve({ ...okResult([]), ok: false, error: 'Aborted' });
+        if (opts.signal?.aborted) end();
+        else opts.signal?.addEventListener('abort', end, { once: true });
+      });
+    });
+    await expect(handlerFor(adapter)(c)).rejects.toThrow('Agent run failed: Aborted');
+    expect(called.sort()).toEqual([1, 2, 3]);
+    expect(existsSync(join(c.runDir, 'worker-4'))).toBe(false);
+    expect(logs.some((l) => l.startsWith('Worker 4 (') && l.endsWith('started'))).toBe(false);
+    expect(jobsRepo.list(profileId)).toHaveLength(0);
+  });
+
+  it('a cancel after some workers found jobs still saves nothing', async () => {
+    saveProfile();
+    const controller = new AbortController();
+    const c = {
+      ...ctx('max'),
+      signal: controller.signal,
+      // As the queue does: saving is refused once the run was cancelled.
+      beginSaving: () => {
+        if (controller.signal.aborted) throw new Error('Aborted');
+      },
+    };
+    const adapter = scriptedAdapter(async (n) => {
+      if (n === 3) controller.abort();
+      return n <= 2 ? okResult([job(n)]) : { ...okResult([]), ok: false, error: 'Aborted' };
+    });
+    await expect(handlerFor(adapter)(c)).rejects.toThrow('Aborted');
+    expect(jobsRepo.list(profileId)).toHaveLength(0);
+  });
+
+  it('stores the fit checks the agent returned', async () => {
+    saveProfile();
+    const checks = { location: 'fail', remote: 'pass', seniority: 'unknown' };
+    await makeHandler(okResult([job(1, { checks })]))(ctx());
+    expect(jobsRepo.list(profileId)[0]!.fit_checks).toEqual(checks);
   });
 });

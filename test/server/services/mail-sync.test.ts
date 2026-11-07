@@ -67,6 +67,7 @@ function ctx(profileId = pid): RunContext {
     signal: new AbortController().signal,
     runDir: mkdtempSync(join(tmpdir(), 'mail-sync-')),
     recordAgent: (record) => runsRepo.update(run.id, record),
+    recordUsage: (record) => runsRepo.update(run.id, record),
     beginSaving: () => {},
   };
 }

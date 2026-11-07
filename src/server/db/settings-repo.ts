@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS: Settings = {
   codex_model_sync: '',
   codex_effort_discover: '',
   codex_effort_sync: '',
+  // A safety net, not a target: reaching the cap ends the run with no result (SOW-0016).
+  claude_max_budget_usd_discover: '5',
   // 20 min: a bounded discovery run with page confirmation took ~15 min with subagents (SOW-0008).
   run_timeout_ms: 1200000,
   sync_interval: 'off',

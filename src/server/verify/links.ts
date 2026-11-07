@@ -13,6 +13,14 @@ const DEAD_ERROR_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN']);
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+// Greenhouse sends a closed or unknown job id to `/<board>?error=true`, which serves the board with 200
+// (probed 2026-11-07, SOW-0016), so the status code alone would call a dead posting live.
+function isGreenhouseSoft404(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  const greenhouse = host === 'greenhouse.io' || host.endsWith('.greenhouse.io');
+  return greenhouse && url.searchParams.get('error') === 'true';
+}
+
 function errorCode(err: unknown): string | undefined {
   const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
   const code = e?.code ?? e?.cause?.code;
@@ -28,6 +36,12 @@ export async function verifyLink(
   let current = url;
   let hops = 0;
   let httpStatus: number | null = null;
+  // An agent that followed the redirect itself may hand back the board url it landed on.
+  try {
+    if (isGreenhouseSoft404(new URL(url))) return { status: 'dead', finalUrl: url, httpStatus };
+  } catch {
+    // Not a URL: the fetch below reports it.
+  }
 
   try {
     for (;;) {
@@ -43,7 +57,9 @@ export async function verifyLink(
       const location = res.headers.get('location');
       if (REDIRECT_CODES.has(res.status) && location) {
         if (hops >= MAX_REDIRECTS) return { status: 'unverified', finalUrl: current, httpStatus };
-        current = new URL(location, current).toString();
+        const next = new URL(location, current);
+        if (isGreenhouseSoft404(next)) return { status: 'dead', finalUrl: next.toString(), httpStatus };
+        current = next.toString();
         hops++;
         continue;
       }

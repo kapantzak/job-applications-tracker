@@ -27,6 +27,10 @@ const run: Run = {
   agent_model: 'opus',
   agent_effort: '',
   agent_model_reported: null,
+  effort_mode: 'default',
+  usage_cost_usd: null,
+  usage_input_tokens: null,
+  usage_output_tokens: null,
   summary: null,
   error: null,
   created_at: '2026-01-01T00:00:00Z',
@@ -115,6 +119,40 @@ describe('RunPage', () => {
     expect(detail('Agent')).toBe('claude');
     expect(detail('Model')).toBe('Agent defaultran as model-a');
     expect(detail('Effort')).toBe('high');
+  });
+
+  it('shows the effort mode and the usage the agent reported for a max discovery', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      effort_mode: 'max',
+      usage_cost_usd: 2.5,
+      usage_input_tokens: 120_000,
+      usage_output_tokens: 900,
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Mode')).toBe('Max effort');
+    expect(detail('Usage')).toBe('$2.50 estimated · 120.0k tokens in, 900 out');
+  });
+
+  it('says when a discovery reported no usage', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(detail('Mode')).toBe('Default');
+    expect(detail('Usage')).toBe('Not reported');
+  });
+
+  it('shows no mode and no usage for a sync run, which records none', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, kind: 'sync_mail', status: 'succeeded' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/sync_mail/);
+    expect(screen.queryByText('Mode', { selector: 'dt' })).toBeNull();
+    expect(screen.queryByText('Usage', { selector: 'dt' })).toBeNull();
   });
 
   it('marks model and effort as not recorded for older runs and as custom for custom commands', async () => {

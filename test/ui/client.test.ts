@@ -6,6 +6,7 @@ import {
   getModelCatalogs,
   getRunLog,
   listJobs,
+  startDiscovery,
   createProfile,
   deleteProfile,
   updateProfile,
@@ -91,6 +92,22 @@ describe('api client', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/profiles/p1/runs/r%201/cancel');
     expect(init.method).toBe('POST');
+  });
+
+  it('startDiscovery posts the effort mode as JSON, default when not given', async () => {
+    // spyOn, so restoreAllMocks puts the real fetch back.
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => jsonResponse({ id: 'r1', effort_mode: 'max' }, 202));
+    expect(await startDiscovery('p1', 'max')).toEqual({ id: 'r1', effort_mode: 'max' });
+    await startDiscovery('p1');
+    const calls = fetchMock.mock.calls as [string, RequestInit][];
+    expect(calls.map(([url]) => url)).toEqual(['/api/profiles/p1/runs/discover', '/api/profiles/p1/runs/discover']);
+    expect(calls.map(([, init]) => [init.method, init.body])).toEqual([
+      ['POST', JSON.stringify({ mode: 'max' })],
+      ['POST', JSON.stringify({ mode: 'default' })],
+    ]);
+    expect(calls[0]![1].headers).toEqual({ 'Content-Type': 'application/json' });
   });
 
   it('dismissJob returns undefined on 204 without parsing a body', async () => {

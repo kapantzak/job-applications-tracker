@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Run, RunKind } from '../domain/types.js';
+import type { EffortMode, Run, RunKind } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type RunPatch = Partial<
@@ -15,11 +15,16 @@ export type RunPatch = Partial<
     | 'agent_model'
     | 'agent_effort'
     | 'agent_model_reported'
+    | 'usage_cost_usd'
+    | 'usage_input_tokens'
+    | 'usage_output_tokens'
   >
 >;
 
 // What a handler records about the agent call, as soon as it knows it.
 export type AgentRunRecord = Pick<RunPatch, 'adapter_id' | 'agent_model' | 'agent_effort' | 'agent_model_reported'>;
+
+export type UsageRecord = Pick<RunPatch, 'usage_cost_usd' | 'usage_input_tokens' | 'usage_output_tokens'>;
 
 // Runtime allow-list: patch keys become column names in the UPDATE.
 const PATCHABLE = new Set<string>([
@@ -33,13 +38,17 @@ const PATCHABLE = new Set<string>([
   'agent_model',
   'agent_effort',
   'agent_model_reported',
+  'usage_cost_usd',
+  'usage_input_tokens',
+  'usage_output_tokens',
 ]);
 
 export function createRunsRepo(db: Db) {
   const insert = db.prepare(
     `INSERT INTO runs (id, profile_id, kind, status, started_at, finished_at, adapter_id, prompt_version,
-       summary, error, created_at)
-     VALUES (@id, @profile_id, @kind, 'queued', NULL, NULL, @adapter_id, @prompt_version, NULL, NULL, @created_at)`,
+       summary, error, created_at, effort_mode)
+     VALUES (@id, @profile_id, @kind, 'queued', NULL, NULL, @adapter_id, @prompt_version, NULL, NULL, @created_at,
+       @effort_mode)`,
   );
   const selectById = db.prepare('SELECT * FROM runs WHERE id = ?');
   const selectRecent = db.prepare(
@@ -71,7 +80,7 @@ export function createRunsRepo(db: Db) {
   function create(
     kind: RunKind,
     profileId: string,
-    meta: { adapter_id: string; prompt_version: string | null },
+    meta: { adapter_id: string; prompt_version: string | null; effort_mode?: EffortMode },
   ): Run {
     const id = randomUUID();
     insert.run({
@@ -81,6 +90,7 @@ export function createRunsRepo(db: Db) {
       adapter_id: meta.adapter_id,
       prompt_version: meta.prompt_version,
       created_at: new Date().toISOString(),
+      effort_mode: meta.effort_mode ?? 'default',
     });
     return get(id) as Run;
   }

@@ -14,6 +14,23 @@ export const RUN_KINDS = ['discover_jobs', 'sync_mail'] as const;
 export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be cancelled';
 
 export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'aborted'] as const;
+// Discovery effort (SOW-0016): `max` runs several partitioned agent processes; sync is always `default`.
+export const EFFORT_MODES = ['default', 'max'] as const;
+export const FIT_VERDICTS = ['pass', 'fail', 'unknown'] as const;
+// Max effort workers by source family, in run order, and how many run at once (user decisions 9 and 10).
+// Shared so the UI warning names exactly what the server runs.
+export const MAX_EFFORT_SOURCES = [
+  'Greenhouse',
+  'Lever',
+  'Ashby',
+  'Other ATS and careers pages',
+  'Remote and niche boards',
+] as const;
+export const MAX_EFFORT_CONCURRENCY = 3;
+
+// A Max run that lost workers ends its summary with this note; the UI uses it to tell partial runs apart.
+export const workersFailedNote = (failed: number, total: number): string => `; ${failed} of ${total} workers failed`;
+export const hasFailedWorkers = (summary: string | null): boolean => /; \d+ of \d+ workers failed$/.test(summary ?? '');
 export const VERIFICATION_STATUSES = ['ok', 'redirected', 'dead', 'unverified'] as const;
 export const PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;
 export const HISTORY_SOURCES = ['user', 'proposal'] as const;
@@ -24,6 +41,15 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 export type ProposalState = (typeof PROPOSAL_STATES)[number];
 export type HistorySource = (typeof HISTORY_SOURCES)[number];
+export type EffortMode = (typeof EFFORT_MODES)[number];
+export type FitVerdict = (typeof FIT_VERDICTS)[number];
+
+// The agent's verdict on each must-have from the profile; a field the profile leaves open is `pass`.
+export interface FitChecks {
+  location: FitVerdict;
+  remote: FitVerdict;
+  seniority: FitVerdict;
+}
 
 export type RemotePreference = 'remote' | 'hybrid' | 'onsite' | 'any';
 export type JobRemote = 'remote' | 'hybrid' | 'onsite' | 'unknown';
@@ -89,6 +115,8 @@ export interface Settings {
   codex_model_sync: string;
   codex_effort_discover: string;
   codex_effort_sync: string;
+  // Claude Code `--max-budget-usd` per discovery agent process (each Max worker gets its own); '' = no cap.
+  claude_max_budget_usd_discover: string;
   run_timeout_ms: number;
   sync_interval: 'off' | '1h' | '6h' | '24h';
   port: number;
@@ -109,6 +137,12 @@ export interface Run {
   agent_effort: string | null;
   // The model the agent says it ran; only Claude Code reports one.
   agent_model_reported: string | null;
+  effort_mode: EffortMode;
+  // What the agent reported, summed over Max workers; null when nothing was reported. The cost is
+  // Claude Code's list-price estimate, not a bill.
+  usage_cost_usd: number | null;
+  usage_input_tokens: number | null;
+  usage_output_tokens: number | null;
   summary: string | null;
   error: string | null;
   created_at: string;
@@ -129,6 +163,8 @@ export interface Job {
   salary: string | null;
   description_excerpt: string | null;
   match_reason: string | null;
+  // JSON text in SQLite; null for jobs found before SOW-0016.
+  fit_checks: FitChecks | null;
   verification_status: VerificationStatus;
   verified_at: string | null;
   dedupe_key: string;

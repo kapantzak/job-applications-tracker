@@ -46,6 +46,35 @@ describe('formatLog: app and plain lines', () => {
     expect(formatLog(lines).map((e) => [e.kind, e.tone])).toEqual(lines.map(() => ['app', 'muted']));
   });
 
+  it('recognises the max-effort lines, warning on a failed worker', () => {
+    const entries = formatLog([
+      'Max effort: 5 workers, up to 3 at a time',
+      'Worker 1 (Greenhouse) started',
+      'Worker 2 (Lever) failed: Agent run failed: Timed out after 1000 ms',
+      '3 new, 0 duplicates, 0 dead, 0 unverified; 2 of 5 workers failed',
+    ]);
+    expect(entries.map((e) => [e.kind, e.tone])).toEqual([
+      ['app', 'muted'],
+      ['app', 'muted'],
+      ['app', 'warning'],
+      ['app', 'muted'],
+    ]);
+  });
+
+  it('formats worker lines like any other line and names the worker', () => {
+    const entries = formatLog([
+      `[worker 2] ${j({ type: 'assistant', message: { content: [{ type: 'text', text: 'looking' }] } })}`,
+      '[worker 3] [stderr] slow network',
+      '[worker 4] plain words',
+      `[worker 5] ${j({ type: 'unknown.event' })}`,
+    ]);
+    expect(entries.map((e) => [e.kind, e.text])).toEqual([
+      ['message', 'Worker 2: looking'],
+      ['stderr', 'Worker 3: slow network'],
+      ['text', 'Worker 4: plain words'],
+    ]);
+  });
+
   it('highlights a finish line with an empty reason', () => {
     expect(formatLog(['Run run-1 failed: ']).map((e) => [e.kind, e.tone])).toEqual([['app', 'error']]);
   });
@@ -280,6 +309,18 @@ describe('formatLog: Codex exec --json', () => {
       ['error', 'Command failed (exit 6): curl -sI https://jobs.example.com/2'],
       ['mail', 'Searching Gmail: acme'],
       ['error', 'Tool error: search_threads: Not authorized'],
+    ]);
+  });
+
+  it('pairs steps per worker, since every codex process numbers its items from the start', () => {
+    const start = j({ type: 'item.started', item: { id: 'item_0', type: 'command_execution', command: 'ls' } });
+    const done = j({
+      type: 'item.completed',
+      item: { id: 'item_0', type: 'command_execution', command: 'ls', exit_code: 0, status: 'completed' },
+    });
+    expect(texts(formatLog([`[worker 1] ${start}`, `[worker 2] ${done}`, `[worker 1] ${done}`]))).toEqual([
+      'Worker 1: Running: ls',
+      'Worker 2: Running: ls',
     ]);
   });
 

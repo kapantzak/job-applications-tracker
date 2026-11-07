@@ -131,8 +131,10 @@ describe('App routing', () => {
     await user.type(name, 'Lead roles');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Saved')).toBeInTheDocument();
+    // "Saved" is an urgent update; the new profile commits in a transition, which can land a render later.
+    expect(await screen.findByRole('link', { name: 'Back to profiles: Lead roles' })).toBeInTheDocument();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBe(name);
-    expect(screen.getByRole('link', { name: 'Back to profiles: Lead roles' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/profiles/lead-roles/jobs');
     expect(vi.mocked(client.getProfileBySlug).mock.calls).toEqual([['platform-roles']]);
   });

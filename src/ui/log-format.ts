@@ -258,48 +258,65 @@ const APP_LINES: RegExp[] = [
   /^Skipping duplicate finding for /,
   /^Skipping (unparseable|unsupported) url: /,
   /^\d+ proposals created, \d+ skipped$/,
-  /^\d+ new, \d+ duplicates, \d+ dead, \d+ unverified$/,
+  /^\d+ new, \d+ duplicates, \d+ dead, \d+ unverified(; \d+ of \d+ workers failed)?$/,
+  /^Max effort: \d+ workers, up to \d+ at a time$/,
+  /^Worker \d+ \(.+\) started$/,
 ];
+// A failed Max worker does not fail the run, so it is a warning rather than an error.
+const WORKER_FAILED = /^Worker \d+ \(.+\) failed: /;
+// Max workers' own output is written with this prefix (src/server/services/discovery.ts).
+const WORKER_PREFIX = /^\[worker (\d+)\] (.*)$/;
 
 function appLine(line: string): LogEntry | null {
   const finished = /^Run \S+ (succeeded|failed|aborted)(:.*)?$/.exec(line);
   if (finished) return { kind: 'app', tone: finished[1] === 'succeeded' ? 'muted' : 'error', text: clip(line) };
+  if (WORKER_FAILED.test(line)) return { kind: 'app', tone: 'warning', text: clip(line) };
   if (line === RUN_SAVING_LOG_LINE || APP_LINES.some((re) => re.test(line))) {
     return { kind: 'app', tone: 'muted', text: clip(line) };
   }
   return null;
 }
 
-// Stateful across lines: Codex reports a step at its start and again at its end.
+// One raw line; `started` is shared across lines because Codex reports a step at its start and its end.
+function formatLine(line: string, started: Set<string>): LogEntry[] {
+  if (line.startsWith(STDERR_PREFIX)) {
+    return [{ kind: 'stderr', tone: 'muted', text: clip(line.slice(STDERR_PREFIX.length)) }];
+  }
+  const app = appLine(line);
+  if (app) return [app];
+  let event: unknown;
+  if (line.trim().startsWith('{')) {
+    try {
+      event = JSON.parse(line);
+    } catch {
+      event = undefined;
+    }
+  }
+  // Plain output, or JSON that is not an agent event (a custom command's own result), is kept as text.
+  if (!isObject(event) || typeof event.type !== 'string') {
+    return [{ kind: 'text', text: structuredSummary(line) ?? clip(line) }];
+  }
+  return claudeEvent(event) ?? codexEvent(event, started) ?? [];
+}
+
 export function formatLog(lines: string[]): LogEntry[] {
   const started = new Set<string>();
+  // Each Max worker is its own agent process with its own item ids.
+  const workerStarted = new Map<string, Set<string>>();
   const out: LogEntry[] = [];
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (line.trim() === '') continue;
-    if (line.startsWith(STDERR_PREFIX)) {
-      out.push({ kind: 'stderr', tone: 'muted', text: clip(line.slice(STDERR_PREFIX.length)) });
-      continue;
-    }
-    const app = appLine(line);
-    if (app) {
-      out.push(app);
-      continue;
-    }
-    let event: unknown;
-    if (line.trim().startsWith('{')) {
-      try {
-        event = JSON.parse(line);
-      } catch {
-        event = undefined;
+    const worker = WORKER_PREFIX.exec(line);
+    if (worker) {
+      const id = worker[1]!;
+      if (!workerStarted.has(id)) workerStarted.set(id, new Set());
+      for (const entry of formatLine(worker[2]!, workerStarted.get(id)!)) {
+        out.push({ ...entry, text: `Worker ${id}: ${entry.text}` });
       }
-    }
-    // Plain output, or JSON that is not an agent event (a custom command's own result), is kept as text.
-    if (!isObject(event) || typeof event.type !== 'string') {
-      out.push({ kind: 'text', text: structuredSummary(line) ?? clip(line) });
       continue;
     }
-    out.push(...(claudeEvent(event) ?? codexEvent(event, started) ?? []));
+    out.push(...formatLine(line, started));
   }
   return out;
 }

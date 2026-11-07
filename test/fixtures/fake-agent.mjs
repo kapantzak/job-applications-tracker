@@ -59,7 +59,8 @@ switch (mode) {
     process.stdout.write('Here you go:\n' + output + '\n');
     break;
   case 'claude':
-  case 'claude-fail': {
+  case 'claude-fail':
+  case 'claude-budget': {
     // Read the prompt to the end so a stdin that is never closed makes the test hang.
     await readStdin();
     const init = { type: 'system', subtype: 'init' };
@@ -68,10 +69,21 @@ switch (mode) {
       process.stdout.write(JSON.stringify(init) + '\n');
       process.exit(2);
     }
+    // Usage shaped like Claude Code 2.1.x result events.
+    const usage = {
+      total_cost_usd: 0.25,
+      modelUsage: { 'model-a': { inputTokens: 10, cacheReadInputTokens: 1000, cacheCreationInputTokens: 500, outputTokens: 40 } },
+    };
+    if (mode === 'claude-budget') {
+      // What `--max-budget-usd` ends with: an error result, no structured output, exit 1.
+      process.stdout.write(JSON.stringify(init) + '\n');
+      process.stdout.write(JSON.stringify({ type: 'result', subtype: 'error_max_budget_usd', is_error: true, ...usage }) + '\n');
+      process.exit(1);
+    }
     const lines = [
       init,
       { type: 'assistant', message: { content: [{ type: 'text', text: 'working' }] } },
-      { type: 'result', subtype: 'success', structured_output: JSON.parse(output) },
+      { type: 'result', subtype: 'success', structured_output: JSON.parse(output), ...usage },
     ];
     for (const line of lines) process.stdout.write(JSON.stringify(line) + '\n');
     break;
@@ -83,7 +95,8 @@ switch (mode) {
       process.exit(3);
     }
     writeFileSync(process.argv[i + 1], output);
-    process.stdout.write('{"type":"turn.completed"}\n');
+    // Codex reports the thread's running total on each turn.completed.
+    process.stdout.write('{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":1000,"output_tokens":80}}\n');
     break;
   }
   case 'fail':

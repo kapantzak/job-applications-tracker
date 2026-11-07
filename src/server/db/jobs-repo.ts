@@ -1,8 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import type { Job, JobListItem } from '../domain/types.js';
+import type { FitChecks, Job, JobListItem } from '../domain/types.js';
 import type { Db } from './connection.js';
 
 export type NewJob = Omit<Job, 'id' | 'profile_id' | 'run_id' | 'dismissed_at' | 'created_at'>;
+
+type Row<T> = Omit<T, 'fit_checks'> & { fit_checks: string | null };
+
+// fit_checks is JSON text; a row that does not parse shows no verdicts rather than failing the list.
+function parseFitChecks(text: string | null): FitChecks | null {
+  if (text === null) return null;
+  try {
+    const v = JSON.parse(text) as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as FitChecks) : null;
+  } catch {
+    return null;
+  }
+}
+
+function fromRow<T extends Job>(row: Row<T>): T {
+  return { ...row, fit_checks: parseFitChecks(row.fit_checks) } as T;
+}
 
 export interface ListJobsOptions {
   includeDead?: boolean;
@@ -12,10 +29,10 @@ export interface ListJobsOptions {
 export function createJobsRepo(db: Db) {
   const insert = db.prepare(
     `INSERT INTO jobs (id, profile_id, run_id, company, title, location, remote, url, canonical_url, source_site,
-       posted_at, salary, description_excerpt, match_reason, verification_status, verified_at,
+       posted_at, salary, description_excerpt, match_reason, fit_checks, verification_status, verified_at,
        dedupe_key, created_at)
      VALUES (@id, @profile_id, @run_id, @company, @title, @location, @remote, @url, @canonical_url, @source_site,
-       @posted_at, @salary, @description_excerpt, @match_reason, @verification_status, @verified_at,
+       @posted_at, @salary, @description_excerpt, @match_reason, @fit_checks, @verification_status, @verified_at,
        @dedupe_key, @created_at)`,
   );
   const selectById = db.prepare('SELECT * FROM jobs WHERE id = ?');
@@ -30,7 +47,8 @@ export function createJobsRepo(db: Db) {
   );
 
   function get(id: string): Job | null {
-    return (selectById.get(id) as Job | undefined) ?? null;
+    const row = selectById.get(id) as Row<Job> | undefined;
+    return row ? fromRow(row) : null;
   }
 
   // Jobs belong to the profile of the run that found them.
@@ -45,6 +63,7 @@ export function createJobsRepo(db: Db) {
         const id = randomUUID();
         insert.run({
           ...job,
+          fit_checks: job.fit_checks ? JSON.stringify(job.fit_checks) : null,
           id,
           profile_id: owner.profile_id,
           run_id: runId,
@@ -70,7 +89,8 @@ export function createJobsRepo(db: Db) {
             ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status
          FROM jobs j ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
       )
-      .all(profileId) as JobListItem[];
+      .all(profileId)
+      .map((row) => fromRow(row as Row<JobListItem>));
   }
 
   function dismiss(id: string): void {

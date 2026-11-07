@@ -81,3 +81,80 @@ describe('verifyLink', () => {
     expect((await verifyLink(`http://127.0.0.1:${port}/x`)).status).toBe('dead');
   });
 });
+
+// Greenhouse answers a closed or unknown job id with a redirect to `/<board>?error=true`, which then
+// serves the board with 200 (probed 2026-11-07). A local server cannot pose as greenhouse.io, so these
+// tests route by URL through an injected fetch.
+describe('verifyLink Greenhouse soft 404', () => {
+  function fakeFetch(routes: Record<string, { status: number; location?: string }>): typeof fetch {
+    return (async (input: string | URL | Request) => {
+      const url = String(input);
+      const route = routes[url];
+      if (!route) throw new Error(`unexpected fetch ${url}`);
+      const headers = route.location ? { location: route.location } : undefined;
+      return new Response(null, { status: route.status, headers });
+    }) as typeof fetch;
+  }
+
+  it('dead when a Greenhouse job redirects to the board with error=true', async () => {
+    const fetchImpl = fakeFetch({
+      'https://job-boards.greenhouse.io/acme/jobs/123': { status: 302, location: '/acme?error=true' },
+      'https://job-boards.greenhouse.io/acme?error=true': { status: 200 },
+    });
+    expect(await verifyLink('https://job-boards.greenhouse.io/acme/jobs/123', { fetchImpl })).toEqual({
+      status: 'dead',
+      finalUrl: 'https://job-boards.greenhouse.io/acme?error=true',
+      httpStatus: 302,
+    });
+  });
+
+  it('dead when the old Greenhouse host hops through to error=true', async () => {
+    const fetchImpl = fakeFetch({
+      'https://boards.greenhouse.io/acme/jobs/123': {
+        status: 301,
+        location: 'https://job-boards.greenhouse.io/acme/jobs/123',
+      },
+      'https://job-boards.greenhouse.io/acme/jobs/123': {
+        status: 302,
+        location: 'https://job-boards.greenhouse.io/acme?error=true',
+      },
+    });
+    expect((await verifyLink('https://boards.greenhouse.io/acme/jobs/123', { fetchImpl })).status).toBe('dead');
+  });
+
+  it('dead without fetching when the agent returned the error=true board url itself', async () => {
+    const fetchImpl = fakeFetch({});
+    expect(await verifyLink('https://job-boards.greenhouse.io/acme?error=true', { fetchImpl })).toEqual({
+      status: 'dead',
+      finalUrl: 'https://job-boards.greenhouse.io/acme?error=true',
+      httpStatus: null,
+    });
+  });
+
+  it('still redirected for an ordinary Greenhouse redirect', async () => {
+    const fetchImpl = fakeFetch({
+      'https://boards.greenhouse.io/acme/jobs/123': {
+        status: 301,
+        location: 'https://job-boards.greenhouse.io/acme/jobs/123',
+      },
+      'https://job-boards.greenhouse.io/acme/jobs/123': { status: 200 },
+    });
+    expect((await verifyLink('https://boards.greenhouse.io/acme/jobs/123', { fetchImpl })).status).toBe('redirected');
+  });
+
+  it('error=true on another host keeps the normal redirect handling', async () => {
+    const fetchImpl = fakeFetch({
+      'https://jobs.example.com/acme/1': { status: 302, location: 'https://jobs.example.com/acme?error=true' },
+      'https://jobs.example.com/acme?error=true': { status: 200 },
+    });
+    expect((await verifyLink('https://jobs.example.com/acme/1', { fetchImpl })).status).toBe('redirected');
+  });
+
+  it('a look-alike host is not treated as Greenhouse', async () => {
+    const fetchImpl = fakeFetch({
+      'https://notgreenhouse.io/acme/1': { status: 302, location: 'https://notgreenhouse.io/acme?error=true' },
+      'https://notgreenhouse.io/acme?error=true': { status: 200 },
+    });
+    expect((await verifyLink('https://notgreenhouse.io/acme/1', { fetchImpl })).status).toBe('redirected');
+  });
+});

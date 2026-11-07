@@ -41,7 +41,7 @@ function ownerIds(db: Db, table: string): string[] {
 describe('migrate', () => {
   it('applies every migration and creates the eight tables', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(4);
+    expect(migrate(db)).toBe(5);
 
     const names = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
@@ -75,7 +75,7 @@ describe('migrate', () => {
     db.close();
   });
 
-  it('migrations 2 to 4 upgrade a version 1 database and leave existing runs unrecorded', () => {
+  it('migrations 2 to 5 upgrade a version 1 database and leave existing runs unrecorded', () => {
     const db = openDatabase(':memory:');
     db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
     db.exec(migrations.find((m) => m.id === 1)!.sql!);
@@ -83,7 +83,7 @@ describe('migrate', () => {
     db.prepare(
       "INSERT INTO runs (id, kind, status, adapter_id, created_at) VALUES ('run-1', 'sync_mail', 'succeeded', 'claude', 't')",
     ).run();
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
     expect(
       db.prepare('SELECT adapter_id, agent_model, agent_effort, agent_model_reported FROM runs').get(),
     ).toEqual({ adapter_id: 'claude', agent_model: null, agent_effort: null, agent_model_reported: null });
@@ -133,7 +133,7 @@ describe('migrate', () => {
     ).run();
     populate(db);
 
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
 
     const profiles = db.prepare('SELECT * FROM profiles').all() as Record<string, unknown>[];
     expect(profiles).toHaveLength(1);
@@ -255,7 +255,7 @@ describe('migrate', () => {
     add.run('p5', 'Cafe');
     add.run('p6', 'New');
 
-    expect(migrate(db)).toBe(1);
+    expect(migrate(db)).toBe(2);
 
     expect(db.prepare('SELECT id, name, slug FROM profiles ORDER BY rowid').all()).toEqual([
       { id: 'p1', name: 'SRE Platform 2', slug: 'sre-platform-2' },
@@ -266,6 +266,37 @@ describe('migrate', () => {
       { id: 'p6', name: 'New', slug: 'new-2' },
     ]);
     expect(() => db.prepare("UPDATE profiles SET slug = 'cafe' WHERE id = 'p5'").run()).toThrow(/UNIQUE/);
+    db.close();
+  });
+
+  it('migration 5 adds effort mode, usage and fit columns and keeps existing rows as default runs', () => {
+    const db = openDatabase(':memory:');
+    db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+    for (const m of migrations.filter((x) => x.id <= 4)) {
+      if (m.sql) db.exec(m.sql);
+      if (m.up) {
+        db.pragma('foreign_keys = OFF');
+        m.up(db);
+        db.pragma('foreign_keys = ON');
+      }
+      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, 't')").run(m.id);
+    }
+    db.exec(`
+INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't');
+INSERT INTO runs (id, profile_id, kind, status, adapter_id, created_at) VALUES ('run-1', 'p1', 'discover_jobs', 'succeeded', 'claude', 't');
+INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, dedupe_key, verification_status, created_at)
+  VALUES ('job-1', 'p1', 'run-1', 'Acme', 'SRE', 'https://acme.example/1', 'https://acme.example/1', 'k1', 'ok', 't');
+`);
+
+    expect(migrate(db)).toBe(1);
+
+    expect(
+      db.prepare('SELECT effort_mode, usage_cost_usd, usage_input_tokens, usage_output_tokens FROM runs').get(),
+    ).toEqual({ effort_mode: 'default', usage_cost_usd: null, usage_input_tokens: null, usage_output_tokens: null });
+    expect(db.prepare('SELECT fit_checks FROM jobs').get()).toEqual({ fit_checks: null });
+    expect(() => db.prepare("UPDATE runs SET effort_mode = 'turbo'").run()).toThrow(/CHECK/);
+    db.prepare("UPDATE runs SET effort_mode = 'max'").run();
+    expect(db.prepare('SELECT effort_mode FROM runs').get()).toEqual({ effort_mode: 'max' });
     db.close();
   });
 });
