@@ -74,7 +74,7 @@ describe('error handling', () => {
       throw boom;
     });
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const res = await h.app.request('/api/jobs');
+    const res = await h.app.request(`${h.base}/jobs`);
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Internal error' });
     expect(logged).toHaveBeenCalledWith(boom);

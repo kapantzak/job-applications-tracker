@@ -9,6 +9,7 @@ import {
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -16,13 +17,14 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function ReviewPage() {
+  const profileId = useProfileId();
   const [proposals, setProposals] = useState<ProposalWithApplication[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    listProposals()
+    listProposals(profileId)
       .then((list) => {
         if (active) setProposals(list);
       })
@@ -32,13 +34,13 @@ export function ReviewPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [profileId]);
 
-  const decide = async (id: string, action: (id: string) => Promise<unknown>) => {
+  const decide = async (id: string, action: (profileId: string, id: string) => Promise<unknown>) => {
     setBusy(id);
     setError(null);
     try {
-      await action(id);
+      await action(profileId, id);
       setProposals((prev) => prev?.filter((p) => p.id !== id) ?? null);
     } catch (e) {
       setError(message(e));

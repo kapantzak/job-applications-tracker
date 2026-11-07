@@ -16,7 +16,8 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
   const { applicationsRepo, proposalsRepo, settingsRepo, mailSourceFactory } = deps;
 
   return async (ctx) => {
-    const open = applicationsRepo.list({ open: true });
+    const profileId = ctx.run.profile_id;
+    const open = applicationsRepo.list(profileId, { open: true });
     if (open.length === 0) {
       ctx.log('No open applications to check');
       return { summary: 'no open applications' };
@@ -34,7 +35,7 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
           applied_at: a.applied_at ?? a.created_at,
           sender_domains: a.sender_domains,
         })),
-        reviewed_message_ids: proposalsRepo.reviewedMessageIds(),
+        reviewed_message_ids: proposalsRepo.reviewedMessageIds(profileId),
       },
       {
         log: ctx.log,

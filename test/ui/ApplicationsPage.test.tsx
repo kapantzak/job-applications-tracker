@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationsPage } from '../../src/ui/pages/ApplicationsPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -24,12 +25,14 @@ const app = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/applications']}>
-      <Routes>
-        <Route path="/applications" element={<ApplicationsPage />} />
-        <Route path="/runs/:id" element={<p>run page</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/applications']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/applications" element={<ApplicationsPage />} />
+          <Route path="/profiles/:profileSlug/runs/:id" element={<p>run page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
@@ -52,7 +55,7 @@ describe('ApplicationsPage', () => {
       selector: 'td select',
     });
     await user.selectOptions(select, 'interview');
-    expect(client.setApplicationStatus).toHaveBeenCalledWith('a1', 'interview');
+    expect(client.setApplicationStatus).toHaveBeenCalledWith('pf1', 'a1', 'interview');
     expect(await screen.findByDisplayValue('interview')).toBeInTheDocument();
   });
 
@@ -60,7 +63,7 @@ describe('ApplicationsPage', () => {
     renderPage();
     await screen.findByText('Acme');
     expect(screen.queryByRole('link', { name: 'Open posting' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '/applications/a1');
+    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '/profiles/platform-roles/applications/a1');
   });
 
   it('creates an application with an ISO applied date', async () => {
@@ -79,6 +82,7 @@ describe('ApplicationsPage', () => {
     await user.type(within(sheet).getByLabelText('Applied date'), '2026-03-04');
     await user.click(within(sheet).getByRole('button', { name: 'Add' }));
     expect(client.createApplication).toHaveBeenCalledWith(
+      'pf1',
       expect.objectContaining({
         company: 'Beta',
         role: 'Lead',
@@ -101,7 +105,7 @@ describe('ApplicationsPage', () => {
     await user.type(within(sheet).getByLabelText('Company'), 'Gamma');
     await user.type(within(sheet).getByLabelText('Role'), 'Dev');
     await user.click(within(sheet).getByRole('button', { name: 'Add' }));
-    const payload = vi.mocked(client.createApplication).mock.calls[0]![0];
+    const payload = vi.mocked(client.createApplication).mock.calls[0]![1];
     expect(payload).toMatchObject({ company: 'Gamma', role: 'Dev', status: 'applied' });
     expect(payload).not.toHaveProperty('applied_at');
     expect(await screen.findByText('Gamma')).toBeInTheDocument();

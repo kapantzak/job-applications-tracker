@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunPage } from '../../src/ui/pages/RunPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 import type { Run } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -16,6 +17,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
 
 const run: Run = {
   id: 'r1',
+  profile_id: 'pf1',
   kind: 'discover_jobs',
   status: 'running',
   started_at: '2026-01-01T00:00:00Z',
@@ -32,11 +34,13 @@ const run: Run = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/runs/r1']}>
-      <Routes>
-        <Route path="/runs/:id" element={<RunPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/runs/r1']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/runs/:id" element={<RunPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
@@ -53,7 +57,7 @@ describe('RunPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(client.getRun).mockResolvedValue(run);
-    vi.mocked(client.subscribeRunEvents).mockImplementation((_id, l, d) => {
+    vi.mocked(client.subscribeRunEvents).mockImplementation((_profileId, _id, l, d) => {
       onLine = l;
       onDone = d as never;
       return unsubscribe;
@@ -69,7 +73,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: '2 new' });
     await act(async () => onDone('succeeded' as never));
     expect(await screen.findByText('2 new')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/jobs');
+    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs');
     expect(client.subscribeRunEvents).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -94,7 +98,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/jobs');
+    expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs');
   });
 
   it('shows the agent, the requested model and effort, and the model the agent reported', async () => {
@@ -162,7 +166,7 @@ describe('RunPage', () => {
     expect(client.cancelRun).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
     await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
-    expect(client.cancelRun).toHaveBeenCalledWith('r1');
+    expect(client.cancelRun).toHaveBeenCalledWith('pf1', 'r1');
     expect(await screen.findByRole('button', { name: 'Cancelling…' })).toBeDisabled();
 
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });

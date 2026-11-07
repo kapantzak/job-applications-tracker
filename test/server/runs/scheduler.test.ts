@@ -6,17 +6,21 @@ const HOUR = 3_600_000;
 
 let interval: 'off' | '1h' | '6h' | '24h';
 let calls: string[];
+let profileIds: string[];
+let listProfiles: () => string[];
 let scheduler: SyncScheduler;
 
 function build(): SyncScheduler {
   return createSyncScheduler({
     settingsRepo: { getAll: () => ({ sync_interval: interval }) as never },
     queue: {
-      enqueue: (kind) => {
-        calls.push(kind);
+      enqueue: (kind, profileId) => {
+        if (profileId === 'p-broken') throw new Error('enqueue failed');
+        calls.push(`${kind}:${profileId}`);
         return { id: 'r1', kind } as unknown as Run;
       },
     },
+    syncProfileIds: () => listProfiles(),
   });
 }
 
@@ -24,6 +28,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   interval = 'off';
   calls = [];
+  profileIds = ['p1'];
+  listProfiles = () => profileIds;
   scheduler = build();
 });
 
@@ -46,7 +52,42 @@ describe('sync scheduler', () => {
     expect(calls).toHaveLength(1);
     vi.advanceTimersByTime(2 * HOUR);
     expect(calls).toHaveLength(3);
-    expect(calls.every((k) => k === 'sync_mail')).toBe(true);
+    expect(calls.every((k) => k === 'sync_mail:p1')).toBe(true);
+  });
+
+  it('enqueues one sync per listed profile on each tick, read fresh every time', () => {
+    interval = '1h';
+    profileIds = ['p1', 'p2'];
+    scheduler.start();
+    vi.advanceTimersByTime(HOUR);
+    expect(calls).toEqual(['sync_mail:p1', 'sync_mail:p2']);
+    profileIds = [];
+    vi.advanceTimersByTime(HOUR);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('a failing enqueue for one profile does not skip the others', () => {
+    interval = '1h';
+    profileIds = ['p-broken', 'p2'];
+    scheduler.start();
+    vi.advanceTimersByTime(HOUR);
+    expect(calls).toEqual(['sync_mail:p2']);
+  });
+
+  it('keeps the timer alive when listing profiles fails', () => {
+    interval = '1h';
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    listProfiles = () => {
+      throw new Error('db closed');
+    };
+    scheduler.start();
+    vi.advanceTimersByTime(HOUR);
+    expect(calls).toEqual([]);
+    expect(error).toHaveBeenCalledWith('sync scheduler: could not list profiles: db closed');
+    listProfiles = () => ['p1'];
+    vi.advanceTimersByTime(HOUR);
+    expect(calls).toEqual(['sync_mail:p1']);
+    error.mockRestore();
   });
 
   it('honours 6h and 24h intervals', () => {

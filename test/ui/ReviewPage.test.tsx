@@ -1,9 +1,10 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReviewPage } from '../../src/ui/pages/ReviewPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -34,9 +35,13 @@ const proposal = {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <ReviewPage />
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/review']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/review" element={<ReviewPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
@@ -63,7 +68,7 @@ describe('ReviewPage', () => {
     vi.mocked(client.acceptProposal).mockResolvedValue({} as never);
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Accept' }));
-    expect(client.acceptProposal).toHaveBeenCalledWith('p1');
+    expect(client.acceptProposal).toHaveBeenCalledWith('pf1', 'p1');
     expect(await screen.findByText('Nothing to review')).toBeInTheDocument();
     expect(screen.queryByText(/Acme/)).not.toBeInTheDocument();
   });
@@ -73,7 +78,7 @@ describe('ReviewPage', () => {
     vi.mocked(client.rejectProposal).mockResolvedValue({} as never);
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Reject' }));
-    expect(client.rejectProposal).toHaveBeenCalledWith('p1');
+    expect(client.rejectProposal).toHaveBeenCalledWith('pf1', 'p1');
     expect(await screen.findByText('Nothing to review')).toBeInTheDocument();
   });
 

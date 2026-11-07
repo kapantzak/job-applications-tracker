@@ -6,6 +6,7 @@ import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -18,6 +19,8 @@ const SETTLE_POLL_MS = 1000;
 const SETTLE_POLLS = 30;
 
 export function RunsPage() {
+  const profileId = useProfileId();
+  const href = useProfileHref();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -34,7 +37,7 @@ export function RunsPage() {
     setError(null);
     for (let i = 0; i < SETTLE_POLLS && mounted.current; i++) {
       try {
-        const list = await listRuns();
+        const list = await listRuns(profileId);
         if (!mounted.current) return;
         setRuns(list);
         const run = list.find((r) => r.id === id);
@@ -49,7 +52,7 @@ export function RunsPage() {
 
   useEffect(() => {
     let active = true;
-    listRuns()
+    listRuns(profileId)
       .then((list) => {
         if (active) setRuns(list);
       })
@@ -59,12 +62,12 @@ export function RunsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [profileId]);
 
   // A refused cancel means the row is stale (saving or already finished): show why and re-read once.
   const onCancelRefused = (message: string) => {
     setError(message);
-    listRuns()
+    listRuns(profileId)
       .then((list) => {
         if (mounted.current) setRuns(list);
       })
@@ -107,7 +110,7 @@ export function RunsPage() {
               {runs.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="pl-4">
-                    <Link to={`/runs/${r.id}`} className="font-mono text-sm font-medium hover:underline">
+                    <Link to={href(`/runs/${r.id}`)} className="font-mono text-sm font-medium hover:underline">
                       {r.kind}
                     </Link>
                   </TableCell>
@@ -122,6 +125,7 @@ export function RunsPage() {
                   <TableCell className="pr-4 text-right">
                     {isActive(r) && (
                       <CancelRunButton
+                        profileId={profileId}
                         runId={r.id}
                         onCancelled={() => void refreshUntilEnded(r.id)}
                         onError={onCancelRefused}

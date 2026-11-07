@@ -6,7 +6,9 @@ import {
   getModelCatalogs,
   getRunLog,
   listJobs,
-  putProfile,
+  createProfile,
+  deleteProfile,
+  updateProfile,
   subscribeRunEvents,
 } from '../../src/ui/api/client.js';
 
@@ -21,30 +23,55 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const PROFILE_INPUT = {
+  name: 'Platform roles',
+  target_roles: ['Engineer'],
+  locations: [],
+  remote: 'any' as const,
+  seniority: '',
+  keywords: [],
+  excluded_companies: [],
+  notes: '',
+};
+
 describe('api client', () => {
-  it('listJobs calls GET /api/jobs and returns the body', async () => {
+  it("listJobs calls GET on the profile's jobs and returns the body", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([{ id: 'j1' }]));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(listJobs()).resolves.toEqual([{ id: 'j1' }]);
+    await expect(listJobs('p 1', { includeDead: true })).resolves.toEqual([{ id: 'j1' }]);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/jobs');
+    expect(url).toBe('/api/profiles/p%201/jobs?includeDead=1');
     expect(init.method).toBe('GET');
     expect(init.headers).toBeUndefined();
   });
 
-  it('putProfile throws ApiError with the server error on 400', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'target_roles required' }, 400));
+  it('updateProfile PUTs JSON to the profile and throws ApiError with the server error on 409', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'A profile named "X" already exists' }, 409));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const err = await putProfile({ target_roles: [] }).catch((e: unknown) => e);
+    const err = await updateProfile('p1', PROFILE_INPUT).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err).toMatchObject({ status: 400, message: 'target_roles required' });
+    expect(err).toMatchObject({ status: 409, message: 'A profile named "X" already exists' });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/profile');
+    expect(url).toBe('/api/profiles/p1');
     expect(init.method).toBe('PUT');
     expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
-    expect(init.body).toBe(JSON.stringify({ target_roles: [] }));
+    expect(init.body).toBe(JSON.stringify(PROFILE_INPUT));
+  });
+
+  it('createProfile POSTs to /api/profiles and deleteProfile DELETEs the profile', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 'p1', ...PROFILE_INPUT }, 201))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    expect(await createProfile(PROFILE_INPUT)).toMatchObject({ id: 'p1' });
+    await expect(deleteProfile('p1')).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, (init as RequestInit).method])).toEqual([
+      ['/api/profiles', 'POST'],
+      ['/api/profiles/p1', 'DELETE'],
+    ]);
   });
 
   it('getModelCatalogs calls GET /api/setup/models', async () => {
@@ -60,9 +87,9 @@ describe('api client', () => {
   it('cancelRun posts to the run cancel route and returns the run', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 'r 1', status: 'aborted' }, 202));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    expect(await cancelRun('r 1')).toEqual({ id: 'r 1', status: 'aborted' });
+    expect(await cancelRun('p1', 'r 1')).toEqual({ id: 'r 1', status: 'aborted' });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/runs/r%201/cancel');
+    expect(url).toBe('/api/profiles/p1/runs/r%201/cancel');
     expect(init.method).toBe('POST');
   });
 
@@ -71,13 +98,13 @@ describe('api client', () => {
     const json = vi.spyOn(res, 'json');
     globalThis.fetch = vi.fn().mockResolvedValue(res) as unknown as typeof fetch;
 
-    await expect(dismissJob('j1')).resolves.toBeUndefined();
+    await expect(dismissJob('p1', 'j1')).resolves.toBeUndefined();
     expect(json).not.toHaveBeenCalled();
   });
 
   it('throws ApiError when a 2xx body is not JSON', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('nope', { status: 200 })) as unknown as typeof fetch;
-    await expect(listJobs()).rejects.toMatchObject({ status: 200, message: 'Invalid JSON response' });
+    await expect(listJobs('p1')).rejects.toMatchObject({ status: 200, message: 'Invalid JSON response' });
   });
 
   it('getRunLog returns text and maps errors to ApiError', async () => {
@@ -87,9 +114,9 @@ describe('api client', () => {
       .mockResolvedValueOnce(jsonResponse({ error: 'Run not found' }, 404));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(getRunLog('r1')).resolves.toBe('a\nb\n');
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/runs/r1/log');
-    await expect(getRunLog('r2')).rejects.toMatchObject({ status: 404, message: 'Run not found' });
+    await expect(getRunLog('p1', 'r1')).resolves.toBe('a\nb\n');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/profiles/p1/runs/r1/log');
+    await expect(getRunLog('p1', 'r2')).rejects.toMatchObject({ status: 404, message: 'Run not found' });
   });
 });
 
@@ -117,10 +144,10 @@ describe('subscribeRunEvents', () => {
     const onLine = vi.fn();
     const onDone = vi.fn();
 
-    subscribeRunEvents('r1', onLine, onDone);
+    subscribeRunEvents('p1', 'r1', onLine, onDone);
     expect(FakeEventSource.instances).toHaveLength(1);
     const source = FakeEventSource.instances[0] as FakeEventSource;
-    expect(source.url).toBe('/api/runs/r1/events');
+    expect(source.url).toBe('/api/profiles/p1/runs/r1/events');
 
     source.emit('line', 'hello');
     source.emit('done', 'succeeded');

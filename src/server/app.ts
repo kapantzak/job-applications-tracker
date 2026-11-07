@@ -2,19 +2,16 @@ import { join, resolve, sep } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import type { AgentAdapter } from './agents/index.js';
-import { createApplicationsRouter } from './api/applications.js';
 import { onError } from './api/errors.js';
 import { createRequestGuard } from './api/guard.js';
-import { createJobsRouter } from './api/jobs.js';
-import { createProfileRouter } from './api/profile.js';
-import { createProposalsRouter } from './api/proposals.js';
-import { createRunsRouter } from './api/runs.js';
+import { createProfilesRouter } from './api/profiles.js';
+import { createRunLogsRouter } from './api/runs.js';
 import { createSettingsRouter } from './api/settings.js';
 import { createSetupRouter } from './api/setup.js';
 import type { createApplicationsRepo } from './db/applications-repo.js';
 import type { Db } from './db/connection.js';
 import type { createJobsRepo } from './db/jobs-repo.js';
-import type { createProfileRepo } from './db/profile-repo.js';
+import type { ProfilesRepo } from './db/profiles-repo.js';
 import type { createProposalsRepo } from './db/proposals-repo.js';
 import type { RunsRepo } from './db/runs-repo.js';
 import type { createSettingsRepo } from './db/settings-repo.js';
@@ -28,7 +25,7 @@ export interface AppDeps {
   db: Db;
   dataDir: string;
   runsDir: string;
-  profileRepo: ReturnType<typeof createProfileRepo>;
+  profilesRepo: ProfilesRepo;
   settingsRepo: ReturnType<typeof createSettingsRepo>;
   jobsRepo: ReturnType<typeof createJobsRepo>;
   applicationsRepo: ReturnType<typeof createApplicationsRepo>;
@@ -72,12 +69,10 @@ export function createApp(deps: AppDeps): Hono {
   app.use('/api/*', createRequestGuard(deps.allowedHosts));
 
   app.route('/api', createSetupRouter(deps));
-  app.route('/api/profile', createProfileRouter(deps));
   app.route('/api/settings', createSettingsRouter(deps));
-  app.route('/api/jobs', createJobsRouter(deps));
-  app.route('/api/applications', createApplicationsRouter(deps));
-  app.route('/api/proposals', createProposalsRouter(deps));
-  app.route('/api/runs', createRunsRouter(deps));
+  // Jobs, applications, proposals and runs live under their profile (SOW-0014).
+  app.route('/api/profiles', createProfilesRouter(deps));
+  app.route('/api/runs', createRunLogsRouter(deps));
 
   if (deps.uiDir !== null) {
     const root = resolve(deps.uiDir);

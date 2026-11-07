@@ -1,6 +1,7 @@
 import type { Context, ErrorHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
+import { ProfileNotFoundError } from '../db/profiles-repo.js';
 import { ProposalNotPendingError } from '../services/proposals.js';
 
 export class HttpError extends Error {
@@ -46,11 +47,8 @@ export const onError: ErrorHandler = (err, c) => {
     return c.json({ error: err.message }, err.status as ContentfulStatusCode);
   }
   if (err instanceof ProposalNotPendingError) return c.json({ error: err.message }, 409);
+  if (err instanceof ProfileNotFoundError) return c.json({ error: 'Profile not found' }, 404);
   if (err instanceof z.ZodError) return c.json({ error: formatZodError(err) }, 400);
-  // The discovery handler throws this when the profile disappears between checks.
-  if (err instanceof Error && err.message.startsWith('Profile is not set')) {
-    return c.json({ error: err.message }, 422);
-  }
   console.error(err);
   return c.json({ error: 'Internal error' }, 500);
 };

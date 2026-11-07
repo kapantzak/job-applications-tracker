@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase, type Db } from '../../../src/server/db/connection.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
+import { insertTestProfile } from '../db/test-profile.js';
 import type { Run, RunKind, RunStatus } from '../../../src/server/domain/types.js';
 import { createLogStore } from '../../../src/server/runs/log-store.js';
 import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
@@ -14,6 +15,7 @@ type Queue = ReturnType<typeof createRunQueue>;
 let db: Db;
 let runsDir: string;
 let runsRepo: ReturnType<typeof createRunsRepo>;
+let pid: string;
 let logStore: ReturnType<typeof createLogStore>;
 let queue: Queue | null;
 
@@ -54,14 +56,15 @@ function insertRaw(status: RunStatus, kind: RunKind = 'discover_jobs'): string {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO runs (id, kind, status, started_at, created_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(id, kind, status, status === 'running' ? now : null, now);
+    'INSERT INTO runs (id, profile_id, kind, status, started_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, pid, kind, status, status === 'running' ? now : null, now);
   return id;
 }
 
 beforeEach(() => {
   db = openDatabase(':memory:');
   migrate(db);
+  pid = insertTestProfile(db);
   runsDir = mkdtempSync(join(tmpdir(), 'jobtrack-runs-'));
   runsRepo = createRunsRepo(db);
   logStore = createLogStore(runsDir);
@@ -76,7 +79,7 @@ afterEach(async () => {
 
 describe('runs repo', () => {
   it('creates queued runs with null start time and updates only provided keys', () => {
-    const run = runsRepo.create('sync_mail', { adapter_id: 'claude', prompt_version: null });
+    const run = runsRepo.create('sync_mail', pid, { adapter_id: 'claude', prompt_version: null });
     expect(run).toMatchObject({
       kind: 'sync_mail',
       status: 'queued',
@@ -93,20 +96,20 @@ describe('runs repo', () => {
   });
 
   it('lists newest first, finds the oldest queued run and reports active kinds', () => {
-    const a = runsRepo.create('discover_jobs', { adapter_id: '', prompt_version: null });
-    const b = runsRepo.create('sync_mail', { adapter_id: '', prompt_version: null });
-    expect(runsRepo.list().map((r) => r.id)).toEqual([b.id, a.id]);
-    expect(runsRepo.list(1).map((r) => r.id)).toEqual([b.id]);
+    const a = runsRepo.create('discover_jobs', pid, { adapter_id: '', prompt_version: null });
+    const b = runsRepo.create('sync_mail', pid, { adapter_id: '', prompt_version: null });
+    expect(runsRepo.list(pid).map((r) => r.id)).toEqual([b.id, a.id]);
+    expect(runsRepo.list(pid, 1).map((r) => r.id)).toEqual([b.id]);
     expect(runsRepo.nextQueued()?.id).toBe(a.id);
-    expect(runsRepo.hasActive('discover_jobs')).toBe(true);
-    expect(runsRepo.findActive('sync_mail')?.id).toBe(b.id);
-    expect(runsRepo.findActiveExcept('sync_mail', b.id)).toBeNull();
-    const c = runsRepo.create('discover_jobs', { adapter_id: '', prompt_version: null });
-    expect(runsRepo.findActiveExcept('discover_jobs', a.id)?.id).toBe(c.id);
+    expect(runsRepo.hasActive('discover_jobs', pid)).toBe(true);
+    expect(runsRepo.findActive('sync_mail', pid)?.id).toBe(b.id);
+    expect(runsRepo.findActiveExcept('sync_mail', pid, b.id)).toBeNull();
+    const c = runsRepo.create('discover_jobs', pid, { adapter_id: '', prompt_version: null });
+    expect(runsRepo.findActiveExcept('discover_jobs', pid, a.id)?.id).toBe(c.id);
     runsRepo.update(c.id, { status: 'aborted' });
     runsRepo.update(a.id, { status: 'succeeded' });
-    expect(runsRepo.hasActive('discover_jobs')).toBe(false);
-    expect(runsRepo.findActive('discover_jobs')).toBeNull();
+    expect(runsRepo.hasActive('discover_jobs', pid)).toBe(false);
+    expect(runsRepo.findActive('discover_jobs', pid)).toBeNull();
   });
 });
 
@@ -120,7 +123,7 @@ describe('run queue', () => {
         return { summary: 'done', promptVersion: 'v2' };
       },
     });
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     q.start();
     const done = await waitForTerminal(run.id);
     expect(done.status).toBe('succeeded');
@@ -144,7 +147,7 @@ describe('run queue', () => {
         throw new Error('Agent run failed: Exited with code 1');
       },
     });
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     q.start();
     const done = await waitForTerminal(run.id);
     expect(done.status).toBe('failed');
@@ -171,7 +174,7 @@ describe('run queue', () => {
           return { summary: 'done' };
         },
       });
-      const run = q.enqueue('discover_jobs');
+      const run = q.enqueue('discover_jobs', pid);
       q.start();
       const done = await waitForTerminal(run.id);
       expect(done.status).toBe('succeeded');
@@ -185,7 +188,7 @@ describe('run queue', () => {
 
   it('records the adapter id the handler reports', async () => {
     const q = makeQueue({ sync_mail: async () => ({ summary: 'ok', adapterId: 'custom' }) });
-    const run = q.enqueue('sync_mail');
+    const run = q.enqueue('sync_mail', pid);
     expect(run.adapter_id).toBe('');
     q.start();
     expect((await waitForTerminal(run.id)).adapter_id).toBe('custom');
@@ -198,7 +201,7 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     const done = await waitForTerminal(run.id);
     expect(done.status).toBe('failed');
     expect(done.error).toBe('boom');
@@ -212,8 +215,8 @@ describe('run queue', () => {
       }) as RunHandler,
       sync_mail: async () => ({ summary: 'mail ok' }),
     });
-    const first = q.enqueue('discover_jobs');
-    const second = q.enqueue('sync_mail');
+    const first = q.enqueue('discover_jobs', pid);
+    const second = q.enqueue('sync_mail', pid);
     q.start();
     expect((await waitForTerminal(first.id)).error).toBe('sync boom');
     expect((await waitForTerminal(second.id)).status).toBe('succeeded');
@@ -221,10 +224,30 @@ describe('run queue', () => {
 
   it('returns the existing run when the kind already has a queued run', () => {
     const q = makeQueue({});
-    const first = q.enqueue('discover_jobs');
-    const second = q.enqueue('discover_jobs');
+    const first = q.enqueue('discover_jobs', pid);
+    const second = q.enqueue('discover_jobs', pid);
     expect(second.id).toBe(first.id);
-    expect(runsRepo.list()).toHaveLength(1);
+    expect(runsRepo.list(pid)).toHaveLength(1);
+  });
+
+  it('keeps one active run per profile and kind, and runs every profile through the same queue', async () => {
+    const other = insertTestProfile(db, 'Other profile');
+    const seen: string[] = [];
+    const q = makeQueue({
+      discover_jobs: async (ctx) => {
+        seen.push(ctx.run.profile_id);
+        return { summary: 'ok' };
+      },
+    });
+    const mine = q.enqueue('discover_jobs', pid);
+    const theirs = q.enqueue('discover_jobs', other);
+    expect(theirs.id).not.toBe(mine.id);
+    expect(q.enqueue('discover_jobs', other).id).toBe(theirs.id);
+    expect(theirs.profile_id).toBe(other);
+    q.start();
+    await waitForTerminal(mine.id);
+    await waitForTerminal(theirs.id);
+    expect(seen).toEqual([pid, other]);
   });
 
   it('aborts runs left running by a previous process and still executes queued ones', async () => {
@@ -253,8 +276,8 @@ describe('run queue', () => {
     };
     const q = makeQueue({ discover_jobs: handler, sync_mail: handler });
     q.start();
-    const a = q.enqueue('discover_jobs');
-    const b = q.enqueue('sync_mail');
+    const a = q.enqueue('discover_jobs', pid);
+    const b = q.enqueue('sync_mail', pid);
     await waitForTerminal(a.id);
     await waitForTerminal(b.id);
     expect(maxActive).toBe(1);
@@ -272,8 +295,8 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const busy = q.enqueue('discover_jobs');
-    const queued = q.enqueue('sync_mail');
+    const busy = q.enqueue('discover_jobs', pid);
+    const queued = q.enqueue('sync_mail', pid);
     await waitFor(() => runsRepo.get(busy.id)?.status === 'running');
     expect(q.cancel(queued.id)).toBe('cancelled');
     const cancelled = runsRepo.get(queued.id) as Run;
@@ -285,7 +308,7 @@ describe('run queue', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(started).toBe(false);
     // The kind is free again.
-    expect(q.enqueue('sync_mail').id).not.toBe(queued.id);
+    expect(q.enqueue('sync_mail', pid).id).not.toBe(queued.id);
   });
 
   it('cancels a running run through its signal and records the reason', async () => {
@@ -297,7 +320,7 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered);
     expect(q.cancel(run.id)).toBe('cancelling');
     // A second request while the agent is being stopped is accepted again.
@@ -318,7 +341,7 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => saving);
     expect(q.cancel(run.id)).toBe('saving');
     expect(logStore.read(run.id)).toContain('Saving results; the run can no longer be cancelled');
@@ -342,7 +365,7 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered);
     expect(q.cancel(run.id)).toBe('cancelling');
     proceed();
@@ -358,7 +381,7 @@ describe('run queue', () => {
       { stopTimeoutMs: 20 },
     );
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered);
     expect(q.cancel(run.id)).toBe('cancelling');
     await q.stop();
@@ -377,7 +400,7 @@ describe('run queue', () => {
       { stopTimeoutMs: 1000 },
     );
     q2.start();
-    const run2 = q2.enqueue('discover_jobs');
+    const run2 = q2.enqueue('discover_jobs', pid);
     await waitFor(() => entered2);
     const stopping = q2.stop();
     q2.cancel(run2.id);
@@ -399,16 +422,16 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const first = q.enqueue('discover_jobs');
+    const first = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered === 1);
     // Before any cancel the active run is returned as before.
-    expect(q.enqueue('discover_jobs').id).toBe(first.id);
+    expect(q.enqueue('discover_jobs', pid).id).toBe(first.id);
     expect(q.cancel(first.id)).toBe('cancelling');
-    const second = q.enqueue('discover_jobs');
+    const second = q.enqueue('discover_jobs', pid);
     expect(second.id).not.toBe(first.id);
     expect(second.status).toBe('queued');
     // A repeated click returns the queued run instead of piling up more.
-    expect(q.enqueue('discover_jobs').id).toBe(second.id);
+    expect(q.enqueue('discover_jobs', pid).id).toBe(second.id);
     rejectFirst();
     expect((await waitForTerminal(first.id)).error).toBe('Cancelled by user');
     expect((await waitForTerminal(second.id)).summary).toBe('second');
@@ -417,7 +440,7 @@ describe('run queue', () => {
   it('reports finished and unknown runs', async () => {
     const q = makeQueue({});
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitForTerminal(run.id);
     expect(q.cancel(run.id)).toBe('finished');
     expect(q.cancel(randomUUID())).toBe('not_found');
@@ -435,7 +458,7 @@ describe('run queue', () => {
       },
     });
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered);
     expect(q.isRunning()).toBe(true);
     await q.stop();
@@ -444,7 +467,7 @@ describe('run queue', () => {
     expect(done.error).toBe('Aborted');
     expect(q.isRunning()).toBe(false);
     // After stop, enqueue still records the run but nothing executes it.
-    const later = q.enqueue('sync_mail');
+    const later = q.enqueue('sync_mail', pid);
     await new Promise((r) => setTimeout(r, 20));
     expect(runsRepo.get(later.id)?.status).toBe('queued');
   });
@@ -464,7 +487,7 @@ describe('run queue', () => {
       { stopTimeoutMs: 20 },
     );
     q.start();
-    const run = q.enqueue('discover_jobs');
+    const run = q.enqueue('discover_jobs', pid);
     await waitFor(() => entered);
     await q.stop();
     expect(runsRepo.get(run.id)?.status).toBe('aborted');
@@ -509,5 +532,18 @@ describe('log store', () => {
     expect(existsSync(join(runsDir, drop))).toBe(false);
     expect(existsSync(join(runsDir, keep, 'prompt.md'))).toBe(true);
     expect(logStore.read(drop)).toBe('');
+  });
+
+  it('remove deletes the log file and run directory of the given runs only, and skips missing ones', () => {
+    const drop = randomUUID();
+    const keep = randomUUID();
+    for (const id of [drop, keep]) {
+      logStore.append(id, 'x');
+      mkdirSync(join(runsDir, id));
+      writeFileSync(join(runsDir, id, 'prompt.md'), 'p');
+    }
+    logStore.remove([drop, randomUUID()]);
+    expect(readdirSync(runsDir).sort()).toEqual([`${keep}.log`, keep].sort());
+    expect(() => logStore.remove(['../escape'])).toThrow('Invalid run id: ../escape');
   });
 });

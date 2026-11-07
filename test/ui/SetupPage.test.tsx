@@ -90,12 +90,12 @@ describe('SetupPage', () => {
     expect(screen.getByLabelText('Custom command')).toBeInTheDocument();
   });
 
-  it('links to the profile screen after a successful save', async () => {
+  it('links to the profiles screen after a successful save', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole('radio', { name: /claude/i });
     expect(screen.queryByRole('link', { name: 'Continue to Profile' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('link', { name: 'Continue to Profile' })).toHaveAttribute('href', '/profile');
+    expect(await screen.findByRole('link', { name: 'Continue to Profiles' })).toHaveAttribute('href', '/');
   });
 });

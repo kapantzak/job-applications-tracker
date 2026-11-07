@@ -79,7 +79,15 @@ export function createLogStore(runsDir: string) {
     return removed;
   }
 
-  return { append, read, subscribe, purge };
+  // Deletes the log file and run directory of each given run (profile delete). Missing ones are skipped.
+  function remove(runIds: string[]): void {
+    for (const runId of runIds) {
+      rmSync(fileFor(runId), { force: true });
+      rmSync(join(runsDir, runId), { recursive: true, force: true });
+    }
+  }
+
+  return { append, read, subscribe, purge, remove };
 }
 
 export type LogStore = ReturnType<typeof createLogStore>;

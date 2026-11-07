@@ -6,6 +6,8 @@ type SettingsRepo = ReturnType<typeof createSettingsRepo>;
 export interface SyncSchedulerDeps {
   settingsRepo: Pick<SettingsRepo, 'getAll'>;
   queue: Pick<RunQueue, 'enqueue'>;
+  // Profiles worth syncing on each tick: those with open applications (SOW-0014).
+  syncProfileIds: () => string[];
 }
 
 export interface SyncScheduler {
@@ -20,7 +22,7 @@ const INTERVAL_MS: Record<string, number> = {
   '24h': 86_400_000,
 };
 
-export function createSyncScheduler({ settingsRepo, queue }: SyncSchedulerDeps): SyncScheduler {
+export function createSyncScheduler({ settingsRepo, queue, syncProfileIds }: SyncSchedulerDeps): SyncScheduler {
   let timer: NodeJS.Timeout | null = null;
   let started = false;
 
@@ -34,10 +36,19 @@ export function createSyncScheduler({ settingsRepo, queue }: SyncSchedulerDeps):
     const ms = INTERVAL_MS[settingsRepo.getAll().sync_interval];
     if (!ms) return;
     timer = setInterval(() => {
+      let ids: string[];
       try {
-        queue.enqueue('sync_mail');
-      } catch {
-        // The queue logs its own failures; keep the interval alive.
+        ids = syncProfileIds();
+      } catch (err) {
+        console.error(`sync scheduler: could not list profiles: ${err instanceof Error ? err.message : err}`);
+        return;
+      }
+      for (const id of ids) {
+        try {
+          queue.enqueue('sync_mail', id);
+        } catch {
+          // The queue logs its own failures; one profile must not block the others.
+        }
       }
     }, ms);
     // Never keep the process alive just for the scheduler.

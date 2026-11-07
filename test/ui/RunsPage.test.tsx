@@ -1,9 +1,10 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunsPage } from '../../src/ui/pages/RunsPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 import type { Run } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -15,6 +16,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
 function makeRun(id: string, status: Run['status'], kind: Run['kind'] = 'discover_jobs'): Run {
   return {
     id,
+    profile_id: 'pf1',
     kind,
     status,
     started_at: status === 'queued' ? null : '2026-01-01T00:00:00Z',
@@ -36,15 +38,19 @@ const done = { ...makeRun('run-3', 'succeeded'), summary: '2 new' };
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <RunsPage />
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/runs']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/runs" element={<RunsPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
 // Rows are found through their run link: several rows can share a kind.
 const rowOf = (id: string) =>
-  (screen.getAllByRole('link').find((l) => l.getAttribute('href') === `/runs/${id}`) as HTMLElement).closest(
+  (screen.getAllByRole('link').find((l) => l.getAttribute('href') === `/profiles/platform-roles/runs/${id}`) as HTMLElement).closest(
     'tr',
   ) as HTMLElement;
 
@@ -80,7 +86,7 @@ describe('RunsPage cancel', () => {
     const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
     expect(dialog).toHaveTextContent('The agent is stopped and nothing from this run is saved.');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
-    expect(client.cancelRun).toHaveBeenCalledWith('run-2');
+    expect(client.cancelRun).toHaveBeenCalledWith('pf1', 'run-2');
     expect(await within(rowOf('run-2')).findByText('Cancelled by user')).toBeInTheDocument();
     expect(within(rowOf('run-2')).queryByRole('button', { name: 'Cancel run' })).not.toBeInTheDocument();
   });

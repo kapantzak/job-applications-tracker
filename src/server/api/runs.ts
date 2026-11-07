@@ -1,10 +1,11 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import type { AgentAdapter } from '../agents/index.js';
 import type { Run, RunKind, RunStatus } from '../domain/types.js';
 import { HttpError, parseWith } from './errors.js';
+import { requireProfileStill, type ProfileEnv } from './profiles.js';
 
 const DEFAULT_SSE_POLL_MS = 1000;
 
@@ -16,14 +17,27 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-export function createRunsRouter(deps: AppDeps): Hono {
+// Global: log files are not owned by one profile's screen, and active runs of every profile are kept.
+export function createRunLogsRouter(deps: AppDeps): Hono {
   const router = new Hono();
+
+  router.delete('/logs', (c) => {
+    const deleted = deps.logStore.purge(new Set(deps.runsRepo.listActiveIds()));
+    return c.json({ deleted });
+  });
+
+  return router;
+}
+
+export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
+  const router = new Hono<ProfileEnv>();
   const pollMs = deps.ssePollMs ?? DEFAULT_SSE_POLL_MS;
 
-  // Checked before any log-store call: the store throws on ids it considers unsafe.
-  function requireRun(id: string): Run {
+  // Checked before any log-store call: the store throws on ids it considers unsafe. Another
+  // profile's run is reported as missing, so ids never cross profiles.
+  function requireRun(c: Context<ProfileEnv>, id: string): Run {
     const run = deps.runsRepo.get(id);
-    if (!run) throw new HttpError(404, 'Run not found');
+    if (!run || run.profile_id !== c.get('profile').id) throw new HttpError(404, 'Run not found');
     return run;
   }
 
@@ -52,39 +66,31 @@ export function createRunsRouter(deps: AppDeps): Hono {
   router.get('/', (c) => {
     const raw = c.req.query('limit');
     const limit = raw === undefined ? 50 : parseWith(LimitQuery, raw);
-    return c.json(deps.runsRepo.list(limit));
+    return c.json(deps.runsRepo.list(c.get('profile').id, limit));
   });
 
   router.post('/discover', async (c) => {
-    if (!deps.profileRepo.get()) throw new HttpError(422, 'Profile is not set');
     await requireUsableAdapter('discover_jobs');
-    return c.json(deps.queue.enqueue('discover_jobs'), 202);
+    requireProfileStill(deps, c.get('profile').id);
+    return c.json(deps.queue.enqueue('discover_jobs', c.get('profile').id), 202);
   });
 
   router.post('/sync', async (c) => {
     await requireUsableAdapter('sync_mail');
-    return c.json(deps.queue.enqueue('sync_mail'), 202);
+    requireProfileStill(deps, c.get('profile').id);
+    return c.json(deps.queue.enqueue('sync_mail', c.get('profile').id), 202);
   });
 
-  router.delete('/logs', (c) => {
-    // The repo has no "all active runs" query; this read-only one keeps live logs intact.
-    const active = deps.db
-      .prepare("SELECT id FROM runs WHERE status IN ('queued', 'running')")
-      .all() as { id: string }[];
-    const deleted = deps.logStore.purge(new Set(active.map((r) => r.id)));
-    return c.json({ deleted });
-  });
-
-  router.get('/:id', (c) => c.json(requireRun(c.req.param('id'))));
+  router.get('/:id', (c) => c.json(requireRun(c, c.req.param('id'))));
 
   // A queued run is cancelled at once; a running one is aborted and finishes as `aborted` once the
   // agent has been killed. Refused once the run is saving results (user decision, SOW-0012).
   router.post('/:id/cancel', (c) => {
-    const id = requireRun(c.req.param('id')).id;
+    const id = requireRun(c, c.req.param('id')).id;
     switch (deps.queue.cancel(id)) {
       case 'cancelled':
       case 'cancelling':
-        return c.json(requireRun(id), 202);
+        return c.json(requireRun(c, id), 202);
       case 'saving':
         throw new HttpError(409, 'This run is saving its results and can no longer be cancelled');
       case 'not_found':
@@ -95,12 +101,12 @@ export function createRunsRouter(deps: AppDeps): Hono {
   });
 
   router.get('/:id/log', (c) => {
-    const run = requireRun(c.req.param('id'));
+    const run = requireRun(c, c.req.param('id'));
     return c.text(deps.logStore.read(run.id));
   });
 
   router.get('/:id/events', (c) => {
-    const { id } = requireRun(c.req.param('id'));
+    const { id } = requireRun(c, c.req.param('id'));
     return streamSSE(c, async (stream) => {
       let closed = false;
       let aborted = false;

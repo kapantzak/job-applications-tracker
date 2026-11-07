@@ -62,36 +62,43 @@ describe('request guard: Host', () => {
 describe('request guard: Origin', () => {
   it('rejects a foreign Origin on POST with 403 and does not run the handler', async () => {
     h = makeHarness();
-    const res = await h.app.request('/api/runs/sync', {
+    const res = await h.app.request(`${h.base}/runs/sync`, {
       method: 'POST',
       headers: { origin: 'https://attacker.example' },
     });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden origin' });
-    expect(h.deps.runsRepo.list()).toEqual([]);
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
   });
 
   it.each(['PUT', 'PATCH', 'DELETE'])('rejects a foreign Origin on %s', async (method) => {
     h = makeHarness();
-    const path = method === 'PUT' ? '/api/profile' : method === 'PATCH' ? '/api/settings' : '/api/runs/logs';
+    const path = method === 'PUT' ? h.base : method === 'PATCH' ? '/api/settings' : '/api/runs/logs';
     const res = await h.app.request(path, withHeaders(json(method, {}), { origin: 'http://attacker.example' }));
     expect(res.status).toBe(403);
   });
 
+  it('rejects a foreign Origin deleting a profile and keeps the profile', async () => {
+    h = makeHarness();
+    const res = await h.app.request(h.base, { method: 'DELETE', headers: { origin: 'http://attacker.example' } });
+    expect(res.status).toBe(403);
+    expect(h.deps.profilesRepo.get(h.profile.id)).not.toBeNull();
+  });
+
   it('rejects the opaque "null" Origin on writes', async () => {
     h = makeHarness();
-    const res = await h.app.request('/api/runs/sync', { method: 'POST', headers: { origin: 'null' } });
+    const res = await h.app.request(`${h.base}/runs/sync`, { method: 'POST', headers: { origin: 'null' } });
     expect(res.status).toBe(403);
   });
 
   it('lets a same-origin POST through', async () => {
     h = makeHarness();
     const res = await h.app.request(
-      '/api/profile',
+      h.base,
       withHeaders(json('PUT', SAMPLE_PROFILE), { origin: 'http://127.0.0.1:4173' }),
     );
     expect(res.status).toBe(200);
-    const post = await h.app.request('/api/runs/sync', { method: 'POST', headers: { origin: 'http://localhost:4173' } });
+    const post = await h.app.request(`${h.base}/runs/sync`, { method: 'POST', headers: { origin: 'http://localhost:4173' } });
     expect(post.status).toBe(202);
   });
 
@@ -105,13 +112,13 @@ describe('request guard: Origin', () => {
 describe('JSON content type', () => {
   it('rejects a JSON POST without Content-Type with 415', async () => {
     h = makeHarness();
-    const res = await h.app.request('/api/applications', {
+    const res = await h.app.request(`${h.base}/applications`, {
       method: 'POST',
       body: JSON.stringify({ company: 'Vandelay', role: 'Importer' }),
     });
     expect(res.status).toBe(415);
     expect(await res.json()).toEqual({ error: 'Content-Type must be application/json' });
-    expect(h.deps.applicationsRepo.list()).toEqual([]);
+    expect(h.deps.applicationsRepo.list(h.profile.id)).toEqual([]);
   });
 
   it('rejects a form-encoded body with 415', async () => {

@@ -15,6 +15,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -64,6 +65,8 @@ function StatCard({ label, value, testId, to, icon }: StatCardProps) {
 }
 
 export function DashboardPage() {
+  const profileId = useProfileId();
+  const href = useProfileHref();
   const navigate = useNavigate();
   const agentHeadingId = useId();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -72,7 +75,13 @@ export function DashboardPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([listApplications(true), listProposals(), listJobs(), listRuns(), getSettings()]).then(
+    Promise.allSettled([
+      listApplications(profileId, true),
+      listProposals(profileId),
+      listJobs(profileId),
+      listRuns(profileId),
+      getSettings(),
+    ]).then(
       ([apps, proposals, jobs, runs, settings]) => {
         if (!active) return;
         const value = <T,>(r: PromiseSettledResult<T>) => (r.status === 'fulfilled' ? r.value : null);
@@ -91,13 +100,13 @@ export function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [profileId]);
 
   const start = async (action: typeof startDiscovery) => {
     setBusy(true);
     try {
-      const run = await action();
-      navigate(`/runs/${run.id}`);
+      const run = await action(profileId);
+      navigate(href(`/runs/${run.id}`));
     } catch (e) {
       setErrors([message(e)]);
       setBusy(false);
@@ -133,21 +142,21 @@ export function DashboardPage() {
             label="Open applications"
             value={stats.applications}
             testId="count-applications"
-            to="/applications"
+            to={href('/applications')}
             icon={<FileTextIcon className="size-4" />}
           />
           <StatCard
             label="Pending proposals"
             value={stats.proposals}
             testId="count-proposals"
-            to="/review"
+            to={href('/review')}
             icon={<InboxIcon className="size-4" />}
           />
           <StatCard
             label="Jobs"
             value={stats.jobs}
             testId="count-jobs"
-            to="/jobs"
+            to={href('/jobs')}
             icon={<BriefcaseIcon className="size-4" />}
           />
         </div>

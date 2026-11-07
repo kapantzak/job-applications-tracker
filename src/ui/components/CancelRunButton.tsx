@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorAlert } from './feedback.js';
 
 interface CancelRunButtonProps {
+  profileId: string;
   runId: string;
   // The run is saving its results; the server refuses cancellation from then on.
   saving?: boolean;
@@ -26,7 +27,7 @@ interface CancelRunButtonProps {
 }
 
 // Shared by the Run page and the Runs list; confirms first because a cancel discards the agent's work.
-export function CancelRunButton({ runId, saving = false, onCancelled, onError }: CancelRunButtonProps) {
+export function CancelRunButton({ profileId, runId, saving = false, onCancelled, onError }: CancelRunButtonProps) {
   const [requested, setRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function CancelRunButton({ runId, saving = false, onCancelled, onError }:
     setBusy(true);
     setError(null);
     try {
-      const run = await cancelRun(runId);
+      const run = await cancelRun(profileId, runId);
       setRequested(true);
       onCancelled(run);
     } catch (e) {
