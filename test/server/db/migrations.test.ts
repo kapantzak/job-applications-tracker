@@ -41,7 +41,7 @@ function ownerIds(db: Db, table: string): string[] {
 describe('migrate', () => {
   it('applies every migration and creates the eight tables', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
 
     const names = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
@@ -75,7 +75,7 @@ describe('migrate', () => {
     db.close();
   });
 
-  it('migrations 2 and 3 upgrade a version 1 database and leave existing runs unrecorded', () => {
+  it('migrations 2 to 4 upgrade a version 1 database and leave existing runs unrecorded', () => {
     const db = openDatabase(':memory:');
     db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
     db.exec(migrations.find((m) => m.id === 1)!.sql!);
@@ -83,7 +83,7 @@ describe('migrate', () => {
     db.prepare(
       "INSERT INTO runs (id, kind, status, adapter_id, created_at) VALUES ('run-1', 'sync_mail', 'succeeded', 'claude', 't')",
     ).run();
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
     expect(
       db.prepare('SELECT adapter_id, agent_model, agent_effort, agent_model_reported FROM runs').get(),
     ).toEqual({ adapter_id: 'claude', agent_model: null, agent_effort: null, agent_model_reported: null });
@@ -133,7 +133,7 @@ describe('migrate', () => {
     ).run();
     populate(db);
 
-    expect(migrate(db)).toBe(1);
+    expect(migrate(db)).toBe(2);
 
     const profiles = db.prepare('SELECT * FROM profiles').all() as Record<string, unknown>[];
     expect(profiles).toHaveLength(1);
@@ -177,6 +177,7 @@ describe('migrate', () => {
       { name: 'idx_jobs_profile_dedupe_key', tbl_name: 'jobs' },
       { name: 'idx_jobs_run_id', tbl_name: 'jobs' },
       { name: 'idx_profiles_name', tbl_name: 'profiles' },
+      { name: 'idx_profiles_slug', tbl_name: 'profiles' },
       { name: 'idx_proposals_application_id', tbl_name: 'proposals' },
       { name: 'idx_proposals_state', tbl_name: 'proposals' },
       { name: 'idx_runs_profile_id', tbl_name: 'runs' },
@@ -230,6 +231,41 @@ describe('migrate', () => {
     expect(tables).not.toContain('profiles');
     expect(db.prepare('SELECT COUNT(*) AS n FROM jobs').get()).toEqual({ n: 4 });
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    db.close();
+  });
+
+  it('migration 4 keeps valid names, cleans and numbers invalid ones, and gives every profile a unique slug', () => {
+    const db = openDatabase(':memory:');
+    db.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+    for (const m of migrations.filter((x) => x.id <= 3)) {
+      if (m.sql) db.exec(m.sql);
+      if (m.up) {
+        db.pragma('foreign_keys = OFF');
+        m.up(db);
+        db.pragma('foreign_keys = ON');
+      }
+      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, 't')").run(m.id);
+    }
+    const add = db.prepare("INSERT INTO profiles (id, name, created_at) VALUES (?, ?, 't')");
+    // rowid order decides who keeps a clean name or slug.
+    add.run('p1', 'SRE / Platform');
+    add.run('p2', 'SRE Platform');
+    add.run('p3', '!!!');
+    add.run('p4', 'Café');
+    add.run('p5', 'Cafe');
+    add.run('p6', 'New');
+
+    expect(migrate(db)).toBe(1);
+
+    expect(db.prepare('SELECT id, name, slug FROM profiles ORDER BY rowid').all()).toEqual([
+      { id: 'p1', name: 'SRE Platform 2', slug: 'sre-platform-2' },
+      { id: 'p2', name: 'SRE Platform', slug: 'sre-platform' },
+      { id: 'p3', name: 'Profile', slug: 'profile' },
+      { id: 'p4', name: 'Café', slug: 'cafe' },
+      { id: 'p5', name: 'Cafe', slug: 'cafe-2' },
+      { id: 'p6', name: 'New', slug: 'new-2' },
+    ]);
+    expect(() => db.prepare("UPDATE profiles SET slug = 'cafe' WHERE id = 'p5'").run()).toThrow(/UNIQUE/);
     db.close();
   });
 });

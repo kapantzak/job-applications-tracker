@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationsPage } from '../../src/ui/pages/ApplicationsPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -24,12 +25,14 @@ const app = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/profiles/pf1/applications']}>
-      <Routes>
-        <Route path="/profiles/:profileId/applications" element={<ApplicationsPage />} />
-        <Route path="/profiles/:profileId/runs/:id" element={<p>run page</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/applications']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/applications" element={<ApplicationsPage />} />
+          <Route path="/profiles/:profileSlug/runs/:id" element={<p>run page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
@@ -60,7 +63,7 @@ describe('ApplicationsPage', () => {
     renderPage();
     await screen.findByText('Acme');
     expect(screen.queryByRole('link', { name: 'Open posting' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '/profiles/pf1/applications/a1');
+    expect(screen.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '/profiles/platform-roles/applications/a1');
   });
 
   it('creates an application with an ISO applied date', async () => {

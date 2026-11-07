@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { slugBase, uniqueSlug } from '../domain/profile-name.js';
 import type { Profile, ProfileCounts, ProfileListItem } from '../domain/types.js';
 import type { Db } from './connection.js';
 
-export type ProfileInput = Omit<Profile, 'id' | 'created_at'>;
+export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at'>;
 
 // Typed so the API maps it to 404: a profile can be deleted while another request is in flight.
 export class ProfileNotFoundError extends Error {
@@ -15,6 +16,7 @@ export class ProfileNotFoundError extends Error {
 interface ProfileRow {
   id: string;
   name: string;
+  slug: string;
   target_roles: string;
   locations: string;
   remote: Profile['remote'];
@@ -29,6 +31,7 @@ function fromRow(row: ProfileRow): Profile {
   return {
     id: row.id,
     name: row.name,
+    slug: row.slug,
     target_roles: JSON.parse(row.target_roles) as string[],
     locations: JSON.parse(row.locations) as string[],
     remote: row.remote,
@@ -58,18 +61,19 @@ export function createProfilesRepo(db: Db) {
   // NOCASE matches the unique index, so the check and the constraint agree.
   const selectAll = db.prepare('SELECT * FROM profiles ORDER BY name COLLATE NOCASE ASC, rowid ASC');
   const insert = db.prepare(
-    `INSERT INTO profiles (id, name, target_roles, locations, remote, seniority, keywords,
+    `INSERT INTO profiles (id, name, slug, target_roles, locations, remote, seniority, keywords,
        excluded_companies, notes, created_at)
-     VALUES (@id, @name, @target_roles, @locations, @remote, @seniority, @keywords,
+     VALUES (@id, @name, @slug, @target_roles, @locations, @remote, @seniority, @keywords,
        @excluded_companies, @notes, @created_at)`,
   );
   const updateStmt = db.prepare(
-    `UPDATE profiles SET name = @name, target_roles = @target_roles, locations = @locations,
+    `UPDATE profiles SET name = @name, slug = @slug, target_roles = @target_roles, locations = @locations,
        remote = @remote, seniority = @seniority, keywords = @keywords,
        excluded_companies = @excluded_companies, notes = @notes
      WHERE id = @id`,
   );
   const selectNameOwner = db.prepare('SELECT id FROM profiles WHERE name = ? COLLATE NOCASE');
+  const selectBySlug = db.prepare('SELECT * FROM profiles WHERE slug = ?');
   const countStmt = db.prepare(
     `SELECT
        (SELECT COUNT(*) FROM jobs WHERE profile_id = @id) AS jobs,
@@ -94,6 +98,23 @@ export function createProfilesRepo(db: Db) {
     return row ? fromRow(row) : null;
   }
 
+  function getBySlug(slug: string): Profile | null {
+    const row = selectBySlug.get(slug) as ProfileRow | undefined;
+    return row ? fromRow(row) : null;
+  }
+
+  // The slug follows the name (SOW-0015) and changes only when the name does, so saving other fields
+  // never moves `cafe-2` to a `cafe` that has since become free.
+  function slugFor(name: string, current?: Profile): string {
+    if (current && current.name === name) return current.slug;
+    const base = slugBase(name);
+    const exceptId = current?.id;
+    return uniqueSlug(base, (slug) => {
+      const owner = selectBySlug.get(slug) as ProfileRow | undefined;
+      return owner !== undefined && owner.id !== exceptId;
+    });
+  }
+
   function counts(id: string): ProfileCounts {
     return countStmt.get({ id }) as ProfileCounts;
   }
@@ -110,13 +131,14 @@ export function createProfilesRepo(db: Db) {
 
   function create(input: ProfileInput): Profile {
     const id = randomUUID();
-    insert.run({ ...toParams(input), id, created_at: new Date().toISOString() });
+    insert.run({ ...toParams(input), id, slug: slugFor(input.name), created_at: new Date().toISOString() });
     return get(id) as Profile;
   }
 
   function update(id: string, input: ProfileInput): Profile {
-    const result = updateStmt.run({ ...toParams(input), id });
-    if (result.changes === 0) throw new ProfileNotFoundError(id);
+    const existing = get(id);
+    if (!existing) throw new ProfileNotFoundError(id);
+    updateStmt.run({ ...toParams(input), id, slug: slugFor(input.name, existing) });
     return get(id) as Profile;
   }
 
@@ -129,7 +151,7 @@ export function createProfilesRepo(db: Db) {
     return runIds;
   });
 
-  return { list, get, counts, nameTaken, create, update, remove: (id: string) => remove(id) };
+  return { list, get, getBySlug, counts, nameTaken, create, update, remove: (id: string) => remove(id) };
 }
 
 export type ProfilesRepo = ReturnType<typeof createProfilesRepo>;

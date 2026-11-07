@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunPage } from '../../src/ui/pages/RunPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 import type { Run } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -33,11 +34,13 @@ const run: Run = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/profiles/pf1/runs/r1']}>
-      <Routes>
-        <Route path="/profiles/:profileId/runs/:id" element={<RunPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/runs/r1']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/runs/:id" element={<RunPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
@@ -70,7 +73,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: '2 new' });
     await act(async () => onDone('succeeded' as never));
     expect(await screen.findByText('2 new')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/pf1/jobs');
+    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs');
     expect(client.subscribeRunEvents).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -95,7 +98,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/pf1/jobs');
+    expect(await screen.findByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs');
   });
 
   it('shows the agent, the requested model and effort, and the model the agent reported', async () => {

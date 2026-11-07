@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import {
+  cleanProfileName,
+  cutProfileName,
+  isValidProfileName,
+  normalizeProfileName,
+  slugBase,
+  uniqueSlug,
+} from '../domain/profile-name.js';
 
 const APP_STATUS =
   "('saved','applied','screening','interview','offer','rejected','withdrawn','no_response')";
@@ -130,9 +138,14 @@ ALTER TABLE runs ADD COLUMN agent_model_reported TEXT;
     foreignKeysOff: true,
     up: migrateToProfiles,
   },
+  {
+    id: 4,
+    up: addProfileSlugs,
+  },
 ];
 
-export const PROFILE_NAME_MAX = 80;
+// Frozen for migration 3; the live rule is in domain/profile-name.ts.
+const PROFILE_NAME_MAX = 80;
 
 interface OldProfileRow {
   target_roles: string;
@@ -300,4 +313,51 @@ CREATE INDEX idx_applications_job_id ON applications (job_id);
 
 DROP TABLE profile;
 `);
+}
+
+// NOCASE folds ASCII letters only; keys must match the unique index on profiles.name.
+const nocaseKey = (name: string) => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+// Gives every profile a unique slug and makes every stored name follow the name rule (SOW-0015).
+// Valid names are kept first; invalid ones are cleaned and numbered on a clash. Reusing the domain rules
+// is deliberate: a later change to them needs its own migration anyway.
+function addProfileSlugs(db: Database.Database): void {
+  db.exec("ALTER TABLE profiles ADD COLUMN slug TEXT NOT NULL DEFAULT ''");
+  const rows = db.prepare('SELECT id, name FROM profiles ORDER BY rowid').all() as { id: string; name: string }[];
+
+  const finalName = new Map<string, string>();
+  const usedNames = new Set<string>();
+  const pending: { id: string; base: string }[] = [];
+  for (const row of rows) {
+    const normalized = normalizeProfileName(row.name);
+    if (isValidProfileName(normalized) && !usedNames.has(nocaseKey(normalized))) {
+      finalName.set(row.id, normalized);
+      usedNames.add(nocaseKey(normalized));
+    } else {
+      pending.push({ id: row.id, base: isValidProfileName(normalized) ? normalized : cleanProfileName(row.name) });
+    }
+  }
+  for (const { id, base } of pending) {
+    let name = base;
+    for (let n = 2; usedNames.has(nocaseKey(name)); n++) {
+      const suffix = ` ${n}`;
+      name = `${cutProfileName(base, PROFILE_NAME_MAX - suffix.length)}${suffix}`;
+    }
+    finalName.set(id, name);
+    usedNames.add(nocaseKey(name));
+  }
+
+  // Two phases, so a row taking a name another row still holds never trips the unique index.
+  const setName = db.prepare('UPDATE profiles SET name = ? WHERE id = ?');
+  for (const row of rows) setName.run(`~${row.id}`, row.id);
+  for (const row of rows) setName.run(finalName.get(row.id), row.id);
+
+  const usedSlugs = new Set<string>();
+  const setSlug = db.prepare('UPDATE profiles SET slug = ? WHERE id = ?');
+  for (const row of rows) {
+    const slug = uniqueSlug(slugBase(finalName.get(row.id) as string), (s) => usedSlugs.has(s));
+    usedSlugs.add(slug);
+    setSlug.run(slug, row.id);
+  }
+  db.exec('CREATE UNIQUE INDEX idx_profiles_slug ON profiles (slug)');
 }

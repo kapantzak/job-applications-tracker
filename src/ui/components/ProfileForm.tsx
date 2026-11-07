@@ -1,11 +1,17 @@
 import { useId, useState, type FormEvent } from 'react';
+import {
+  isValidProfileName,
+  normalizeProfileName,
+  PROFILE_NAME_ERROR,
+  PROFILE_NAME_HINT,
+} from '../../server/domain/profile-name.js';
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, type ProfileInput } from '../api/client.js';
 import { ErrorAlert, SuccessMessage } from './feedback.js';
 import { TagInput } from './TagInput.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,7 +28,7 @@ export const EMPTY_PROFILE: ProfileInput = {
 };
 
 export function toProfileInput(profile: Profile): ProfileInput {
-  const { id: _id, created_at: _createdAt, ...input } = profile;
+  const { id: _id, slug: _slug, created_at: _createdAt, ...input } = profile;
   return input;
 }
 
@@ -44,15 +50,20 @@ export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: 
 
   const set = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) => setForm({ ...form, [key]: value });
 
+  // Same rule as the server (SOW-0015). Checked as the user types; surrounding spaces are trimmed on save.
+  const name = normalizeProfileName(form.name);
+  const nameError = name !== '' && !isValidProfileName(name) ? PROFILE_NAME_ERROR : null;
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setStatus(null);
     setError(null);
-    const name = form.name.trim();
     if (name === '') {
       setError('Give the profile a name');
       return;
     }
+    // The message is already under the Name field.
+    if (nameError) return;
     if (form.target_roles.length === 0) {
       setError('Add at least one target role');
       return;
@@ -74,10 +85,20 @@ export function ProfileForm({ initial, submitLabel, onSubmit, successMessage }: 
       <form onSubmit={submit} className="flex flex-col gap-6">
         <CardContent>
           <FieldGroup>
-            <Field>
+            <Field data-invalid={nameError ? true : undefined}>
               <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
-              <Input id={`${id}-name`} value={form.name} onChange={(e) => set('name', e.target.value)} />
-              <FieldDescription>How this search appears in your list of profiles.</FieldDescription>
+              <Input
+                id={`${id}-name`}
+                value={form.name}
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={`${id}-name-help`}
+                onChange={(e) => set('name', e.target.value)}
+              />
+              {nameError ? (
+                <FieldError id={`${id}-name-help`}>{nameError}</FieldError>
+              ) : (
+                <FieldDescription id={`${id}-name-help`}>{PROFILE_NAME_HINT}</FieldDescription>
+              )}
             </Field>
             <TagInput label="Target roles" value={form.target_roles} onChange={(v) => set('target_roles', v)} />
             <TagInput label="Locations" value={form.locations} onChange={(v) => set('locations', v)} />

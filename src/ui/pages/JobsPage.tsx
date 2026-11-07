@@ -13,7 +13,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,7 @@ const isHttpUrl = (u: string) => /^https?:\/\//i.test(u);
 export function JobsPage() {
   const id = useId();
   const profileId = useProfileId();
+  const href = useProfileHref();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobListItem[] | null>(null);
   const [includeDead, setIncludeDead] = useState(false);
@@ -77,7 +78,7 @@ export function JobsPage() {
     setError(null);
     try {
       const started = await startDiscovery(profileId);
-      navigate(profilePath(profileId, `/runs/${started.id}`));
+      navigate(href(`/runs/${started.id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

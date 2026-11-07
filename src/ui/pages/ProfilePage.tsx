@@ -1,46 +1,33 @@
-import { useEffect, useState } from 'react';
-import { getProfile, updateProfile, type ProfileInput } from '../api/client.js';
-import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { startTransition } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { updateProfile } from '../api/client.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { ProfileForm, toProfileInput } from '../components/ProfileForm.js';
-import { useProfileId, useProfileShell } from '../profile-route.js';
+import { profilePath, useCurrentProfile, useProfileShell } from '../profile-route.js';
 
-// Edits the profile the URL names; creating one lives on the profiles screen.
+// Edits the current profile; creating one lives on the profiles screen.
 export function ProfilePage() {
-  const profileId = useProfileId();
+  const profile = useCurrentProfile();
   const { profileChanged } = useProfileShell();
-  const [initial, setInitial] = useState<ProfileInput | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    setInitial(null);
-    setError(null);
-    getProfile(profileId)
-      .then((profile) => {
-        if (active) setInitial(toProfileInput(profile));
-      })
-      .catch((e: unknown) => {
-        if (active) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [profileId]);
-
-  if (!initial) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
+  const navigate = useNavigate();
 
   return (
     <div className="max-w-2xl">
       <PageHeader title="Profile" description="What you are looking for. Discovery runs use this to search." />
       <ProfileForm
-        key={profileId}
-        initial={initial}
+        key={profile.id}
+        initial={toProfileInput(profile)}
         submitLabel="Save"
         successMessage="Saved"
         onSubmit={async (input) => {
-          await updateProfile(profileId, input);
-          profileChanged();
+          const updated = await updateProfile(profile.id, input);
+          // The slug follows the name. React Router applies navigation in a transition; putting the shell
+          // update in the same transition makes the new URL and the new profile commit together, so the
+          // page never sees a mismatch, shows no loading state and keeps its "Saved" message.
+          startTransition(() => {
+            if (updated.slug !== profile.slug) navigate(profilePath(updated.slug, '/profile'), { replace: true });
+            profileChanged(updated);
+          });
         }}
       />
     </div>

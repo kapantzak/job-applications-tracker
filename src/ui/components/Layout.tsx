@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   ArrowLeftIcon,
   BriefcaseIcon,
@@ -10,14 +10,13 @@ import {
   UserIcon,
   UsersIcon,
 } from 'lucide-react';
-import { NavLink, Outlet, useLocation, matchPath } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, matchPath } from 'react-router-dom';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -26,8 +25,9 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar';
-import { getProfile, listProposals } from '../api/client.js';
-import { profilePath, ProfileShellContext } from '../profile-route.js';
+import type { Profile } from '../../server/domain/types.js';
+import { ApiError, getProfileBySlug, listProposals } from '../api/client.js';
+import { profilePath, ProfileShellContext, type ProfileShell } from '../profile-route.js';
 import { ThemeMenu } from './ThemeMenu.js';
 
 interface NavItem {
@@ -38,26 +38,37 @@ interface NavItem {
   badge?: boolean;
 }
 
-const GLOBAL_NAV: NavItem[] = [
-  { to: '/', label: 'Profiles', icon: UsersIcon, end: true },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
-];
+const PROFILES_ITEM: NavItem = { to: '/', label: 'Profiles', icon: UsersIcon, end: true };
+const SETTINGS_ITEM: NavItem = { to: '/settings', label: 'Settings', icon: SettingsIcon };
 
-function profileNav(profileId: string): NavItem[] {
+function profileNav(slug: string): NavItem[] {
   return [
-    { to: profilePath(profileId), label: 'Dashboard', icon: LayoutDashboardIcon, end: true },
-    { to: profilePath(profileId, '/jobs'), label: 'Jobs', icon: BriefcaseIcon },
-    { to: profilePath(profileId, '/applications'), label: 'Applications', icon: FileTextIcon },
-    { to: profilePath(profileId, '/review'), label: 'Review', icon: InboxIcon, badge: true },
-    { to: profilePath(profileId, '/runs'), label: 'Runs', icon: HistoryIcon },
-    { to: profilePath(profileId, '/profile'), label: 'Profile', icon: UserIcon },
+    { to: profilePath(slug), label: 'Dashboard', icon: LayoutDashboardIcon, end: true },
+    { to: profilePath(slug, '/jobs'), label: 'Jobs', icon: BriefcaseIcon },
+    { to: profilePath(slug, '/applications'), label: 'Applications', icon: FileTextIcon },
+    { to: profilePath(slug, '/review'), label: 'Review', icon: InboxIcon, badge: true },
+    { to: profilePath(slug, '/runs'), label: 'Runs', icon: HistoryIcon },
+    { to: profilePath(slug, '/profile'), label: 'Profile', icon: UserIcon },
   ];
 }
 
-// The profile the URL is inside, if any; /profiles/new is the create form, not a profile.
-function currentProfileId(pathname: string): string | null {
+// The profile slug the URL is inside, if any; /profiles/new is the create form, not a profile.
+function currentProfileSlug(pathname: string): string | null {
   if (matchPath({ path: '/profiles/new', end: true }, pathname)) return null;
-  return matchPath({ path: '/profiles/:profileId/*' }, pathname)?.params.profileId ?? null;
+  const raw = matchPath({ path: '/profiles/:profileSlug/*' }, pathname)?.params.profileSlug;
+  if (!raw) return null;
+  // Browsers keep non-ASCII slugs percent-encoded in location.pathname.
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+interface LookupFailure {
+  slug: string;
+  notFound: boolean;
+  message: string;
 }
 
 function NavMenu({ items, pathname, pending }: { items: NavItem[]; pathname: string; pending: number }) {
@@ -91,97 +102,131 @@ function NavMenu({ items, pathname, pending }: { items: NavItem[]; pathname: str
 
 export function Layout() {
   const { pathname } = useLocation();
-  const profileId = currentProfileId(pathname);
-  const [profileName, setProfileName] = useState<string | null>(null);
+  const slug = currentProfileSlug(pathname);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [failure, setFailure] = useState<LookupFailure | null>(null);
   const [pending, setPending] = useState(0);
   const [version, setVersion] = useState(0);
+  // A profile a page just handed over (rename), tied to the version it was handed over at: no lookup is
+  // needed for that slug until something asks for a re-read.
+  const adopted = useRef<{ slug: string; version: number } | null>(null);
+  const versionRef = useRef(version);
+  versionRef.current = version;
 
-  // Never show one profile's name or count while another one loads.
+  // Resolve the URL slug once per profile (and again after a page reports a change).
   useEffect(() => {
-    setProfileName(null);
-    setPending(0);
-  }, [profileId]);
-
-  // Re-read on navigation too, so the badge and name follow decisions and edits made on the pages.
-  useEffect(() => {
-    if (!profileId) return;
+    if (!slug) return;
+    if (adopted.current && adopted.current.slug === slug && adopted.current.version === version) return;
     let active = true;
-    getProfile(profileId)
-      .then((profile) => {
-        if (active) setProfileName(profile.name);
+    getProfileBySlug(slug)
+      .then((found) => {
+        if (!active) return;
+        setProfile(found);
+        setFailure(null);
       })
-      // A missing profile shows its error on the page; the sidebar just keeps a neutral label.
-      .catch(() => {
-        if (active) setProfileName(null);
-      });
-    listProposals(profileId)
-      .then((proposals) => {
-        if (active) setPending(proposals.length);
-      })
-      // The badge is decorative; a failed fetch must not break the shell.
-      .catch(() => {
-        if (active) setPending(0);
+      .catch((e: unknown) => {
+        if (!active) return;
+        const notFound = e instanceof ApiError && e.status === 404;
+        // A held profile with this slug is stale (renamed or deleted elsewhere).
+        if (notFound) setProfile((held) => (held && held.slug === slug ? null : held));
+        setFailure({ slug, notFound, message: e instanceof Error ? e.message : String(e) });
       });
     return () => {
       active = false;
     };
-  }, [profileId, pathname, version]);
+  }, [slug, version]);
 
-  const profileChanged = useCallback(() => setVersion((v) => v + 1), []);
-  const shell = useMemo(() => ({ profileChanged }), [profileChanged]);
+  // Derived, so a profile resolved for another slug is never shown as the current one.
+  let status: ProfileShell['status'] = 'none';
+  if (slug) {
+    if (profile && profile.slug === slug) status = 'ready';
+    else if (failure && failure.slug === slug) status = failure.notFound ? 'missing' : 'error';
+    else status = 'loading';
+  }
+  const current = status === 'ready' ? profile : null;
+  const currentId = current?.id ?? null;
+
+  // Re-read on navigation too, so the badge follows decisions made on the pages.
+  useEffect(() => {
+    setPending(0);
+    if (!currentId) return;
+    let active = true;
+    listProposals(currentId)
+      .then((proposals) => {
+        if (active) setPending(proposals.length);
+      })
+      // The badge is decorative; a failed fetch must not break the shell.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentId, pathname, version]);
+
+  const profileChanged = useCallback((updated?: Profile) => {
+    if (updated) {
+      adopted.current = { slug: updated.slug, version: versionRef.current };
+      setProfile(updated);
+    } else {
+      setVersion((v) => v + 1);
+    }
+  }, []);
+  const shell = useMemo<ProfileShell>(
+    () => ({
+      status,
+      profile: current,
+      error: status === 'error' ? (failure?.message ?? null) : null,
+      profileChanged,
+    }),
+    [status, current, failure, profileChanged],
+  );
 
   return (
     // Desktop-only app (design section 3): the sidebar stays fixed and never collapses.
     <SidebarProvider>
       <Sidebar collapsible="none" className="sticky top-0 h-svh border-r">
         <SidebarHeader>
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <BriefcaseIcon className="size-4" />
+          {slug ? (
+            // Inside a profile the header names it and leads back to all profiles (SOW-0015).
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild size="lg" title={current?.name}>
+                  <Link to="/">
+                    <ArrowLeftIcon />
+                    <span className="font-semibold">
+                      <span className="sr-only">Back to profiles:</span> {current?.name ?? 'Profile'}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          ) : (
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <BriefcaseIcon className="size-4" />
+              </div>
+              <span className="font-semibold">Job Tracker</span>
             </div>
-            <span className="font-semibold">Job Tracker</span>
-          </div>
+          )}
         </SidebarHeader>
         <SidebarContent>
-          {profileId ? (
-            <>
-              <SidebarGroup>
-                <SidebarGroupLabel className="truncate" title={profileName ?? undefined}>
-                  {profileName ?? 'Profile'}
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              {slug ? (
+                <>
                   <nav aria-label="Profile">
-                    <NavMenu items={profileNav(profileId)} pathname={pathname} pending={pending} />
+                    <NavMenu items={profileNav(slug)} pathname={pathname} pending={pending} />
                   </nav>
-                </SidebarGroupContent>
-              </SidebarGroup>
-              <SidebarGroup>
-                <SidebarGroupContent>
-                  <nav aria-label="Main">
-                    <SidebarMenu>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton asChild>
-                          <NavLink to="/" end>
-                            <ArrowLeftIcon />
-                            <span>Switch profile</span>
-                          </NavLink>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </SidebarMenu>
-                    <NavMenu items={GLOBAL_NAV.slice(1)} pathname={pathname} pending={0} />
+                  <nav aria-label="Main" className="mt-4">
+                    <NavMenu items={[SETTINGS_ITEM]} pathname={pathname} pending={0} />
                   </nav>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </>
-          ) : (
-            <SidebarGroup>
-              <SidebarGroupContent>
+                </>
+              ) : (
                 <nav aria-label="Main">
-                  <NavMenu items={GLOBAL_NAV} pathname={pathname} pending={0} />
+                  <NavMenu items={[PROFILES_ITEM, SETTINGS_ITEM]} pathname={pathname} pending={0} />
                 </nav>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )}
+              )}
+            </SidebarGroupContent>
+          </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>

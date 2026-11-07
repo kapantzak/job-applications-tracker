@@ -60,6 +60,41 @@ describe('profiles: list and create', () => {
   });
 });
 
+describe('profiles: slugs and names', () => {
+  it('GET by-slug returns the profile and 404 for an unknown slug', async () => {
+    expect(h.profile.slug).toBe('platform-roles');
+    const res = await h.app.request('/api/profiles/by-slug/platform-roles');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(h.profile);
+    const missing = await h.app.request('/api/profiles/by-slug/nope');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: 'Profile not found' });
+  });
+
+  it('POST and PUT return the slug, which follows a rename', async () => {
+    const created = (await (await h.app.request('/api/profiles', json('POST', OTHER))).json()) as Profile;
+    expect(created.slug).toBe('data-roles');
+    const renamed = (await (await h.app.request(`/api/profiles/${created.id}`, json('PUT', { ...OTHER, name: 'ML roles' }))).json()) as Profile;
+    expect(renamed.slug).toBe('ml-roles');
+    expect((await h.app.request('/api/profiles/by-slug/data-roles')).status).toBe(404);
+  });
+
+  it.each(['Data-roles', 'SRE / Platform', 'Data  roles'])('POST and PUT reject the name %j with 400 and write nothing', async (name) => {
+    const post = await h.app.request('/api/profiles', json('POST', { ...OTHER, name }));
+    expect(post.status).toBe(400);
+    expect(await post.json()).toEqual({ error: 'name: Use only letters, numbers and single spaces.' });
+    const put = await h.app.request(h.base, json('PUT', { ...SAMPLE_PROFILE, name }));
+    expect(put.status).toBe(400);
+    expect(h.deps.profilesRepo.list().map((p) => p.name)).toEqual(['Platform roles']);
+  });
+
+  it('accepts letters from any script and normalizes accents typed as two characters', async () => {
+    const res = await h.app.request('/api/profiles', json('POST', { ...OTHER, name: 'Cafe\u0301 Μηχανικός' }));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ name: 'Café Μηχανικός', slug: 'cafe-μηχανικος' });
+  });
+});
+
 describe('profiles: one profile', () => {
   it('GET returns the profile and 404 for an unknown id', async () => {
     expect(await (await h.app.request(h.base)).json()).toEqual(h.profile);
@@ -80,7 +115,7 @@ describe('profiles: one profile', () => {
   it('PUT updates the profile and keeps its id and created_at', async () => {
     const res = await h.app.request(h.base, json('PUT', OTHER));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ...OTHER, id: h.profile.id, created_at: h.profile.created_at });
+    expect(await res.json()).toEqual({ ...OTHER, id: h.profile.id, slug: 'data-roles', created_at: h.profile.created_at });
   });
 
   it('PUT may keep its own name in another case but not take another profile name', async () => {

@@ -1,8 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { PROFILE_NAME_MAX } from '../db/migrations.js';
 import type { ProfileInput } from '../db/profiles-repo.js';
+import {
+  isValidProfileName,
+  normalizeProfileName,
+  PROFILE_NAME_ERROR,
+} from '../domain/profile-name.js';
 import type { Profile } from '../domain/types.js';
 import { createApplicationsRouter } from './applications.js';
 import { HttpError, readJson } from './errors.js';
@@ -15,7 +19,10 @@ export type ProfileEnv = { Variables: { profile: Profile } };
 
 const ProfileBody = z
   .object({
-    name: z.string().trim().min(1, 'Name is required').max(PROFILE_NAME_MAX),
+    name: z
+      .string()
+      .transform(normalizeProfileName)
+      .pipe(z.string().min(1, 'Name is required').refine(isValidProfileName, PROFILE_NAME_ERROR)),
     target_roles: z.array(z.string()),
     locations: z.array(z.string()),
     remote: z.enum(['remote', 'hybrid', 'onsite', 'any']),
@@ -48,6 +55,14 @@ export function createProfilesRouter(deps: AppDeps): Hono {
     const input: ProfileInput = await readJson(c, ProfileBody);
     requireFreeName(input.name);
     return c.json(deps.profilesRepo.create(input), 201);
+  });
+
+  // Lets the UI turn a URL slug into the profile; data routes stay keyed by id (SOW-0015). Registered
+  // before the scoped routes so `by-slug` is never taken for a profile id.
+  router.get('/by-slug/:slug', (c) => {
+    const profile = deps.profilesRepo.getBySlug(c.req.param('slug'));
+    if (!profile) throw new HttpError(404, 'Profile not found');
+    return c.json(profile);
   });
 
   // Every route below this point belongs to one existing profile; unknown ids stop here with 404.

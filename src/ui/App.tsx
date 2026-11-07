@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { getAdapters, getSettings } from './api/client.js';
 import { Layout } from './components/Layout.js';
 import { ApplicationDetailPage } from './pages/ApplicationDetailPage.js';
@@ -13,7 +13,10 @@ import { RunPage } from './pages/RunPage.js';
 import { RunsPage } from './pages/RunsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { SetupPage } from './pages/SetupPage.js';
-import { useProfileId } from './profile-route.js';
+import { ErrorAlert, LoadingState } from './components/feedback.js';
+import { useProfileShell } from './profile-route.js';
+import { Button } from '@/components/ui/button';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 
 // Runs once per page load. `/` is also the profiles hub (sidebar, Setup's continue link), so checking on
 // every visit would trap a user whose agent is missing on Setup with no way back to their profiles.
@@ -49,11 +52,28 @@ function StartupRedirect() {
   return <ProfilesPage />;
 }
 
-// Remounts the profile's pages when the URL moves to another profile, so no page keeps showing (or
-// polling) the previous profile's data.
+// Waits for the shell to resolve the URL slug, then renders the profile's pages. Keyed by profile id:
+// moving to another profile remounts every page (no stale rows or polling), a rename does not.
 function ProfileScope() {
-  const profileId = useProfileId();
-  return <Outlet key={profileId} />;
+  const { status, profile, error } = useProfileShell();
+  if (status === 'missing') {
+    return (
+      <Empty className="border">
+        <EmptyHeader>
+          <EmptyTitle>Profile not found</EmptyTitle>
+          <EmptyDescription>It may have been renamed or deleted.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button asChild variant="outline">
+            <Link to="/">Back to profiles</Link>
+          </Button>
+        </EmptyContent>
+      </Empty>
+    );
+  }
+  if (status === 'error') return <ErrorAlert>{error}</ErrorAlert>;
+  if (status !== 'ready' || !profile) return <LoadingState />;
+  return <Outlet key={profile.id} />;
 }
 
 export function App() {
@@ -63,7 +83,7 @@ export function App() {
         <Route index element={<StartupRedirect />} />
         <Route path="profiles/new" element={<NewProfilePage />} />
         {/* Everything a profile owns lives under its id (SOW-0014). */}
-        <Route path="profiles/:profileId" element={<ProfileScope />}>
+        <Route path="profiles/:profileSlug" element={<ProfileScope />}>
           <Route index element={<DashboardPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="applications" element={<ApplicationsPage />} />

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReviewPage } from '../../src/ui/pages/ReviewPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -34,11 +35,13 @@ const proposal = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/profiles/pf1/review']}>
-      <Routes>
-        <Route path="/profiles/:profileId/review" element={<ReviewPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/review']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/review" element={<ReviewPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 

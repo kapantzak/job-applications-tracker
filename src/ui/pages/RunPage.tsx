@@ -9,7 +9,7 @@ import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
 import { formatTime } from '../format.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ const NO_GMAIL = 'Your agent has no Gmail tool';
 
 export function RunPage() {
   const profileId = useProfileId();
+  const href = useProfileHref();
   const { id = '' } = useParams();
   const [run, setRun] = useState<Run | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -100,7 +101,7 @@ export function RunPage() {
     <div className="flex flex-col gap-6">
       <div>
         <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-          <Link to={profilePath(profileId, '/runs')}>
+          <Link to={href('/runs')}>
             <ArrowLeftIcon />
             Runs
           </Link>
@@ -176,8 +177,8 @@ export function RunPage() {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {terminal && (
         <div className="flex flex-wrap gap-2">
-          {run.kind === 'discover_jobs' && followUp(profilePath(profileId, '/jobs'), 'View jobs')}
-          {run.kind === 'sync_mail' && followUp(profilePath(profileId, '/review'), 'Review proposals')}
+          {run.kind === 'discover_jobs' && followUp(href('/jobs'), 'View jobs')}
+          {run.kind === 'sync_mail' && followUp(href('/review'), 'Review proposals')}
           {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}
         </div>
       )}

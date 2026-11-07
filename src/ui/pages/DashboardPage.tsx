@@ -15,7 +15,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -66,6 +66,7 @@ function StatCard({ label, value, testId, to, icon }: StatCardProps) {
 
 export function DashboardPage() {
   const profileId = useProfileId();
+  const href = useProfileHref();
   const navigate = useNavigate();
   const agentHeadingId = useId();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -105,7 +106,7 @@ export function DashboardPage() {
     setBusy(true);
     try {
       const run = await action(profileId);
-      navigate(profilePath(profileId, `/runs/${run.id}`));
+      navigate(href(`/runs/${run.id}`));
     } catch (e) {
       setErrors([message(e)]);
       setBusy(false);
@@ -141,21 +142,21 @@ export function DashboardPage() {
             label="Open applications"
             value={stats.applications}
             testId="count-applications"
-            to={profilePath(profileId, '/applications')}
+            to={href('/applications')}
             icon={<FileTextIcon className="size-4" />}
           />
           <StatCard
             label="Pending proposals"
             value={stats.proposals}
             testId="count-proposals"
-            to={profilePath(profileId, '/review')}
+            to={href('/review')}
             icon={<InboxIcon className="size-4" />}
           />
           <StatCard
             label="Jobs"
             value={stats.jobs}
             testId="count-jobs"
-            to={profilePath(profileId, '/jobs')}
+            to={href('/jobs')}
             icon={<BriefcaseIcon className="size-4" />}
           />
         </div>

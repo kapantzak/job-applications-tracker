@@ -8,7 +8,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusSelect } from '../components/StatusSelect.js';
 import { formatTime } from '../format.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -28,6 +28,7 @@ const isHttp = (url: string | null): url is string => !!url && /^https?:\/\//i.t
 
 export function ApplicationsPage() {
   const profileId = useProfileId();
+  const href = useProfileHref();
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function ApplicationsPage() {
     setError(null);
     try {
       const run = await startSync(profileId);
-      navigate(profilePath(profileId, `/runs/${run.id}`));
+      navigate(href(`/runs/${run.id}`));
     } catch (e) {
       setError(message(e));
       setSyncing(false);
@@ -152,7 +153,7 @@ export function ApplicationsPage() {
                     <TableCell className="pr-4">
                       <div className="flex items-center justify-end gap-1.5">
                         <Button asChild variant="outline" size="sm">
-                          <Link to={profilePath(profileId, `/applications/${a.id}`)}>Details</Link>
+                          <Link to={href(`/applications/${a.id}`)}>Details</Link>
                         </Button>
                         {isHttp(a.url) && (
                           <Button asChild variant="ghost" size="sm">

@@ -28,11 +28,13 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 ## Profiles
 
 - Keep one profile per search, for example "Platform roles" and "Data roles". Each profile has its own jobs, applications, proposals and runs; the agent and app settings are shared.
-- The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it; "Switch profile" in the sidebar takes you back.
+- Profile names use letters, numbers and single spaces (any alphabet). Each profile gets a short address from its name, for example `/profiles/platform-roles`; renaming a profile changes it, so old bookmarks to that profile stop working.
+- Inside a profile, the top left shows its name; click it to go back to all profiles.
+- The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it.
 - The same job posting can show up in more than one profile.
 - Gmail sync runs per profile: it only looks at that profile's open applications. A scheduled sync runs once for each profile that has open applications.
 - Deleting a profile (Delete on its card, then confirm) removes the profile with all its jobs, applications, proposals, status history and run logs. It cannot be undone. While one of its runs is queued or running, cancel the run first.
-- Upgrading from a version with a single profile keeps your data: the existing profile becomes your first profile, named after its first target role.
+- Upgrading from a version with a single profile keeps your data: the existing profile becomes your first profile, named after its first target role (characters other than letters, numbers and spaces are replaced by spaces).
 
 ## Cancelling a run
 

@@ -72,4 +72,30 @@ describe('profiles repo', () => {
     expect(() => repo.remove('missing')).toThrow(ProfileNotFoundError);
     expect(() => repo.update('missing', input)).toThrow(ProfileNotFoundError);
   });
+
+  it('gives each profile a slug that follows renames, numbers clashes and skips new', () => {
+    const { repo } = setup();
+    const cafe = repo.create({ ...input, name: 'Café' });
+    const plain = repo.create({ ...input, name: 'Cafe' });
+    const fresh = repo.create({ ...input, name: 'New' });
+    expect([cafe.slug, plain.slug, fresh.slug]).toEqual(['cafe', 'cafe-2', 'new-2']);
+    expect(repo.getBySlug('cafe-2')?.id).toBe(plain.id);
+    expect(repo.getBySlug('missing')).toBeNull();
+    // Renaming to a name with the same slug keeps the profile's own numbered slug.
+    expect(repo.update(plain.id, { ...input, name: 'CAFE' }).slug).toBe('cafe-2');
+    expect(repo.update(plain.id, { ...input, name: 'Data roles' }).slug).toBe('data-roles');
+    expect(repo.create({ ...input, name: 'Cafe' }).slug).toBe('cafe-2');
+  });
+
+  it('keeps the slug when other fields are saved, even if a lower-numbered slug became free', () => {
+    const { repo } = setup();
+    const accented = repo.create({ ...input, name: 'Caf\u00e9' });
+    const plain = repo.create({ ...input, name: 'Cafe' });
+    expect(plain.slug).toBe('cafe-2');
+    repo.remove(accented.id);
+    expect(repo.update(plain.id, { ...input, name: 'Cafe', notes: 'changed' }).slug).toBe('cafe-2');
+    // A real rename recomputes it; digits in a name are never mistaken for a clash number.
+    expect(repo.update(plain.id, { ...input, name: 'Roles 2' }).slug).toBe('roles-2');
+    expect(repo.update(plain.id, { ...input, name: 'Roles' }).slug).toBe('roles');
+  });
 });

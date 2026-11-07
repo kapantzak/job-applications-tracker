@@ -6,7 +6,7 @@ import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -20,6 +20,7 @@ const SETTLE_POLLS = 30;
 
 export function RunsPage() {
   const profileId = useProfileId();
+  const href = useProfileHref();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -109,7 +110,7 @@ export function RunsPage() {
               {runs.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="pl-4">
-                    <Link to={profilePath(profileId, `/runs/${r.id}`)} className="font-mono text-sm font-medium hover:underline">
+                    <Link to={href(`/runs/${r.id}`)} className="font-mono text-sm font-medium hover:underline">
                       {r.kind}
                     </Link>
                   </TableCell>

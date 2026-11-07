@@ -17,6 +17,7 @@ function profile(id: string, name: string, counts = { jobs: 0, applications: 0, 
   return {
     id,
     name,
+    slug: name.toLowerCase().replace(/ /g, '-'),
     target_roles: ['Engineer'],
     locations: [],
     remote: 'any',
@@ -38,7 +39,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/" element={<ProfilesPage />} />
         <Route path="/profiles/new" element={<NewProfilePage />} />
-        <Route path="/profiles/:profileId" element={<p>profile dashboard</p>} />
+        <Route path="/profiles/data-roles" element={<p>profile dashboard</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -55,7 +56,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(client.listProfiles).mockResolvedValue([ALPHA, BETA]);
-  vi.mocked(client.createProfile).mockResolvedValue({ ...BETA, id: 'pc', name: 'Data roles' } as Profile);
+  vi.mocked(client.createProfile).mockResolvedValue({ ...BETA, id: 'pc', name: 'Data roles', slug: 'data-roles' } as Profile);
 });
 
 describe('ProfilesPage', () => {
@@ -65,8 +66,8 @@ describe('ProfilesPage', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'Alpha roles' })).toBeInTheDocument();
     expect(screen.getByText('12 jobs, 1 application and 7 runs')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Alpha roles' })).toHaveAttribute('href', '/profiles/pa');
-    expect(screen.getByRole('link', { name: 'Edit Beta roles' })).toHaveAttribute('href', '/profiles/pb/profile');
+    expect(screen.getByRole('link', { name: 'Open Alpha roles' })).toHaveAttribute('href', '/profiles/alpha-roles');
+    expect(screen.getByRole('link', { name: 'Edit Beta roles' })).toHaveAttribute('href', '/profiles/beta-roles/profile');
     expect(screen.getByRole('link', { name: 'New profile' })).toHaveAttribute('href', '/profiles/new');
   });
 

@@ -32,6 +32,8 @@ export type JobRemote = 'remote' | 'hybrid' | 'onsite' | 'unknown';
 export interface Profile {
   id: string;
   name: string;
+  // URL handle (SOW-0015): unique, follows the name, never `new`.
+  slug: string;
   target_roles: string[];
   locations: string[];
   remote: RemotePreference;

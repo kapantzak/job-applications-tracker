@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { ArrowLeftIcon } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { getApplication, patchApplication, type ApplicationDetail } from '../api/client.js';
-import { profilePath, useProfileId } from '../profile-route.js';
+import { useProfileHref, useProfileId } from '../profile-route.js';
 import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
@@ -20,6 +20,7 @@ const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
 export function ApplicationDetailPage() {
   const fieldId = useId();
   const profileId = useProfileId();
+  const href = useProfileHref();
   const { id = '' } = useParams();
   const [app, setApp] = useState<ApplicationDetail | null>(null);
   const [company, setCompany] = useState('');
@@ -81,7 +82,7 @@ export function ApplicationDetailPage() {
   return (
     <div>
       <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-        <Link to={profilePath(profileId, '/applications')}>
+        <Link to={href('/applications')}>
           <ArrowLeftIcon />
           Applications
         </Link>

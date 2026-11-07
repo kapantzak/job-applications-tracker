@@ -38,7 +38,7 @@ function CreateProfileForm() {
       submitLabel="Create profile"
       onSubmit={async (input) => {
         const created = await createProfile(input);
-        navigate(profilePath(created.id));
+        navigate(profilePath(created.slug));
       }}
     />
   );
@@ -157,7 +157,7 @@ export function ProfilesPage() {
               <CardHeader>
                 <CardTitle>
                   <h2>
-                    <Link to={profilePath(p.id)} className="hover:underline">
+                    <Link to={profilePath(p.slug)} className="hover:underline">
                       {p.name}
                     </Link>
                   </h2>
@@ -170,13 +170,13 @@ export function ProfilesPage() {
               <CardContent className="text-sm text-muted-foreground">{countsText(p.counts)}</CardContent>
               <CardFooter className="mt-auto gap-2">
                 <Button asChild size="sm">
-                  <Link to={profilePath(p.id)} aria-label={`Open ${p.name}`}>
+                  <Link to={profilePath(p.slug)} aria-label={`Open ${p.name}`}>
                     Open
                     <ArrowRightIcon />
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">
-                  <Link to={profilePath(p.id, '/profile')} aria-label={`Edit ${p.name}`}>
+                  <Link to={profilePath(p.slug, '/profile')} aria-label={`Edit ${p.name}`}>
                     <PencilIcon />
                     Edit
                   </Link>

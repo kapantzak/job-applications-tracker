@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunsPage } from '../../src/ui/pages/RunsPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 import type { Run } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -37,17 +38,19 @@ const done = { ...makeRun('run-3', 'succeeded'), summary: '2 new' };
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/profiles/pf1/runs']}>
-      <Routes>
-        <Route path="/profiles/:profileId/runs" element={<RunsPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/runs']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/runs" element={<RunsPage />} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 
 // Rows are found through their run link: several rows can share a kind.
 const rowOf = (id: string) =>
-  (screen.getAllByRole('link').find((l) => l.getAttribute('href') === `/profiles/pf1/runs/${id}`) as HTMLElement).closest(
+  (screen.getAllByRole('link').find((l) => l.getAttribute('href') === `/profiles/platform-roles/runs/${id}`) as HTMLElement).closest(
     'tr',
   ) as HTMLElement;
 

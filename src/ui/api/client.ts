@@ -44,7 +44,7 @@ export interface ModelCatalogs {
   codex: ModelCatalog;
 }
 
-export type ProfileInput = Omit<Profile, 'id' | 'created_at'>;
+export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at'>;
 
 export interface NewApplicationInput {
   company: string;
@@ -119,6 +119,8 @@ export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/a
 export const listProfiles = (): Promise<ProfileListItem[]> => request('GET', '/api/profiles');
 export const createProfile = (profile: ProfileInput): Promise<Profile> => request('POST', '/api/profiles', profile);
 export const getProfile = (profileId: string): Promise<Profile> => request('GET', scoped(profileId, ''));
+export const getProfileBySlug = (slug: string): Promise<Profile> =>
+  request('GET', `/api/profiles/by-slug/${enc(slug)}`);
 export const updateProfile = (profileId: string, profile: ProfileInput): Promise<Profile> =>
   request('PUT', scoped(profileId, ''), profile);
 // Removes the profile with its jobs, applications, proposals, runs and run logs.

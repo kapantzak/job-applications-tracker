@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JobsPage } from '../../src/ui/pages/JobsPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { InProfile } from './profile-shell.js';
 import type { JobListItem } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -45,12 +46,14 @@ const dead = job({ id: 'j2', company: 'Deadco', verification_status: 'dead' });
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/profiles/pf1/jobs']}>
-      <Routes>
-        <Route path="/profiles/:profileId/jobs" element={<JobsPage />} />
-        <Route path="/profiles/:profileId/runs/:id" element={<p>Run page</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <InProfile>
+      <MemoryRouter initialEntries={['/profiles/platform-roles/jobs']}>
+        <Routes>
+          <Route path="/profiles/:profileSlug/jobs" element={<JobsPage />} />
+          <Route path="/profiles/:profileSlug/runs/:id" element={<p>Run page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </InProfile>,
   );
 }
 

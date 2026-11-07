@@ -9,20 +9,23 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   getSettings: vi.fn(),
   getAdapters: vi.fn(),
   listProfiles: vi.fn(),
-  getProfile: vi.fn(),
+  getProfileBySlug: vi.fn(),
   listProposals: vi.fn(),
+  listJobs: vi.fn(),
+  updateProfile: vi.fn(),
 }));
 
 // App keeps a once-per-load flag at module level; a fresh module per test is a fresh page load.
-async function renderApp(path: string) {
+async function renderApp(path: string, configure?: (client: typeof ClientModule) => void) {
   vi.resetModules();
   const client = await import('../../src/ui/api/client.js');
   vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'claude' } as never);
   vi.mocked(client.getAdapters).mockResolvedValue([{ id: 'claude', installed, gmail_guide: false }]);
   vi.mocked(client.listProfiles).mockResolvedValue([]);
-  vi.mocked(client.getProfile).mockResolvedValue({
+  vi.mocked(client.getProfileBySlug).mockResolvedValue({
     id: 'pf1',
     name: 'Platform roles',
+    slug: 'platform-roles',
     target_roles: ['Engineer'],
     locations: [],
     remote: 'any',
@@ -33,6 +36,7 @@ async function renderApp(path: string) {
     created_at: '2026-11-01T00:00:00.000Z',
   });
   vi.mocked(client.listProposals).mockResolvedValue([]);
+  configure?.(client);
   const { App } = await import('../../src/ui/App.js');
   render(
     <MemoryRouter initialEntries={[path]}>
@@ -71,10 +75,65 @@ describe('App routing', () => {
     expect(await screen.findByRole('heading', { name: 'Create your first profile' })).toBeInTheDocument();
   });
 
-  it('shows the profile sidebar inside a profile', async () => {
-    await renderApp('/profiles/pf1/profile');
-    expect(await screen.findByRole('navigation', { name: 'Profile' })).toBeInTheDocument();
+  it('opens a profile page by slug with the profile header', async () => {
+    const client = await renderApp('/profiles/platform-roles/profile');
     expect(await screen.findByLabelText('Name')).toHaveValue('Platform roles');
-    expect(screen.getAllByText('Platform roles').length).toBeGreaterThan(0);
+    expect(client.getProfileBySlug).toHaveBeenCalledWith('platform-roles');
+    expect(screen.getByRole('link', { name: 'Back to profiles: Platform roles' })).toHaveAttribute('href', '/');
+  });
+
+  it('shows Profile not found with a way back for an unknown slug', async () => {
+    const user = userEvent.setup();
+    await renderApp('/profiles/old-name/jobs', (client) => {
+      vi.mocked(client.getProfileBySlug).mockRejectedValue(new client.ApiError(404, 'Profile not found'));
+    });
+    expect(await screen.findByText('Profile not found')).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Back to profiles' }));
+    expect(await screen.findByRole('heading', { name: 'Create your first profile' })).toBeInTheDocument();
+  });
+
+  it('resolves a non-Latin slug from a percent-encoded URL and links to it encoded', async () => {
+    const slug = 'μηχανικος';
+    const client = await renderApp(`/profiles/${encodeURIComponent(slug)}/jobs`, (c) => {
+      vi.mocked(c.getProfileBySlug).mockResolvedValue({
+        id: 'pg',
+        name: 'Μηχανικός',
+        slug,
+        target_roles: ['Engineer'],
+        locations: [],
+        remote: 'any',
+        seniority: '',
+        keywords: [],
+        excluded_companies: [],
+        notes: '',
+        created_at: '2026-11-01T00:00:00.000Z',
+      });
+      vi.mocked(c.listJobs).mockResolvedValue([]);
+    });
+    expect(await screen.findByRole('link', { name: 'Back to profiles: Μηχανικός' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).toHaveBeenCalledWith(slug);
+    expect(client.listJobs).toHaveBeenCalledWith('pg', expect.anything());
+    expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', `/profiles/${encodeURIComponent(slug)}/jobs`);
+  });
+
+  it('renames a profile in place: new URL, no remount, Saved stays and no second lookup', async () => {
+    const user = userEvent.setup();
+    const client = await renderApp('/profiles/platform-roles/profile', (c) => {
+      vi.mocked(c.updateProfile).mockImplementation(async (id, input) => ({
+        ...input,
+        id,
+        slug: 'lead-roles',
+        created_at: '2026-11-01T00:00:00.000Z',
+      }));
+    });
+    const name = await screen.findByLabelText('Name');
+    await user.clear(name);
+    await user.type(name, 'Lead roles');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toBe(name);
+    expect(screen.getByRole('link', { name: 'Back to profiles: Lead roles' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/profiles/lead-roles/jobs');
+    expect(vi.mocked(client.getProfileBySlug).mock.calls).toEqual([['platform-roles']]);
   });
 });
