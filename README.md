@@ -140,6 +140,8 @@ node bin/jobtrack.js --no-open --data-dir .tmp/dev
 npm run sandbox     # build, then run the app on a throwaway data dir (.tmp/sandbox)
 ```
 
+Every pull request and every push to `main` runs `npm run typecheck` and `npm test` on GitHub Actions with Node 22 and the current Node LTS.
+
 `npm run sandbox` never touches your real data in `~/.job-applications-tracker`. Delete `.tmp/sandbox` to start fresh. Extra flags go after `--`, for example `npm run sandbox -- --no-open --port 5000`.
 
 The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
