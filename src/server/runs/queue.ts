@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentRunRecord, RunPatch, RunsRepo } from '../db/runs-repo.js';
-import { RUN_SAVING_LOG_LINE, type Run, type RunKind } from '../domain/types.js';
+import type { AgentRunRecord, RunPatch, RunsRepo, UsageRecord } from '../db/runs-repo.js';
+import { RUN_SAVING_LOG_LINE, type EffortMode, type Run, type RunKind } from '../domain/types.js';
 import type { LogStore } from './log-store.js';
 
 export interface RunContext {
@@ -11,6 +11,8 @@ export interface RunContext {
   runDir: string;
   // Writes agent, model and effort to the run row immediately; never throws.
   recordAgent: (record: AgentRunRecord) => void;
+  // Writes what the agent reported spending; never throws, and is kept when the run fails.
+  recordUsage: (record: UsageRecord) => void;
   // Called once the agent's result is in hand: from here on the run cannot be cancelled. Throws
   // 'Aborted' when a cancel or shutdown came first, so a late result is never saved.
   beginSaving: () => void;
@@ -51,6 +53,14 @@ interface InFlight {
   saving: boolean;
   // Error recorded when the abort came from a user cancel rather than shutdown.
   cancelReason?: string;
+}
+
+// A discovery of the other effort mode is already queued or running for the profile (SOW-0016).
+export class ActiveRunConflictError extends Error {
+  constructor(readonly active: Run) {
+    super('A discovery run is already active');
+    this.name = 'ActiveRunConflictError';
+  }
 }
 
 function messageOf(err: unknown): string {
@@ -98,6 +108,14 @@ export function createRunQueue(opts: RunQueueOptions) {
     }
   }
 
+  function recordUsage(runId: string, record: UsageRecord): void {
+    try {
+      runsRepo.update(runId, record);
+    } catch (err) {
+      console.error(`run ${runId}: failed to record usage: ${messageOf(err)}`);
+    }
+  }
+
   async function execute(queued: Run): Promise<void> {
     const entry: InFlight = { id: queued.id, controller: new AbortController(), finalized: false, saving: false };
     current = entry;
@@ -116,6 +134,7 @@ export function createRunQueue(opts: RunQueueOptions) {
           signal: entry.controller.signal,
           runDir,
           recordAgent: (record) => recordAgent(run.id, record),
+          recordUsage: (record) => recordUsage(run.id, record),
           beginSaving: () => {
             if (entry.controller.signal.aborted) throw new Error('Aborted');
             entry.saving = true;
@@ -173,14 +192,18 @@ export function createRunQueue(opts: RunQueueOptions) {
   }
 
   // One queue for every profile (one agent at a time); "already active" is per profile and kind.
-  function enqueue(kind: RunKind, profileId: string): Run {
+  function enqueue(kind: RunKind, profileId: string, options: { effortMode?: EffortMode } = {}): Run {
+    const effortMode = options.effortMode ?? 'default';
     let active = runsRepo.findActive(kind, profileId);
     // A run being cancelled no longer counts: the new request queues behind it (user decision, SOW-0012).
     if (active && current?.id === active.id && current.cancelReason) {
       active = runsRepo.findActiveExcept(kind, profileId, active.id);
     }
+    // Handing back a run of the other mode would hide that the click did not start what was asked
+    // (user decision 19, SOW-0016).
+    if (active && active.effort_mode !== effortMode) throw new ActiveRunConflictError(active);
     if (active) return active;
-    const run = runsRepo.create(kind, profileId, { adapter_id: '', prompt_version: null });
+    const run = runsRepo.create(kind, profileId, { adapter_id: '', prompt_version: null, effort_mode: effortMode });
     kick();
     return run;
   }

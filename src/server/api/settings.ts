@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { EFFORT_PATTERN, MODEL_PATTERN } from '../agents/presets.js';
+import { BUDGET_PATTERN, EFFORT_PATTERN, MODEL_PATTERN } from '../agents/presets.js';
 import type { AppDeps } from '../app.js';
 import type { Settings } from '../domain/types.js';
 import { readJson } from './errors.js';
@@ -8,6 +8,14 @@ import { readJson } from './errors.js';
 // '' selects the agent's own default.
 const model = z.union([z.literal(''), z.string().regex(MODEL_PATTERN, 'Invalid model id')]);
 const effort = z.union([z.literal(''), z.string().regex(EFFORT_PATTERN, 'Invalid effort level')]);
+// '' turns the cap off.
+const budget = z.union([
+  z.literal(''),
+  z
+    .string()
+    .regex(BUDGET_PATTERN, 'Invalid spend cap')
+    .refine((v) => Number(v) > 0, 'Spend cap must be more than 0'),
+]);
 
 const SettingsPatch = z
   .object({
@@ -27,6 +35,7 @@ const SettingsPatch = z
     codex_model_sync: model,
     codex_effort_discover: effort,
     codex_effort_sync: effort,
+    claude_max_budget_usd_discover: budget,
     run_timeout_ms: z.number().int().min(10_000).max(3_600_000),
     sync_interval: z.enum(['off', '1h', '6h', '24h']),
     port: z.number().int().min(1024).max(65535),

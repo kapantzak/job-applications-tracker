@@ -138,6 +138,7 @@ describe('applications repo', () => {
         posted_at: null,
         salary: null,
         description_excerpt: null,
+        fit_checks: null,
         match_reason: null,
         verification_status: 'ok',
         verified_at: null,

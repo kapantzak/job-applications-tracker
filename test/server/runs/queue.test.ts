@@ -8,7 +8,7 @@ import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { insertTestProfile } from '../db/test-profile.js';
 import type { Run, RunKind, RunStatus } from '../../../src/server/domain/types.js';
 import { createLogStore } from '../../../src/server/runs/log-store.js';
-import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
+import { ActiveRunConflictError, createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
 
 type Queue = ReturnType<typeof createRunQueue>;
 
@@ -159,6 +159,45 @@ describe('run queue', () => {
     });
   });
 
+  it('records usage as soon as the handler reports it, also for a failed run', async () => {
+    const q = makeQueue({
+      discover_jobs: async ({ recordUsage }) => {
+        recordUsage({ usage_cost_usd: 0.75, usage_input_tokens: 2000, usage_output_tokens: 90 });
+        throw new Error('Agent run failed: Exited with code 1');
+      },
+    });
+    const run = q.enqueue('discover_jobs', pid);
+    q.start();
+    const done = await waitForTerminal(run.id);
+    expect(done).toMatchObject({
+      status: 'failed',
+      usage_cost_usd: 0.75,
+      usage_input_tokens: 2000,
+      usage_output_tokens: 90,
+    });
+  });
+
+  it('keeps the run going when recording usage fails', async () => {
+    const realUpdate = runsRepo.update;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    runsRepo.update = ((id, patch) => {
+      if ('usage_cost_usd' in patch) throw new Error('disk full');
+      return realUpdate(id, patch);
+    }) as typeof runsRepo.update;
+    const q = makeQueue({
+      discover_jobs: async ({ recordUsage }) => {
+        recordUsage({ usage_cost_usd: 1 });
+        return { summary: 'ok' };
+      },
+    });
+    const run = q.enqueue('discover_jobs', pid);
+    q.start();
+    expect((await waitForTerminal(run.id)).status).toBe('succeeded');
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('failed to record usage: disk full'));
+    runsRepo.update = realUpdate;
+    consoleError.mockRestore();
+  });
+
   it('keeps the run going when recording agent details fails', async () => {
     const realUpdate = runsRepo.update;
     const errors: unknown[] = [];
@@ -227,6 +266,37 @@ describe('run queue', () => {
     const first = q.enqueue('discover_jobs', pid);
     const second = q.enqueue('discover_jobs', pid);
     expect(second.id).toBe(first.id);
+    expect(runsRepo.list(pid)).toHaveLength(1);
+  });
+
+  it('stores the requested effort mode and hands it to the handler', async () => {
+    const modes: string[] = [];
+    const q = makeQueue({
+      discover_jobs: async (ctx) => {
+        modes.push(ctx.run.effort_mode);
+        return { summary: 'ok' };
+      },
+    });
+    const run = q.enqueue('discover_jobs', pid, { effortMode: 'max' });
+    expect(run.effort_mode).toBe('max');
+    q.start();
+    await waitForTerminal(run.id);
+    expect(modes).toEqual(['max']);
+    expect(q.enqueue('sync_mail', pid).effort_mode).toBe('default');
+  });
+
+  it('returns the active run for the same mode and refuses a different mode', () => {
+    const q = makeQueue({});
+    const first = q.enqueue('discover_jobs', pid);
+    expect(q.enqueue('discover_jobs', pid, { effortMode: 'default' }).id).toBe(first.id);
+    let caught: unknown;
+    try {
+      q.enqueue('discover_jobs', pid, { effortMode: 'max' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ActiveRunConflictError);
+    expect((caught as ActiveRunConflictError).active.id).toBe(first.id);
     expect(runsRepo.list(pid)).toHaveLength(1);
   });
 

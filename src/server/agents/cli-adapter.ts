@@ -5,6 +5,7 @@ import type { Readable } from 'node:stream';
 import { extractClaudeInitModel, extractClaudeStructuredOutput, extractLastJsonObject } from './extract-json.js';
 import { parseCodexModelCatalog, UNAVAILABLE_CATALOG } from './model-catalog.js';
 import { defaultResolveDeps, resolveCommand } from './resolve-command.js';
+import { extractClaudeUsage, extractCodexUsage } from './usage.js';
 import type {
   AdapterHealth,
   AgentAdapter,
@@ -227,6 +228,15 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       const model = extractClaudeInitModel(rawStdout);
       return model ? { reportedModel: model } : {};
     };
+    const usage = (): Pick<AgentResult, 'usage'> => {
+      const u =
+        config.usageFrom === 'claude-stream-json'
+          ? extractClaudeUsage(rawStdout)
+          : config.usageFrom === 'codex-json'
+            ? extractCodexUsage(rawStdout)
+            : undefined;
+      return u ? { usage: u } : {};
+    };
     const fail = (error: string, exitCode: number | null = null): AgentResult => ({
       ok: false,
       rawStdout,
@@ -235,6 +245,7 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
       durationMs: Date.now() - started,
       error,
       ...reported(),
+      ...usage(),
     });
 
     if (opts.signal?.aborted) return fail('Aborted');
@@ -321,6 +332,7 @@ export function createCliAdapter(config: CliAdapterConfig): AgentAdapter {
             exitCode: code,
             durationMs: Date.now() - started,
             ...reported(),
+            ...usage(),
           });
         } catch (err) {
           finish(fail(errorMessage(err), code));

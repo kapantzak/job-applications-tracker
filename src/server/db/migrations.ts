@@ -142,6 +142,17 @@ ALTER TABLE runs ADD COLUMN agent_model_reported TEXT;
     id: 4,
     up: addProfileSlugs,
   },
+  {
+    // Discovery effort levels (SOW-0016): run mode, what the agent reported spending, per-job fit verdicts.
+    id: 5,
+    sql: `
+ALTER TABLE runs ADD COLUMN effort_mode TEXT NOT NULL DEFAULT 'default' CHECK (effort_mode IN ('default','max'));
+ALTER TABLE runs ADD COLUMN usage_cost_usd REAL;
+ALTER TABLE runs ADD COLUMN usage_input_tokens INTEGER;
+ALTER TABLE runs ADD COLUMN usage_output_tokens INTEGER;
+ALTER TABLE jobs ADD COLUMN fit_checks TEXT;
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

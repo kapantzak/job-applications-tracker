@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { RunKind } from '../domain/types.js';
+import { FIT_VERDICTS, type RunKind } from '../domain/types.js';
+
+const verdict = z.enum(FIT_VERDICTS).default('unknown');
+const FitChecks = z
+  .object({ location: verdict, remote: verdict, seniority: verdict })
+  .default({ location: 'unknown', remote: 'unknown', seniority: 'unknown' });
 
 const DiscoveredJob = z.object({
   company: z.string(),
@@ -13,6 +18,8 @@ const DiscoveredJob = z.object({
   salary: z.string().nullable().default(null),
   description_excerpt: z.string().default(''),
   match_reason: z.string().default(''),
+  // The agent's verdict on each must-have of the profile (SOW-0016).
+  checks: FitChecks,
 });
 
 export const DiscoverJobsOutput = z.object({

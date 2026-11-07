@@ -198,6 +198,57 @@ describe('createCliAdapter run', () => {
     expect(r.reportedModel).toBe('model-b');
   });
 
+  it('reports claude usage from the result event', async () => {
+    process.env.FAKE_AGENT_MODE = 'claude';
+    const r = await createCliAdapter(
+      fakeConfig({
+        argv: [process.execPath, FIXTURE],
+        promptVia: 'stdin',
+        resultFrom: 'claude-stream-json',
+        usageFrom: 'claude-stream-json',
+      }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(true);
+    expect(r.usage).toEqual({ costUsd: 0.25, inputTokens: 1510, outputTokens: 40 });
+  });
+
+  it('reports claude usage when the spend cap ends the run', async () => {
+    process.env.FAKE_AGENT_MODE = 'claude-budget';
+    const r = await createCliAdapter(
+      fakeConfig({
+        argv: [process.execPath, FIXTURE],
+        promptVia: 'stdin',
+        resultFrom: 'claude-stream-json',
+        usageFrom: 'claude-stream-json',
+      }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Exited with code 1');
+    expect(r.usage).toEqual({ costUsd: 0.25, inputTokens: 1510, outputTokens: 40 });
+  });
+
+  it('reports codex usage from turn.completed', async () => {
+    process.env.FAKE_AGENT_MODE = 'codex';
+    const r = await createCliAdapter(
+      fakeConfig({
+        argv: [process.execPath, FIXTURE, '-o', '{output_file}'],
+        promptVia: 'argv',
+        resultFrom: 'output-file',
+        usageFrom: 'codex-json',
+      }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.ok).toBe(true);
+    expect(r.usage).toEqual({ inputTokens: 1200, outputTokens: 80 });
+  });
+
+  it('reports no usage without a usage source', async () => {
+    process.env.FAKE_AGENT_MODE = 'claude';
+    const r = await createCliAdapter(
+      fakeConfig({ argv: [process.execPath, FIXTURE], promptVia: 'stdin', resultFrom: 'claude-stream-json' }),
+    ).run(TASK, { timeoutMs: 10_000, cwd });
+    expect(r.usage).toBeUndefined();
+  });
+
   it('does not look for a reported model in other output formats', async () => {
     process.env.FAKE_AGENT_MODE = 'ok';
     process.env.FAKE_AGENT_OUTPUT = JSON.stringify({ type: 'system', subtype: 'init', model: 'model-c' });
@@ -467,12 +518,63 @@ describe('buildAdapterConfig', () => {
     expect(c.argv.filter((a) => a === '--allowedTools')).toHaveLength(1);
   });
 
-  it('uses the discover sandbox for codex', () => {
+  it('claude discovery limits built-in tools, skips MCP servers and caps spend by default', () => {
+    const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'discover_jobs');
+    const tail = c.argv.slice(c.argv.indexOf('Agent,Task') + 1);
+    expect(tail).toEqual(['--tools', 'WebSearch,WebFetch', '--strict-mcp-config', '--max-budget-usd', '5']);
+  });
+
+  it('claude discovery keeps MCP servers when an allowed discovery tool is an MCP tool', () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      adapter_id: 'claude' as const,
+      allowed_tools_discover: 'WebSearch, mcp__search__query, Bash(curl:*)',
+    };
+    const c = buildAdapterConfig(settings, 'discover_jobs');
+    expect(c.argv).not.toContain('--strict-mcp-config');
+    expect(c.argv.slice(c.argv.indexOf('--tools'), c.argv.indexOf('--tools') + 2)).toEqual(['--tools', 'WebSearch,Bash']);
+  });
+
+  it('claude discovery passes no --tools when no built-in tool is allowed', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, allowed_tools_discover: 'mcp__search__query' };
+    const c = buildAdapterConfig(settings, 'discover_jobs');
+    expect(c.argv).not.toContain('--tools');
+    expect(c.argv).not.toContain('--strict-mcp-config');
+  });
+
+  it('claude discovery passes no spend cap when the setting is empty', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, claude_max_budget_usd_discover: '' };
+    expect(buildAdapterConfig(settings, 'discover_jobs').argv).not.toContain('--max-budget-usd');
+  });
+
+  it('claude sync gets none of the discovery limits', () => {
+    const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'sync_mail');
+    expect(c.argv).not.toContain('--tools');
+    expect(c.argv).not.toContain('--strict-mcp-config');
+    expect(c.argv).not.toContain('--max-budget-usd');
+  });
+
+  it('refuses a stored spend cap that is not a positive amount', () => {
+    for (const bad of ['0', '-1', '1e3', '5 --bare']) {
+      const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, claude_max_budget_usd_discover: bad };
+      expect(() => buildAdapterConfig(settings, 'discover_jobs')).toThrow('Invalid spend cap setting');
+    }
+  });
+
+  it('codex sync disables sub-agents and does not ask for web search', () => {
+    const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'codex' }, 'sync_mail');
+    expect(c.argv).toEqual([
+      'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
+      '--sandbox', '{sandbox}', '-o', '{output_file}', '--disable', 'multi_agent',
+    ]);
+  });
+
+  it('uses the discover sandbox for codex, disables sub-agents and asks for live web search', () => {
     const settings = { ...DEFAULT_SETTINGS, adapter_id: 'codex' as const, sandbox_discover: 'workspace-write' };
     const c = buildAdapterConfig(settings, 'discover_jobs');
     expect(c.argv).toEqual([
       'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
-      '--sandbox', '{sandbox}', '-o', '{output_file}',
+      '--sandbox', '{sandbox}', '-o', '{output_file}', '--disable', 'multi_agent', '-c', 'web_search="live"',
     ]);
     expect(c.vars?.sandbox).toBe('workspace-write');
     expect(c.promptVia).toBe('argv');

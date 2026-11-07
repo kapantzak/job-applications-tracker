@@ -5,6 +5,10 @@ import type { AgentSelection, CliAdapterConfig, ModelCatalog } from './types.js'
 // codex receives the effort inside a quoted TOML string.
 export const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,99}$/;
 export const EFFORT_PATTERN = /^[a-z]{1,20}$/;
+// USD amount for `--max-budget-usd`; also reaches argv.
+export const BUDGET_PATTERN = /^\d{1,4}(\.\d{1,2})?$/;
+// Built-in tool names as `--tools` takes them; permission rules such as `Bash(curl:*)` are cut to the name.
+const BUILTIN_TOOL_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 // From `claude --help` (2.1.319): it names these aliases and these effort levels; it has no catalog command.
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -22,6 +26,35 @@ function selectionFor(settings: Settings, agent: 'claude' | 'codex', kind: RunKi
   if (model !== '' && !MODEL_PATTERN.test(model)) throw new Error(`Invalid model setting: ${model}`);
   if (effort !== '' && !EFFORT_PATTERN.test(effort)) throw new Error('Invalid effort setting');
   return { model, effort };
+}
+
+// Discovery needs only the tools it is allowed (SOW-0016). `--tools` drops every other built-in tool
+// definition; `--allowedTools` alone only skips prompts. MCP servers loaded through `--setting-sources user`
+// cost ~260k context tokens per run on a machine with many connectors (probed 2026-11-07), so they are
+// skipped unless the user allowed an MCP tool for discovery. The spend cap is Claude Code's own estimate.
+function claudeDiscoverFlags(settings: Settings): string[] {
+  const entries = settings.allowed_tools_discover
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const usesMcp = entries.some((t) => t.startsWith('mcp__'));
+  const builtins = [
+    ...new Set(
+      entries
+        .filter((t) => !t.startsWith('mcp__'))
+        .map((t) => t.split('(')[0]!)
+        .filter((t) => BUILTIN_TOOL_NAME.test(t)),
+    ),
+  ];
+  const budget = settings.claude_max_budget_usd_discover;
+  if (budget !== '' && (!BUDGET_PATTERN.test(budget) || !(Number(budget) > 0))) {
+    throw new Error('Invalid spend cap setting');
+  }
+  return [
+    ...(builtins.length ? ['--tools', builtins.join(',')] : []),
+    ...(usesMcp ? [] : ['--strict-mcp-config']),
+    ...(budget ? ['--max-budget-usd', budget] : []),
+  ];
 }
 
 // Whitespace-separated words; single quotes are literal, double quotes allow \" and \\.
@@ -71,11 +104,13 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
           'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
           '--permission-mode', '{permission_mode}', '--allowedTools', '{allowed_tools}',
           '--setting-sources', 'user', '--disallowedTools', 'Agent,Task',
+          ...(discover ? claudeDiscoverFlags(settings) : []),
           ...(selection.model ? ['--model', selection.model] : []),
           ...(selection.effort ? ['--effort', selection.effort] : []),
         ],
         promptVia: 'stdin',
         resultFrom: 'claude-stream-json',
+        usageFrom: 'claude-stream-json',
         versionArgv: ['claude', '--version'],
         authArgv: ['claude', 'auth', 'status'],
         vars: {
@@ -93,12 +128,17 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
         argv: [
           'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
           '--sandbox', '{sandbox}', '-o', '{output_file}',
+          // Sub-agents are on by default in codex-cli 0.163; the Claude preset denies them for both kinds too.
+          '--disable', 'multi_agent',
+          // The default `cached` search reads an OpenAI index without live web access.
+          ...(discover ? ['-c', 'web_search="live"'] : []),
           ...(selection.model ? ['-m', selection.model] : []),
           // A TOML string; no shell is involved, so the quotes reach codex as written.
           ...(selection.effort ? ['-c', `model_reasoning_effort="${selection.effort}"`] : []),
         ],
         promptVia: 'argv',
         resultFrom: 'output-file',
+        usageFrom: 'codex-json',
         versionArgv: ['codex', '--version'],
         authArgv: ['codex', 'login', 'status'],
         vars: { sandbox: discover ? settings.sandbox_discover : settings.sandbox_sync },

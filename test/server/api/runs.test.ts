@@ -2,7 +2,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Run } from '../../../src/server/domain/types.js';
-import { makeHarness, SAMPLE_PROFILE, waitFor, type Harness } from './harness.js';
+import { json, makeHarness, SAMPLE_PROFILE, waitFor, type Harness } from './harness.js';
 
 const OTHER_PROFILE = { ...SAMPLE_PROFILE, name: 'Data roles' };
 
@@ -89,6 +89,47 @@ describe('runs: enqueue', () => {
     expect(otherRun.id).not.toBe(first.id);
     expect(h.deps.runsRepo.list(h.profile.id).map((r) => r.id)).toEqual([first.id]);
     expect(h.deps.runsRepo.list(other.id).map((r) => r.id)).toEqual([otherRun.id]);
+  });
+
+  it('POST discover without a body starts a default run, and with mode max a max run', async () => {
+    const plain = await h.app.request(`${h.base}/runs/discover`, { method: 'POST' });
+    expect(plain.status).toBe(202);
+    expect(((await plain.json()) as Run).effort_mode).toBe('default');
+    const other = h.deps.profilesRepo.create(OTHER_PROFILE);
+    const max = await h.app.request(`/api/profiles/${other.id}/runs/discover`, json('POST', { mode: 'max' }));
+    expect(max.status).toBe(202);
+    const run = (await max.json()) as Run;
+    expect(run.effort_mode).toBe('max');
+    expect(h.deps.runsRepo.get(run.id)!.effort_mode).toBe('max');
+  });
+
+  it.each([
+    ['an unknown mode', { mode: 'turbo' }],
+    ['an unknown key', { mode: 'max', workers: 9 }],
+  ])('POST discover with %s is 400 and enqueues nothing', async (_name, body) => {
+    const res = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
+    expect(res.status).toBe(400);
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it('POST discover with a body that is not JSON is 415 and enqueues nothing', async () => {
+    const res = await h.app.request(`${h.base}/runs/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'mode=max',
+    });
+    expect(res.status).toBe(415);
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it('POST discover of the other mode while a discovery is active is 409; the same mode returns the active run', async () => {
+    const first = (await (await h.app.request(`${h.base}/runs/discover`, { method: 'POST' })).json()) as Run;
+    const conflict = await h.app.request(`${h.base}/runs/discover`, json('POST', { mode: 'max' }));
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({ error: 'A discovery run is already active' });
+    const same = await h.app.request(`${h.base}/runs/discover`, json('POST', { mode: 'default' }));
+    expect(((await same.json()) as Run).id).toBe(first.id);
+    expect(h.deps.runsRepo.list(h.profile.id).map((r) => r.id)).toEqual([first.id]);
   });
 
   it('POST discover with a profile is 202 and GET /api/runs/:id shows it', async () => {

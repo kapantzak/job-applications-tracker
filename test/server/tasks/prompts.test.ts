@@ -3,24 +3,35 @@ import { renderPrompt } from '../../../src/server/tasks/prompts.js';
 
 describe('renderPrompt', () => {
   it('renders discover_jobs', () => {
-    const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y' });
-    expect(r.version).toBe('2');
+    const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y', scope: 'SCOPE_Z' });
+    expect(r.version).toBe('3');
     expect(r.text).toContain('PROFILE_X');
     expect(r.text).toContain('URLS_Y');
+    expect(r.text).toContain('## Scope\n\nSCOPE_Z');
     expect(r.text.toLowerCase()).toContain('read only');
     expect(r.text).not.toContain('{{');
-    expect(r.text).not.toContain('version: 2');
+    expect(r.text).not.toContain('version: 3');
   });
 
   it('discover_jobs tells the agent its budget and that the app verifies links', () => {
-    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U' });
+    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S' });
     expect(r.text).toContain('You have about 10 minutes');
-    expect(r.text).toContain('Prefer the employer\'s own careers page or ATS link');
+    expect(r.text).toContain('Prefer links on an applicant tracking system (ATS) or the employer\'s own careers page');
     expect(r.text).toContain('You may open a posting to confirm its direct link and that it is still open');
     expect(r.text).toContain('Do not delegate to subagents');
     expect(r.text).toContain('The app checks every link itself after you respond');
-    expect(r.text).toContain('Return between 10 and 30 jobs');
+    expect(r.text).toContain('Return at most 30 jobs');
+    expect(r.text).toContain('Never pad the list with weak matches');
     expect(r.text.trim().endsWith('nothing else. The object has a `jobs` array and an optional `notes` string.')).toBe(true);
+  });
+
+  it('discover_jobs points at the public job lists and asks for a verdict per must-have', () => {
+    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S' });
+    expect(r.text).toContain('https://boards-api.greenhouse.io/v1/boards/<board>/jobs');
+    expect(r.text).toContain('https://api.lever.co/v0/postings/<company>?mode=json');
+    expect(r.text).toContain("Do not fetch Ashby's job list");
+    expect(r.text).toContain('Never open LinkedIn, Indeed, Glassdoor or other aggregator pages to confirm a job');
+    expect(r.text).toContain('Set `checks.location`, `checks.remote` and `checks.seniority`');
   });
 
   it('renders sync_mail with the no-mail-tool instruction', () => {
@@ -34,5 +45,6 @@ describe('renderPrompt', () => {
 
   it('throws on a missing variable', () => {
     expect(() => renderPrompt('discover_jobs', { profile: 'P' })).toThrow('Missing prompt variable: known_urls');
+    expect(() => renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U' })).toThrow('Missing prompt variable: scope');
   });
 });

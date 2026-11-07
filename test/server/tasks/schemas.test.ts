@@ -10,6 +10,18 @@ describe('task schemas', () => {
     expect(r.notes).toBe('');
   });
 
+  it('defaults missing fit checks to unknown and keeps given ones', () => {
+    const r = DiscoverJobsOutput.parse({
+      jobs: [job, { ...job, url: 'https://acme.test/2', checks: { location: 'pass', remote: 'fail' } }],
+    });
+    expect(r.jobs[0]!.checks).toEqual({ location: 'unknown', remote: 'unknown', seniority: 'unknown' });
+    expect(r.jobs[1]!.checks).toEqual({ location: 'pass', remote: 'fail', seniority: 'unknown' });
+  });
+
+  it('rejects a fit verdict outside pass, fail and unknown', () => {
+    expect(() => DiscoverJobsOutput.parse({ jobs: [{ ...job, checks: { location: 'maybe' } }] })).toThrow(/location/);
+  });
+
   it('rejects a job without url', () => {
     expect(() => DiscoverJobsOutput.parse({ jobs: [{ company: 'A', title: 'B' }] })).toThrow();
   });
@@ -58,5 +70,11 @@ describe('agent-compatible json schema', () => {
     const s = outputJsonSchema('discover_jobs') as any;
     expect(s.properties.jobs.items.properties.url).toMatchObject({ type: 'string', minLength: 1 });
     expect(s.properties.jobs.items.properties.posted_at).toEqual({ type: ['string', 'null'] });
+  });
+
+  it('discover_jobs schema asks for a verdict on each must-have', () => {
+    const checks = (outputJsonSchema('discover_jobs') as any).properties.jobs.items.properties.checks;
+    expect(checks.required).toEqual(['location', 'remote', 'seniority']);
+    expect(checks.properties.remote).toEqual({ type: 'string', enum: ['pass', 'fail', 'unknown'] });
   });
 });

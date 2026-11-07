@@ -8,7 +8,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
-import { formatTime } from '../format.js';
+import { formatTime, formatUsage } from '../format.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -164,6 +164,19 @@ export function RunPage() {
                 <dt className="text-muted-foreground">Effort</dt>
                 <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
               </div>
+              {/* Only discovery records usage (SOW-0016), so sync runs show neither row. */}
+              {run.kind === 'discover_jobs' && (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground">Mode</dt>
+                    <dd>{run.effort_mode === 'max' ? 'Max effort' : 'Default'}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-muted-foreground">Usage</dt>
+                    <dd>{formatUsage(run) ?? 'Not reported'}</dd>
+                  </div>
+                </>
+              )}
             </dl>
           </CardContent>
         </Card>

@@ -163,6 +163,7 @@ export function sampleJob(overrides: Partial<NewJob> = {}): NewJob {
     posted_at: null,
     salary: null,
     description_excerpt: 'Invented posting',
+    fit_checks: null,
     match_reason: 'matches typescript',
     verification_status: 'ok',
     verified_at: null,

@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JobsPage } from '../../src/ui/pages/JobsPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
-import type { JobListItem } from '../../src/server/domain/types.js';
+import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
+import type { JobListItem, Run } from '../../src/server/domain/types.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -14,6 +15,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   markApplied: vi.fn(),
   dismissJob: vi.fn(),
   startDiscovery: vi.fn(),
+  getSettings: vi.fn(),
+  listRuns: vi.fn(),
 }));
 
 function job(over: Partial<JobListItem>): JobListItem {
@@ -31,6 +34,7 @@ function job(over: Partial<JobListItem>): JobListItem {
     salary: null,
     description_excerpt: null,
     match_reason: null,
+    fit_checks: null,
     verification_status: 'ok',
     verified_at: null,
     dedupe_key: 'k',
@@ -149,7 +153,7 @@ describe('JobsPage', () => {
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(await screen.findByText('Run page')).toBeInTheDocument();
-    expect(client.startDiscovery).toHaveBeenCalledWith('pf1');
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default');
   });
 
   it('shows 422 errors from discovery as they are', async () => {
@@ -161,4 +165,114 @@ describe('JobsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(await screen.findByText('Agent "claude" is not installed: Not found on PATH')).toBeInTheDocument();
   });
+
+  it('shows a verdict badge per must-have, and a dash for jobs without verdicts', async () => {
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j5', company: 'Fitco', fit_checks: { location: 'pass', remote: 'fail', seniority: 'unknown' } }),
+      job({ id: 'j6', company: 'Oldco' }),
+    ]);
+    renderPage();
+    const row = (await screen.findByText('Fitco')).closest('tr')!;
+    expect(within(row).getByLabelText('Location: matches')).toHaveTextContent('Location ✓');
+    expect(within(row).getByLabelText('Remote: does not match')).toHaveTextContent('Remote ✗');
+    expect(within(row).getByLabelText('Seniority: not stated')).toHaveTextContent('Seniority ?');
+    const old = screen.getByText('Oldco').closest('tr')!;
+    expect(within(old).queryByLabelText(/Location:/)).toBeNull();
+  });
 });
+
+describe('JobsPage max-effort search', () => {
+  const lastMax = {
+    id: 'run-old',
+    kind: 'discover_jobs',
+    effort_mode: 'max',
+    status: 'succeeded',
+    usage_cost_usd: 3.2,
+    usage_input_tokens: 2_000_000,
+    usage_output_tokens: 40_000,
+  } as Run;
+
+  beforeEach(() => {
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS });
+    vi.mocked(client.listRuns).mockResolvedValue([]);
+  });
+
+  async function openDialog() {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Max-effort search' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Start a Max-effort search?' });
+    return { user, dialog };
+  }
+
+  it('warns before starting and starts nothing until confirmed', async () => {
+    const { dialog } = await openDialog();
+    expect(client.startDiscovery).not.toHaveBeenCalled();
+    expect(
+      await within(dialog).findByText(
+        'Runs 5 searches by source (Greenhouse, Lever, Ashby, Other ATS and careers pages, Remote and niche boards), up to 3 at a time. Each can run for up to 20 minutes.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/runs on your own Claude Code plan/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/can use up your plan's limits/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Each search stops when Claude Code's own cost estimate reaches $5.")).toBeInTheDocument();
+    expect(within(dialog).getByText('No earlier Max-effort search to compare with.')).toBeInTheDocument();
+    expect(client.listRuns).toHaveBeenCalledWith('pf1', 50);
+  });
+
+  it('starts a max run on confirm and opens it', async () => {
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-max' } as never);
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole('button', { name: 'Start Max-effort search' }));
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'max');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('starts nothing when cancelled', async () => {
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(client.startDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('quotes what the last max-effort search used', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue([
+      { ...lastMax, id: 'run-default', effort_mode: 'default', usage_cost_usd: 0.1 } as Run,
+      lastMax,
+    ]);
+    const { dialog } = await openDialog();
+    expect(
+      await within(dialog).findByText(
+        'Your last Max-effort search reported $3.20 estimated · 2.0M tokens in, 40.0k out. A search that times out or is cancelled reports nothing, so the real use can be higher.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says no spend cap applies for Codex or when the Claude cap is empty', async () => {
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, adapter_id: 'codex' });
+    const { user, dialog } = await openDialog();
+    expect(await within(dialog).findByText('Codex has no spend cap here; only the time limit stops a search.')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    cleanup();
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, claude_max_budget_usd_discover: '' });
+    const again = await openDialog();
+    expect(
+      await within(again.dialog).findByText('No spend cap is set in Settings; only the time limit stops a search.'),
+    ).toBeInTheDocument();
+  });
+
+  it('words the plan and the cap for a custom agent', async () => {
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, adapter_id: 'custom', custom_command: 'x' });
+    const { dialog } = await openDialog();
+    expect(await within(dialog).findByText(/It runs on your custom agent's own account/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Your custom agent has no spend cap here; only the time limit stops a search.')).toBeInTheDocument();
+  });
+
+  it('shows the error when a discovery of the other mode is already running', async () => {
+    vi.mocked(client.startDiscovery).mockRejectedValue(new client.ApiError(409, 'A discovery run is already active'));
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole('button', { name: 'Start Max-effort search' }));
+    expect(await screen.findByText('A discovery run is already active')).toBeInTheDocument();
+  });
+});
+

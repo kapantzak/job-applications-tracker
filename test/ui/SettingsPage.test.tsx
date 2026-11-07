@@ -48,6 +48,7 @@ const settings = {
   codex_model_sync: '',
   codex_effort_discover: '',
   codex_effort_sync: '',
+  claude_max_budget_usd_discover: '5',
   run_timeout_ms: 600000,
   sync_interval: 'off',
   port: 4000,
@@ -202,8 +203,23 @@ describe('SettingsPage', () => {
     expect(client.patchSettings).toHaveBeenCalledWith({
       run_timeout_ms: 600000,
       sync_interval: '6h',
+      claude_max_budget_usd_discover: '5',
     });
     expect(await within(section).findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('saves the Claude spend cap, and an empty cap as no cap', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const cap = await screen.findByLabelText('Claude spend cap per discovery agent (USD)');
+    expect(cap).toHaveValue('5');
+    await user.clear(cap);
+    const section = screen.getByRole('region', { name: 'Runs' });
+    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    expect(client.patchSettings).toHaveBeenCalledWith(expect.objectContaining({ claude_max_budget_usd_discover: '' }));
+    await user.type(cap, ' 2.5 ');
+    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    expect(client.patchSettings).toHaveBeenLastCalledWith(expect.objectContaining({ claude_max_budget_usd_discover: '2.5' }));
   });
 
   it('shows the data dir and purges run logs', async () => {

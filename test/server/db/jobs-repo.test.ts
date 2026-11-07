@@ -29,6 +29,7 @@ function newJob(n: number, over: Partial<NewJob> = {}): NewJob {
     posted_at: null,
     salary: null,
     description_excerpt: null,
+    fit_checks: null,
     match_reason: null,
     verification_status: 'ok',
     verified_at: null,
@@ -107,6 +108,24 @@ describe('jobs repo', () => {
     repo.insertMany(otherRun, [newJob(2)]);
     expect(repo.existingDedupeKeys(pid)).toEqual(new Set(['key-1']));
     expect(repo.recentCanonicalUrls(pid, 10)).toEqual(['https://example.com/jobs/1']);
+  });
+
+  it('stores fit checks as JSON and returns them parsed from get and list', () => {
+    const { repo, pid, runId } = setup();
+    const checks = { location: 'pass', remote: 'fail', seniority: 'unknown' } as const;
+    const [stored] = repo.insertMany(runId, [newJob(1, { fit_checks: checks })]);
+    expect(stored!.fit_checks).toEqual(checks);
+    expect(repo.get(stored!.id)!.fit_checks).toEqual(checks);
+    expect(repo.list(pid)[0]!.fit_checks).toEqual(checks);
+  });
+
+  it('returns null fit checks for older rows and for text that does not parse', () => {
+    const { db, repo, pid, runId } = setup();
+    const [a, b] = repo.insertMany(runId, [newJob(1), newJob(2)]);
+    expect(a!.fit_checks).toBeNull();
+    db.prepare("UPDATE jobs SET fit_checks = 'not json' WHERE id = ?").run(b!.id);
+    expect(repo.get(b!.id)!.fit_checks).toBeNull();
+    expect(repo.list(pid).map((j) => j.fit_checks)).toEqual([null, null]);
   });
 
   it('insertMany throws for an unknown run', () => {

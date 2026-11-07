@@ -3,13 +3,22 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import type { AgentAdapter } from '../agents/index.js';
-import type { Run, RunKind, RunStatus } from '../domain/types.js';
-import { HttpError, parseWith } from './errors.js';
+import { EFFORT_MODES, type Run, type RunKind, type RunStatus } from '../domain/types.js';
+import { ActiveRunConflictError } from '../runs/queue.js';
+import { HttpError, parseWith, readJson } from './errors.js';
 import { requireProfileStill, type ProfileEnv } from './profiles.js';
 
 const DEFAULT_SSE_POLL_MS = 1000;
 
 const LimitQuery = z.coerce.number().int().min(1).max(200);
+
+const DiscoverBody = z.object({ mode: z.enum(EFFORT_MODES) }).partial().strict();
+
+// The button sends no body for a default run; any body must be JSON, so the 415 check still applies.
+async function readDiscoverBody(c: Context): Promise<z.infer<typeof DiscoverBody>> {
+  if (c.req.header('content-type') === undefined && (await c.req.text()) === '') return {};
+  return readJson(c, DiscoverBody);
+}
 
 function splitLines(text: string): string[] {
   const lines = text.split('\n');
@@ -70,9 +79,15 @@ export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
   });
 
   router.post('/discover', async (c) => {
+    const body = await readDiscoverBody(c);
     await requireUsableAdapter('discover_jobs');
     requireProfileStill(deps, c.get('profile').id);
-    return c.json(deps.queue.enqueue('discover_jobs', c.get('profile').id), 202);
+    try {
+      return c.json(deps.queue.enqueue('discover_jobs', c.get('profile').id, { effortMode: body.mode }), 202);
+    } catch (err) {
+      if (err instanceof ActiveRunConflictError) throw new HttpError(409, err.message);
+      throw err;
+    }
   });
 
   router.post('/sync', async (c) => {

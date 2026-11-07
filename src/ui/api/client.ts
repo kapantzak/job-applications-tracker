@@ -1,6 +1,7 @@
 import type {
   Application,
   ApplicationStatus,
+  EffortMode,
   Job,
   JobListItem,
   ModelCatalog,
@@ -169,7 +170,8 @@ export const listRuns = (profileId: string, limit?: number): Promise<Run[]> =>
   request('GET', scoped(profileId, limit === undefined ? '/runs' : `/runs?limit=${limit}`));
 export const getRun = (profileId: string, id: string): Promise<Run> =>
   request('GET', scoped(profileId, `/runs/${enc(id)}`));
-export const startDiscovery = (profileId: string): Promise<Run> => request('POST', scoped(profileId, '/runs/discover'));
+export const startDiscovery = (profileId: string, mode: EffortMode = 'default'): Promise<Run> =>
+  request('POST', scoped(profileId, '/runs/discover'), { mode });
 // 202 with the run: already `aborted` for a queued run, still `running` while the agent is stopped.
 export const cancelRun = (profileId: string, id: string): Promise<Run> =>
   request('POST', scoped(profileId, `/runs/${enc(id)}/cancel`));

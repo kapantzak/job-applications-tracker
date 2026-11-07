@@ -8,8 +8,9 @@ import {
   saveJob,
   startDiscovery,
 } from '../api/client.js';
-import type { ApplicationStatus, JobListItem } from '../../server/domain/types.js';
+import type { ApplicationStatus, EffortMode, FitChecks, FitVerdict, JobListItem } from '../../server/domain/types.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { MaxSearchDialog } from '../components/MaxSearchDialog.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
@@ -25,6 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -34,6 +36,35 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 // Job URLs come from an agent and are untrusted; never render javascript: and similar schemes.
 const isHttpUrl = (u: string) => /^https?:\/\//i.test(u);
+
+const FIT_FIELDS: Array<[keyof FitChecks, string]> = [
+  ['location', 'Location'],
+  ['remote', 'Remote'],
+  ['seniority', 'Seniority'],
+];
+const FIT_LOOK: Record<FitVerdict, { symbol: string; words: string; tone: 'success' | 'destructive' | 'outline' }> = {
+  pass: { symbol: '✓', words: 'matches', tone: 'success' },
+  fail: { symbol: '✗', words: 'does not match', tone: 'destructive' },
+  unknown: { symbol: '?', words: 'not stated', tone: 'outline' },
+};
+
+// The agent's verdict per must-have (SOW-0016); shown, never used to hide a job. Older jobs have none.
+function FitBadges({ checks }: { checks: FitChecks | null }) {
+  if (!checks) return <span className="text-muted-foreground">–</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {FIT_FIELDS.map(([field, label]) => {
+        const look = FIT_LOOK[checks[field]] ?? FIT_LOOK.unknown;
+        const name = `${label}: ${look.words}`;
+        return (
+          <Badge key={field} variant={look.tone} aria-label={name} title={name}>
+            {label} {look.symbol}
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
 
 export function JobsPage() {
   const id = useId();
@@ -74,10 +105,10 @@ export function JobsPage() {
   const setStatus = (jobId: string, status: ApplicationStatus) =>
     setJobs((list) => list && list.map((j) => (j.id === jobId ? { ...j, application_status: status } : j)));
 
-  const onFind = async () => {
+  const onFind = async (mode: EffortMode) => {
     setError(null);
     try {
-      const started = await startDiscovery(profileId);
+      const started = await startDiscovery(profileId, mode);
       navigate(href(`/runs/${started.id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -90,10 +121,13 @@ export function JobsPage() {
         title="Jobs"
         description="Openings found by discovery runs, with their links checked."
         actions={
-          <Button type="button" onClick={onFind}>
-            <SearchIcon />
-            Find jobs
-          </Button>
+          <div className="flex items-center gap-2">
+            <MaxSearchDialog profileId={profileId} onStart={() => void onFind('max')} />
+            <Button type="button" onClick={() => void onFind('default')}>
+              <SearchIcon />
+              Find jobs
+            </Button>
+          </div>
         }
       />
       <div className="flex flex-col gap-4">
@@ -134,6 +168,7 @@ export function JobsPage() {
                   <TableHead>Title</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Source</TableHead>
+                  <TableHead>Fit</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="pr-4 text-right">Actions</TableHead>
                 </TableRow>
@@ -147,6 +182,9 @@ export function JobsPage() {
                       <TableCell className="max-w-64 truncate">{job.title}</TableCell>
                       <TableCell className="text-muted-foreground">{job.location ?? '–'}</TableCell>
                       <TableCell className="text-muted-foreground">{job.source_site ?? '–'}</TableCell>
+                      <TableCell>
+                        <FitBadges checks={job.fit_checks} />
+                      </TableCell>
                       <TableCell>
                         <VerificationBadge status={job.verification_status} />
                       </TableCell>

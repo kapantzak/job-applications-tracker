@@ -49,6 +49,12 @@ describe('settings', () => {
     expect(h.deps.settingsRepo.getAll()).toEqual({ ...DEFAULT_SETTINGS, ...patch });
   });
 
+  it.each(['', '0.5', '12.25', '9999'])('PATCH stores the Claude discovery spend cap %j', async (value) => {
+    const res = await h.app.request('/api/settings', json('PATCH', { claude_max_budget_usd_discover: value }));
+    expect(res.status).toBe(200);
+    expect(h.deps.settingsRepo.getAll().claude_max_budget_usd_discover).toBe(value);
+  });
+
   it.each([
     ['unknown key', { colour: 'blue' }],
     ['bad adapter', { adapter_id: 'gpt' }],
@@ -66,6 +72,11 @@ describe('settings', () => {
     ['effort with a quote', { codex_effort_discover: 'high"' }],
     ['effort uppercase', { claude_effort_sync: 'HIGH' }],
     ['effort with a flag', { claude_effort_discover: '-x' }],
+    ['spend cap zero', { claude_max_budget_usd_discover: '0' }],
+    ['spend cap negative', { claude_max_budget_usd_discover: '-1' }],
+    ['spend cap with three decimals', { claude_max_budget_usd_discover: '1.005' }],
+    ['spend cap as a number', { claude_max_budget_usd_discover: 5 }],
+    ['spend cap with a flag', { claude_max_budget_usd_discover: '5 --bare' }],
   ])('PATCH rejects %s with 400 and writes nothing', async (_name, patch) => {
     const refresh = vi.spyOn(h.deps.scheduler, 'refresh');
     const res = await h.app.request('/api/settings', json('PATCH', patch));
