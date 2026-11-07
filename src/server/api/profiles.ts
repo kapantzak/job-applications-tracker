@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -7,7 +9,7 @@ import {
   normalizeProfileName,
   PROFILE_NAME_ERROR,
 } from '../domain/profile-name.js';
-import type { Profile } from '../domain/types.js';
+import type { CvFileType, Profile } from '../domain/types.js';
 import { createApplicationsRouter } from './applications.js';
 import { HttpError, readJson } from './errors.js';
 import { createJobsRouter } from './jobs.js';
@@ -17,21 +19,38 @@ import { createProfileRunsRouter } from './runs.js';
 // Profile-scoped routers read the profile the middleware below loaded, never the raw param.
 export type ProfileEnv = { Variables: { profile: Profile } };
 
-const ProfileBody = z
-  .object({
-    name: z
-      .string()
-      .transform(normalizeProfileName)
-      .pipe(z.string().min(1, 'Name is required').refine(isValidProfileName, PROFILE_NAME_ERROR)),
-    target_roles: z.array(z.string()),
-    locations: z.array(z.string()),
-    remote: z.enum(['remote', 'hybrid', 'onsite', 'any']),
-    seniority: z.string(),
-    keywords: z.array(z.string()),
-    excluded_companies: z.array(z.string()),
-    notes: z.string(),
-  })
-  .strict();
+const profileFields = {
+  name: z
+    .string()
+    .transform(normalizeProfileName)
+    .pipe(z.string().min(1, 'Name is required').refine(isValidProfileName, PROFILE_NAME_ERROR)),
+  target_roles: z.array(z.string()),
+  locations: z.array(z.string()),
+  remote: z.enum(['remote', 'hybrid', 'onsite', 'any']),
+  seniority: z.string(),
+  keywords: z.array(z.string()),
+  excluded_companies: z.array(z.string()),
+  notes: z.string(),
+};
+
+const ProfileBody = z.object(profileFields).strict();
+// Create profile may take the CV analysis it was reviewed from (SOW-0023); edits never carry one.
+const CreateProfileBody = z.object({ ...profileFields, cv_analysis_id: z.string().min(1).optional() }).strict();
+
+const CV_CONTENT_TYPES: Record<CvFileType, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain; charset=utf-8',
+  md: 'text/markdown; charset=utf-8',
+};
+
+// RFC 6266: an ASCII fallback plus the exact name in UTF-8.
+function attachment(fileName: string): string {
+  const fallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  // RFC 5987 leaves ' ( ) * out of attr-char; encodeURIComponent keeps them.
+  const encoded = encodeURIComponent(fileName).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
 
 // For handlers that await before writing: the profile may have been deleted meanwhile. Call it right
 // before the synchronous write so nothing can run in between.
@@ -52,9 +71,12 @@ export function createProfilesRouter(deps: AppDeps): Hono {
   router.get('/', (c) => c.json(deps.profilesRepo.list()));
 
   router.post('/', async (c) => {
-    const input: ProfileInput = await readJson(c, ProfileBody);
+    const { cv_analysis_id: analysisId, ...input } = await readJson(c, CreateProfileBody);
     requireFreeName(input.name);
-    return c.json(deps.profilesRepo.create(input), 201);
+    const profile = analysisId
+      ? deps.cvService.createProfile(input, analysisId, randomUUID())
+      : deps.profilesRepo.create(input);
+    return c.json(profile, 201);
   });
 
   // Lets the UI turn a URL slug into the profile; data routes stay keyed by id (SOW-0015). Registered
@@ -97,7 +119,36 @@ export function createProfilesRouter(deps: AppDeps): Hono {
       // The rows are gone; a leftover log file is harmless and Purge run logs removes it later.
       console.error(`profile ${id}: failed to remove run logs: ${err instanceof Error ? err.message : err}`);
     }
+    try {
+      deps.cvService.removeProfileFiles(id);
+    } catch (err) {
+      // The next start-up sweeps a CV folder whose profile is gone.
+      console.error(`profile ${id}: failed to remove the CV: ${err instanceof Error ? err.message : err}`);
+    }
     return c.body(null, 204);
+  });
+
+  scoped.get('/:pid/cv', (c) => {
+    const found = deps.cvService.profileCvPath(c.get('profile').id);
+    if (!found) throw new HttpError(404, 'This profile has no CV');
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(found.path);
+    } catch {
+      throw new HttpError(404, 'The CV file is missing');
+    }
+    return c.body(new Uint8Array(bytes), 200, {
+      'Content-Type': CV_CONTENT_TYPES[found.cv.file_type],
+      'Content-Disposition': attachment(found.cv.file_name),
+      'X-Content-Type-Options': 'nosniff',
+    });
+  });
+
+  // Remove CV (decision 21) deletes the file and its extracted text; the profile itself stays.
+  scoped.delete('/:pid/cv', (c) => {
+    const { id } = c.get('profile');
+    if (!deps.profilesRepo.storedCv(id)) throw new HttpError(404, 'This profile has no CV');
+    return c.json(deps.cvService.removeProfileCv(id));
   });
 
   scoped.route('/:pid/jobs', createJobsRouter(deps));

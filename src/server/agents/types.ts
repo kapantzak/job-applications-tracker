@@ -1,4 +1,4 @@
-import type { ModelCatalog, RunKind } from '../domain/types.js';
+import type { AgentTaskKind, ModelCatalog } from '../domain/types.js';
 import type { ResolveDeps } from './resolve-command.js';
 
 export type AdapterId = 'claude' | 'codex' | 'custom';
@@ -23,7 +23,7 @@ export interface AgentSelection {
 }
 
 export interface AgentTask {
-  kind: RunKind;
+  kind: AgentTaskKind;
   prompt: string;
   outputSchema: Record<string, unknown>;
 }

@@ -681,6 +681,72 @@ describe('buildAdapterConfig', () => {
   });
 });
 
+describe('buildAdapterConfig: CV analysis (SOW-0023)', () => {
+  const ISOLATION = JSON.stringify({ claudeMdExcludes: ['**/CLAUDE.md'], disableAllHooks: true, autoMemoryEnabled: false });
+
+  it('runs claude with no built-in tools and no MCP servers, on the default model and effort', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, claude_model_sync: 'opus', claude_effort_discover: 'max' };
+    const c = buildAdapterConfig(settings, 'analyse_cv');
+    expect(c.argv).toEqual([
+      'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
+      '--setting-sources', 'user', '--settings', ISOLATION,
+      '--disallowedTools', 'Agent,Task', '--tools', '', '--strict-mcp-config',
+    ]);
+    expect(c.promptVia).toBe('stdin');
+    expect(c.resultFrom).toBe('claude-stream-json');
+    expect(c.selection).toEqual({ model: '', effort: '' });
+    expect(c.vars).toBeUndefined();
+  });
+
+  it('runs codex read-only, with web search off, with the prompt on stdin', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'codex' as const, codex_model_sync: 'model-a', sandbox_sync: 'workspace-write' };
+    const c = buildAdapterConfig(settings, 'analyse_cv');
+    expect(c.argv).toEqual([
+      'codex', 'exec', '--json', '--output-schema', '{schema_file}', '--skip-git-repo-check',
+      '--sandbox', 'read-only', '-o', '{output_file}', '--disable', 'multi_agent',
+      '-c', 'web_search="disabled"', '-',
+    ]);
+    expect(c.promptVia).toBe('stdin');
+    expect(c.resultFrom).toBe('output-file');
+    expect(c.selection).toEqual({ model: '', effort: '' });
+  });
+
+  it('runs a custom command as it is configured', () => {
+    const settings = { ...DEFAULT_SETTINGS, adapter_id: 'custom' as const, custom_command: 'my-agent --file {prompt_file}' };
+    expect(buildAdapterConfig(settings, 'analyse_cv')).toEqual(buildAdapterConfig(settings, 'sync_mail'));
+  });
+
+  it('leaves the discovery and sync presets as they were', () => {
+    for (const adapter_id of ['claude', 'codex'] as const) {
+      for (const kind of ['discover_jobs', 'sync_mail'] as const) {
+        const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id }, kind);
+        expect(c.argv).not.toContain('-');
+        expect(c.promptVia).toBe(adapter_id === 'claude' ? 'stdin' : 'argv');
+      }
+    }
+  });
+
+  it('hands a CV-sized prompt to a stdin agent whole', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'jobtrack-cv-stdin-'));
+    try {
+      const prompt = 'é'.repeat(200_000);
+      const adapter = createCliAdapter(
+        fakeConfig({ argv: [process.execPath, FIXTURE, '-o', '{output_file}', '-'], promptVia: 'stdin', resultFrom: 'output-file' }),
+      );
+      process.env.FAKE_AGENT_MODE = 'codex';
+      process.env.FAKE_AGENT_OUTPUT = JSON.stringify({ name: 'Backend roles' });
+      const result = await adapter.run({ kind: 'analyse_cv', prompt, outputSchema: { type: 'object' } }, { timeoutMs: 10_000, cwd });
+      expect(result.error).toBeUndefined();
+      expect(result.output).toEqual({ name: 'Backend roles' });
+      expect(readFileSync(join(cwd, 'prompt.md'), 'utf8')).toBe(prompt);
+    } finally {
+      delete process.env.FAKE_AGENT_MODE;
+      delete process.env.FAKE_AGENT_OUTPUT;
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('createAdapter', () => {
   it('builds an adapter from settings', () => {
     expect(createAdapter(DEFAULT_SETTINGS, 'discover_jobs').id).toBe('claude');

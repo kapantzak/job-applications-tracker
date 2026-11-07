@@ -2,9 +2,9 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import type { AgentAdapter } from '../agents/index.js';
 import { EFFORT_MODES, type Run, type RunKind, type RunStatus } from '../domain/types.js';
 import { ActiveRunConflictError } from '../runs/queue.js';
+import { requireUsableAgent } from './agent-check.js';
 import { HttpError, parseWith, readJson } from './errors.js';
 import { requireProfileStill, type ProfileEnv } from './profiles.js';
 
@@ -58,20 +58,7 @@ export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
     return status ?? 'unknown';
   }
 
-  // Fails fast with a 422 the UI can show, instead of queueing a run that can only fail.
-  async function requireUsableAdapter(kind: RunKind): Promise<void> {
-    let adapter: AgentAdapter;
-    try {
-      adapter = deps.adapterFactory(deps.settingsRepo.getAll(), kind);
-    } catch (err) {
-      throw new HttpError(422, `Agent command is invalid: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    const health = await adapter.check();
-    if (!health.installed) {
-      const detail = health.message ? `: ${health.message}` : '';
-      throw new HttpError(422, `Agent "${health.id}" is not installed${detail}`);
-    }
-  }
+  const requireUsableAdapter = (kind: RunKind) => requireUsableAgent(deps, kind);
 
   router.get('/', (c) => {
     const raw = c.req.query('limit');

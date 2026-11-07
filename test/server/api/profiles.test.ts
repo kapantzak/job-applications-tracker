@@ -115,7 +115,7 @@ describe('profiles: one profile', () => {
   it('PUT updates the profile and keeps its id and created_at', async () => {
     const res = await h.app.request(h.base, json('PUT', OTHER));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ...OTHER, id: h.profile.id, slug: 'data-roles', created_at: h.profile.created_at });
+    expect(await res.json()).toEqual({ ...OTHER, id: h.profile.id, slug: 'data-roles', created_at: h.profile.created_at, cv: null });
   });
 
   it('PUT may keep its own name in another case but not take another profile name', async () => {

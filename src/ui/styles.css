@@ -108,6 +108,29 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  /* Indeterminate progress bar (SOW-0023); see components/ui/progress.tsx. */
+  --animate-progress-indeterminate: progress-indeterminate 1.6s ease-in-out infinite;
+
+  /* The scan line of the CV illustration while an analysis runs. */
+  --animate-cv-scan: cv-scan 2.4s ease-in-out infinite alternate;
+
+  @keyframes cv-scan {
+    from {
+      transform: translateY(-26px);
+    }
+    to {
+      transform: translateY(28px);
+    }
+  }
+
+  @keyframes progress-indeterminate {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
 }
 
 @layer base {

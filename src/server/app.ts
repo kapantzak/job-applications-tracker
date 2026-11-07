@@ -2,12 +2,14 @@ import { join, resolve, sep } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import type { AgentAdapter } from './agents/index.js';
+import { createCvAnalysisRouter } from './api/cv-analysis.js';
 import { onError } from './api/errors.js';
 import { createRequestGuard } from './api/guard.js';
 import { createProfilesRouter } from './api/profiles.js';
 import { createRunLogsRouter } from './api/runs.js';
 import { createSettingsRouter } from './api/settings.js';
 import { createSetupRouter } from './api/setup.js';
+import type { CvService } from './cv/service.js';
 import type { createApplicationsRepo } from './db/applications-repo.js';
 import type { Db } from './db/connection.js';
 import type { createJobsRepo } from './db/jobs-repo.js';
@@ -15,7 +17,7 @@ import type { ProfilesRepo } from './db/profiles-repo.js';
 import type { createProposalsRepo } from './db/proposals-repo.js';
 import type { RunsRepo } from './db/runs-repo.js';
 import type { createSettingsRepo } from './db/settings-repo.js';
-import type { RunKind, Settings } from './domain/types.js';
+import type { AgentTaskKind, Settings } from './domain/types.js';
 import type { LogStore } from './runs/log-store.js';
 import type { RunQueue } from './runs/queue.js';
 import type { SyncScheduler } from './runs/scheduler.js';
@@ -35,7 +37,8 @@ export interface AppDeps {
   queue: RunQueue;
   logStore: LogStore;
   scheduler: SyncScheduler;
-  adapterFactory: (settings: Settings, kind: RunKind) => AgentAdapter;
+  cvService: CvService;
+  adapterFactory: (settings: Settings, kind: AgentTaskKind) => AgentAdapter;
   uiDir: string | null;
   // How often the SSE endpoint re-checks run status; tests shorten it.
   ssePollMs?: number;
@@ -73,6 +76,7 @@ export function createApp(deps: AppDeps): Hono {
   // Jobs, applications, proposals and runs live under their profile (SOW-0014).
   app.route('/api/profiles', createProfilesRouter(deps));
   app.route('/api/runs', createRunLogsRouter(deps));
+  app.route('/api/cv-analysis', createCvAnalysisRouter(deps));
 
   if (deps.uiDir !== null) {
     const root = resolve(deps.uiDir);

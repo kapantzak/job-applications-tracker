@@ -153,6 +153,29 @@ ALTER TABLE runs ADD COLUMN usage_output_tokens INTEGER;
 ALTER TABLE jobs ADD COLUMN fit_checks TEXT;
 `,
   },
+  {
+    // CV upload (SOW-0023): the CV a profile keeps, and the one analysis in progress or awaiting review.
+    // The files live under the data directory; rows hold names and dates only.
+    id: 6,
+    sql: `
+ALTER TABLE profiles ADD COLUMN cv_file_name TEXT;
+ALTER TABLE profiles ADD COLUMN cv_file_type TEXT CHECK (cv_file_type IN ('pdf','docx','txt','md'));
+ALTER TABLE profiles ADD COLUMN cv_added_at TEXT;
+
+CREATE TABLE cv_analyses (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','interrupted')),
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL CHECK (file_type IN ('pdf','docx','txt','md')),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  draft TEXT,
+  error TEXT,
+  prompt_version TEXT,
+  created_at TEXT NOT NULL
+);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

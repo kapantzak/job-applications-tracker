@@ -29,3 +29,11 @@ export function formatUsage(run: {
   }
   return parts.length ? parts.join(' · ') : null;
 }
+
+// Time since an analysis started, for the progress card: "45 s", "2 min 05 s".
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes === 0 ? `${seconds} s` : `${minutes} min ${String(seconds).padStart(2, '0')} s`;
+}

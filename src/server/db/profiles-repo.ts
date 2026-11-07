@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { slugBase, uniqueSlug } from '../domain/profile-name.js';
-import type { Profile, ProfileCounts, ProfileListItem } from '../domain/types.js';
+import type { CvFileType, Profile, ProfileCounts, ProfileListItem } from '../domain/types.js';
 import type { Db } from './connection.js';
 
-export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at'>;
+export type ProfileInput = Omit<Profile, 'id' | 'slug' | 'created_at' | 'cv'>;
+
+// The kept CV as stored (SOW-0023); the file itself lives under the data directory.
+export interface StoredCv {
+  file_name: string;
+  file_type: CvFileType;
+  added_at: string;
+}
 
 // Typed so the API maps it to 404: a profile can be deleted while another request is in flight.
 export class ProfileNotFoundError extends Error {
@@ -24,6 +31,9 @@ interface ProfileRow {
   keywords: string;
   excluded_companies: string;
   notes: string;
+  cv_file_name: string | null;
+  cv_file_type: CvFileType | null;
+  cv_added_at: string | null;
   created_at: string;
 }
 
@@ -39,6 +49,7 @@ function fromRow(row: ProfileRow): Profile {
     keywords: JSON.parse(row.keywords) as string[],
     excluded_companies: JSON.parse(row.excluded_companies) as string[],
     notes: row.notes,
+    cv: row.cv_file_name && row.cv_added_at ? { file_name: row.cv_file_name, added_at: row.cv_added_at } : null,
     created_at: row.created_at,
   };
 }
@@ -62,9 +73,12 @@ export function createProfilesRepo(db: Db) {
   const selectAll = db.prepare('SELECT * FROM profiles ORDER BY name COLLATE NOCASE ASC, rowid ASC');
   const insert = db.prepare(
     `INSERT INTO profiles (id, name, slug, target_roles, locations, remote, seniority, keywords,
-       excluded_companies, notes, created_at)
+       excluded_companies, notes, cv_file_name, cv_file_type, cv_added_at, created_at)
      VALUES (@id, @name, @slug, @target_roles, @locations, @remote, @seniority, @keywords,
-       @excluded_companies, @notes, @created_at)`,
+       @excluded_companies, @notes, @cv_file_name, @cv_file_type, @cv_added_at, @created_at)`,
+  );
+  const updateCv = db.prepare(
+    'UPDATE profiles SET cv_file_name = @file_name, cv_file_type = @file_type, cv_added_at = @added_at WHERE id = @id',
   );
   const updateStmt = db.prepare(
     `UPDATE profiles SET name = @name, slug = @slug, target_roles = @target_roles, locations = @locations,
@@ -129,9 +143,30 @@ export function createProfilesRepo(db: Db) {
     return row !== undefined && row.id !== exceptId;
   }
 
-  function create(input: ProfileInput): Profile {
-    const id = randomUUID();
-    insert.run({ ...toParams(input), id, slug: slugFor(input.name), created_at: new Date().toISOString() });
+  // `id` lets the caller place the CV files before the row exists (SOW-0023).
+  function create(input: ProfileInput, opts: { id?: string; cv?: StoredCv } = {}): Profile {
+    const id = opts.id ?? randomUUID();
+    insert.run({
+      ...toParams(input),
+      id,
+      slug: slugFor(input.name),
+      cv_file_name: opts.cv?.file_name ?? null,
+      cv_file_type: opts.cv?.file_type ?? null,
+      cv_added_at: opts.cv?.added_at ?? null,
+      created_at: new Date().toISOString(),
+    });
+    return get(id) as Profile;
+  }
+
+  function storedCv(id: string): StoredCv | null {
+    const row = selectById.get(id) as ProfileRow | undefined;
+    if (!row?.cv_file_name || !row.cv_file_type || !row.cv_added_at) return null;
+    return { file_name: row.cv_file_name, file_type: row.cv_file_type, added_at: row.cv_added_at };
+  }
+
+  function setCv(id: string, cv: StoredCv | null): Profile {
+    if (!get(id)) throw new ProfileNotFoundError(id);
+    updateCv.run({ id, file_name: cv?.file_name ?? null, file_type: cv?.file_type ?? null, added_at: cv?.added_at ?? null });
     return get(id) as Profile;
   }
 
@@ -151,7 +186,18 @@ export function createProfilesRepo(db: Db) {
     return runIds;
   });
 
-  return { list, get, getBySlug, counts, nameTaken, create, update, remove: (id: string) => remove(id) };
+  return {
+    list,
+    get,
+    getBySlug,
+    counts,
+    nameTaken,
+    create,
+    update,
+    storedCv,
+    setCv,
+    remove: (id: string) => remove(id),
+  };
 }
 
 export type ProfilesRepo = ReturnType<typeof createProfilesRepo>;
