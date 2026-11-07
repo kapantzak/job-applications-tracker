@@ -298,6 +298,7 @@ Output/reference skills: none.
 - `npm run sandbox` builds and runs the app on the throwaway data dir `.tmp/sandbox`; append flags after `--` (e.g. `npm run sandbox -- --no-open --port 0`).
 - `npm pack --pack-destination .tmp/` then install the tarball in an empty directory to verify packaging.
 - `bash .agents/sow/audit.sh` audits the SOW setup.
+- CI (`.github/workflows/ci.yml`, SOW-0022) runs `npm ci`, `npm run typecheck` and `npm test` on Ubuntu with Node 22 and `lts/*`, on every push to `main` and every pull request. Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment; Dependabot (`.github/dependabot.yml`) proposes updates. Never replace a pin with a tag. The job names `Test (Node 22)` and `Test (Node lts/*)` are required status checks on `main`; changing the job `name` or the Node matrix means updating the branch protection in the same change, or every PR stays blocked waiting for a check that no longer runs.
 
 ### Project-specific overrides
 
