@@ -1,5 +1,5 @@
 ---
-version: 3
+version: 4
 ---
 # Task: discover job openings
 
@@ -28,7 +28,7 @@ Do not repeat any URL listed here:
 3. Prefer links on an applicant tracking system (ATS) or the employer's own careers page. If you can fetch pages and a result is on Greenhouse or Lever, fetch that company's public job list once instead of opening single postings; it lists every open role with its direct link:
    - Greenhouse: `https://boards-api.greenhouse.io/v1/boards/<board>/jobs`
    - Lever: `https://api.lever.co/v0/postings/<company>?mode=json`
-   Do not fetch Ashby's job list; it is too large. Use search results for Ashby postings.
+   Do not fetch Ashby's job list; it is too large. Search results keep closed Ashby postings, so open each Ashby posting once before you return it and drop any that fails to load.
 4. Never open LinkedIn, Indeed, Glassdoor or other aggregator pages to confirm a job. Use an employer link from them only when the search result shows it.
 5. Judge each remaining job against the profile and fill `checks`.
 

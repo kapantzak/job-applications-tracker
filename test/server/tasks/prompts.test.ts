@@ -4,13 +4,13 @@ import { renderPrompt } from '../../../src/server/tasks/prompts.js';
 describe('renderPrompt', () => {
   it('renders discover_jobs', () => {
     const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y', scope: 'SCOPE_Z' });
-    expect(r.version).toBe('3');
+    expect(r.version).toBe('4');
     expect(r.text).toContain('PROFILE_X');
     expect(r.text).toContain('URLS_Y');
     expect(r.text).toContain('## Scope\n\nSCOPE_Z');
     expect(r.text.toLowerCase()).toContain('read only');
     expect(r.text).not.toContain('{{');
-    expect(r.text).not.toContain('version: 3');
+    expect(r.text).not.toContain('version: 4');
   });
 
   it('discover_jobs tells the agent its budget and that the app verifies links', () => {
@@ -30,6 +30,11 @@ describe('renderPrompt', () => {
     expect(r.text).toContain('https://boards-api.greenhouse.io/v1/boards/<board>/jobs');
     expect(r.text).toContain('https://api.lever.co/v0/postings/<company>?mode=json');
     expect(r.text).toContain("Do not fetch Ashby's job list");
+    // Search results keep closed Ashby postings (SOW-0017): every Ashby posting is opened before it is returned.
+    expect(r.text).toContain(
+      'Search results keep closed Ashby postings, so open each Ashby posting once before you return it and drop any that fails to load.',
+    );
+    expect(r.text).not.toContain('Use search results for Ashby postings');
     expect(r.text).toContain('Never open LinkedIn, Indeed, Glassdoor or other aggregator pages to confirm a job');
     expect(r.text).toContain('Set `checks.location`, `checks.remote` and `checks.seniority`');
   });
