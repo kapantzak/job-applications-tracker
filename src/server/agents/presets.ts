@@ -57,6 +57,15 @@ function claudeDiscoverFlags(settings: Settings): string[] {
   ];
 }
 
+// `--setting-sources user` also loads the user's personal CLAUDE.md, auto-memory and hooks, which are
+// meant for their own sessions: they change how the agent answers and cost ~9k tokens per run (probed
+// 2026-11-07, SOW-0018). These keys drop them while credentials, env and MCP connectors stay.
+const CLAUDE_ISOLATION_SETTINGS = JSON.stringify({
+  claudeMdExcludes: ['**/CLAUDE.md'],
+  disableAllHooks: true,
+  autoMemoryEnabled: false,
+});
+
 // Whitespace-separated words; single quotes are literal, double quotes allow \" and \\.
 // Other backslashes stay literal so Windows paths survive.
 export function splitShellWords(input: string): string[] {
@@ -97,13 +106,14 @@ export function buildAdapterConfig(settings: Settings, kind: RunKind): CliAdapte
       const selection = selectionFor(settings, 'claude', kind);
       return {
         id: 'claude',
-        // `--setting-sources user` keeps credentials, hooks and MCP connectors (Gmail) but skips
+        // `--setting-sources user` keeps credentials and MCP connectors (Gmail) but skips
         // project settings the run cwd might imply; `--bare` would skip the keychain and log the
         // agent out. Denying Agent/Task is the only hard stop on subagent fan-out.
         argv: [
           'claude', '-p', '--output-format', 'stream-json', '--verbose', '--json-schema', '{schema}',
           '--permission-mode', '{permission_mode}', '--allowedTools', '{allowed_tools}',
-          '--setting-sources', 'user', '--disallowedTools', 'Agent,Task',
+          '--setting-sources', 'user', '--settings', CLAUDE_ISOLATION_SETTINGS,
+          '--disallowedTools', 'Agent,Task',
           ...(discover ? claudeDiscoverFlags(settings) : []),
           ...(selection.model ? ['--model', selection.model] : []),
           ...(selection.effort ? ['--effort', selection.effort] : []),

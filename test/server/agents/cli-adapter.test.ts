@@ -518,6 +518,28 @@ describe('buildAdapterConfig', () => {
     expect(c.argv.filter((a) => a === '--allowedTools')).toHaveLength(1);
   });
 
+  it.each(['discover_jobs', 'sync_mail'] as const)(
+    'claude preset keeps personal CLAUDE.md, auto-memory and hooks out of %s runs',
+    (kind) => {
+      const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, kind);
+      const i = c.argv.indexOf('--settings');
+      expect(c.argv.filter((a) => a === '--settings')).toHaveLength(1);
+      expect(c.argv.slice(i - 2, i)).toEqual(['--setting-sources', 'user']);
+      expect(JSON.parse(c.argv[i + 1]!)).toEqual({
+        claudeMdExcludes: ['**/CLAUDE.md'],
+        disableAllHooks: true,
+        autoMemoryEnabled: false,
+      });
+    },
+  );
+
+  it('codex preset gets no personal-instruction flags', () => {
+    for (const kind of ['discover_jobs', 'sync_mail'] as const) {
+      const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'codex' }, kind);
+      expect(c.argv.some((a) => a.includes('project_doc') || a === '--settings')).toBe(false);
+    }
+  });
+
   it('claude discovery limits built-in tools, skips MCP servers and caps spend by default', () => {
     const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'discover_jobs');
     const tail = c.argv.slice(c.argv.indexOf('Agent,Task') + 1);

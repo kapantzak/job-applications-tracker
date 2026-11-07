@@ -2,9 +2,9 @@
 
 ## Status
 
-Status: open
+Status: paused
 
-Sub-state: created at SOW-0016 close (user decision 22A, 2026-11-07); needs measurement before any fix is chosen.
+Sub-state: decisions 1A, 2A, 3B recorded (2026-11-07). Paused before the measurement runs until SOW-0018 (personal CLAUDE.md loaded into agent runs) lands, so the before and after runs share one agent configuration.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ Inferences:
 Unknowns:
 
 - The dead rate over several runs and profiles.
-- Whether WebFetch of a `jobs.ashbyhq.com` posting page (a client-rendered app) shows enough to confirm a posting is open.
+- Answered 2026-11-07 (see Execution Log): WebFetch of a posting page shows the posting title for a live posting and fails with "HTTP 404 Not Found" for a closed one.
 
 ### Acceptance Criteria
 
@@ -109,7 +109,13 @@ Open decisions:
 
 ## Implications And Decisions
 
-None yet.
+User decisions (2026-11-07):
+
+1. Measurement budget: A. Run the Max Ashby worker alone with the app's exact rendered prompt and flags; 2 invented profiles x 2 runs before the fix and the same after (8 runs, guessed at about $1 each).
+2. Fix: A. Max Ashby worker only: its scope text tells it to open each Ashby posting once before returning it and drop any that fails to load. The shared prompt template is unchanged.
+3. Delivery: B. Commit on the PR #11 branch (`multiple-levels-of-investigation-effort`).
+
+Ordering (assistant, within the approved plan): SOW-0018 runs first because it changes the Claude argv the measurements use.
 
 ## Plan
 
@@ -120,10 +126,26 @@ See Implementation plan.
 ### 2026-11-07
 
 - Created from SOW-0016 decision 22A.
+- Started on user request. Probes against one public Ashby board (`[BOARD]`, 73 listed postings), with curl and a desktop browser User-Agent:
+  - Board API `api.ashbyhq.com/posting-api/job-board/[BOARD]`: 200, 4.3 MB (each posting carries `descriptionHtml` and `descriptionPlain`).
+  - Board page `jobs.ashbyhq.com/[BOARD]`: 200, 104 KB; all 73 posting ids, titles and locations sit in an inline script (`JobPostingBriefsWithIdsAndTeamId` objects).
+  - Live posting page: 200, 137 KB; title and description are present outside scripts (1.9 KB of visible text).
+  - Unknown posting id and unknown board: 404, 9 KB.
+- WebFetch probes with the discovery flags (`claude` 2.1.319, `-p --tools WebFetch --setting-sources user --strict-mcp-config --disallowedTools Agent,Task --max-budget-usd 0.5 --model sonnet`), reported cost $0.057 and $0.047:
+  - Board page: WebFetch succeeded but saw only the heading and 0 postings; the inline script data does not reach the agent. The board page is not a usable job list.
+  - Unknown posting id: WebFetch failed with "The server returned HTTP 404 Not Found."
+  - Live posting: WebFetch succeeded and returned the page title "<job title> @ [BOARD]", without location or description.
+  - So one WebFetch per Ashby posting separates live (title returned) from closed (404 error) postings.
+- New evidence from SOW-0018's real Default discovery run on Claude (2026-11-07): 5 Ashby links returned, 2 dead (404). This contradicts the Fact that Default runs returned only live Ashby links, which decision 2A relied on. Raised with the user before the measurement runs.
+- Observation outside this SOW's scope: the probe agent addressed the user by name, which shows that `--setting-sources user` also loads the user's personal `~/.claude/CLAUDE.md` into every Claude run the app starts. Reported to the user.
 
 ## Validation
 
-Pending.
+Pending until the work is done.
+
+Sensitive data gate:
+
+- Checked again at close. So far the SOW holds only placeholders (`[BOARD]`), section headings, flags and measured numbers: no personal data, names, credentials or private endpoints.
 
 ## Outcome
 

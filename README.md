@@ -91,7 +91,7 @@ Sync needs a Gmail tool in your agent.
 - The server binds to `127.0.0.1` only, so other machines cannot reach it.
 - There is no authentication, on purpose: it is a single-user local tool.
 - Requests must carry a loopback `Host` header, and browser requests with a foreign `Origin` are rejected. This stops other websites from using the API through your browser.
-- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read). On Claude Code the app also loads only your user-level Claude settings and blocks subagents; on Codex it turns subagents off.
+- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read). On Claude Code the app also loads only your user-level Claude settings, leaves out your personal `CLAUDE.md`, auto-memory and hooks, and blocks subagents. On Codex it turns subagents off, but Codex still reads your personal `~/.codex/AGENTS.md`: Codex has no switch for it, and running it from a separate Codex home could leave your normal Codex sign-in on an old token.
 - The app never applies to jobs, sends mail, or modifies labels or messages.
 
 ## Data and logs
