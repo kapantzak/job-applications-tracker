@@ -4,7 +4,7 @@
 
 Status: completed
 
-Sub-state: delivered and committed with this file's move to `done/` (2026-11-07).
+Sub-state: delivered and committed with this file's move to `done/` (2026-11-07); reopened the same day before merge for the Dashboard entry point and closed again (see `## Regression - 2026-11-07`).
 
 ## Requirements
 
@@ -341,3 +341,47 @@ Follow-up mapping:
 None yet.
 
 Append regression entries here only after this SOW was completed or closed and later testing or use found broken behavior. Use a dated `## Regression - YYYY-MM-DD` heading at the end of the file. Never prepend regression content above the original SOW narrative.
+
+## Regression - 2026-11-07
+
+What broke:
+
+- During a manual check of PR #11, the user could not find the Max-effort search. The Dashboard has its own "Find jobs" button (`src/ui/pages/DashboardPage.tsx:125-128`), which always starts a Default search and offers no Max option. The Max button exists only on the Jobs page (`src/ui/pages/JobsPage.tsx:125`).
+
+Evidence:
+
+- The running sandbox served this branch's bundle, which contains "Max-effort search", so the cause is the missing entry point and not a stale build.
+- `grep -rn "startDiscovery" src/ui` lists two callers: `JobsPage.tsx` and `DashboardPage.tsx`.
+
+Why validation missed it:
+
+- The analysis listed only the Jobs page as a place that starts discovery, and the same-failure search never covered other `startDiscovery` callers.
+
+Decision:
+
+24. Dashboard entry point: A, add the same Max-effort button and warning dialog next to the Dashboard's "Find jobs", turned off while a run is starting like the other Dashboard buttons.
+
+Repair plan:
+
+1. `MaxSearchDialog` takes an optional `disabled` prop for its trigger.
+2. `DashboardPage` renders `MaxSearchDialog` next to "Find jobs"; its start helper takes the call to make, so Max calls `startDiscovery(profileId, 'max')`.
+3. Dashboard tests: the dialog opens, nothing starts before confirming, confirming starts a Max run, Cancel starts nothing.
+
+Validation:
+
+- `test/ui/DashboardPage.test.tsx`: Find jobs starts a Default run (`startDiscovery('pf1')`); Sync from Gmail starts a sync; Max-effort search opens the warning and starts nothing before confirming; confirming calls `startDiscovery('pf1', 'max')` and opens the run; Cancel starts nothing; the Max button turns off while a run is starting.
+- Same-failure search: `grep -rn "startDiscovery" src/ui` now lists only the Jobs page and the Dashboard, and both offer both modes.
+- Test race found while validating: with the six new tests the full suite failed 2 of 6 times on `test/ui/App.test.tsx` "renames a profile in place". It passed 10 of 10 alone and 5 of 5 full runs on commit 6ee7804. The failure DOM still showed the old profile name: "Saved" is an urgent update, while the new profile commits in a transition (`src/ui/pages/ProfilePage.tsx`), so under load the sidebar can update a render later. The test now waits for the new name with `findByRole` and then checks that "Saved" and the same Name input are still there. Product code unchanged.
+- `npm test` six consecutive full runs: `Tests  633 passed (633)` each; no `act(...)` warnings. `npm run typecheck` clean. `npm run build` passes with the same chunk-size warning as before.
+- Real use: the user's sandbox (built from this branch) shows "Max-effort search" left of "Find jobs" on a profile Dashboard; the dialog showed the five sources, 20 minutes, the Claude plan wording, the $5 cap and "No earlier Max-effort search to compare with."; Cancel closed it and no run was created (the profile's run list was unchanged).
+
+Artifacts:
+
+- Spec `product-v1.md` and `README.md`: the button is on the Dashboard and the Jobs page.
+- Project skills: no change; no new workflow or hazard beyond the existing `project-testing` rule to poll with bounded `findBy`/`waitFor`.
+- `AGENTS.md`, end-user/operator skills: unaffected (no workflow change; none exist).
+
+Lesson:
+
+- When adding an entry point, search every caller of the client function it wraps (`startDiscovery`) and give each one the same choice.
+

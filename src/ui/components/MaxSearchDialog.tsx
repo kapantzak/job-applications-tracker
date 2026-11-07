@@ -53,7 +53,15 @@ interface Details {
   runs: Run[];
 }
 
-export function MaxSearchDialog({ profileId, onStart }: { profileId: string; onStart: () => void }) {
+export function MaxSearchDialog({
+  profileId,
+  onStart,
+  disabled = false,
+}: {
+  profileId: string;
+  onStart: () => void;
+  disabled?: boolean;
+}) {
   const [details, setDetails] = useState<Details | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -69,7 +77,7 @@ export function MaxSearchDialog({ profileId, onStart }: { profileId: string; onS
   return (
     <AlertDialog onOpenChange={load}>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="outline">
+        <Button type="button" variant="outline" disabled={disabled}>
           <RocketIcon />
           Max-effort search
         </Button>

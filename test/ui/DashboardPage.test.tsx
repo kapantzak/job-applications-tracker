@@ -1,9 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
+import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -22,6 +24,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/profiles/platform-roles']}>
         <Routes>
           <Route path="/profiles/:profileSlug" element={<DashboardPage />} />
+          <Route path="/profiles/:profileSlug/runs/:id" element={<p>Run page</p>} />
         </Routes>
       </MemoryRouter>
     </InProfile>,
@@ -77,3 +80,71 @@ describe('DashboardPage', () => {
     expect(card).toHaveTextContent('Discovery: custom · model and effort set in your custom command');
   });
 });
+
+describe('DashboardPage search buttons', () => {
+  beforeEach(() => {
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS });
+  });
+
+  async function openMaxDialog() {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Max-effort search' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Start a Max-effort search?' });
+    return { user, dialog };
+  }
+
+  it('Find jobs starts a default discovery run', async () => {
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-default' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('Sync from Gmail starts a sync run', async () => {
+    vi.mocked(client.startSync).mockResolvedValue({ id: 'run-sync' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Sync from Gmail' }));
+    expect(client.startSync).toHaveBeenCalledWith('pf1');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('Max-effort search warns first and starts nothing until confirmed', async () => {
+    const { dialog } = await openMaxDialog();
+    expect(
+      await within(dialog).findByText(
+        'Runs 5 searches by source (Greenhouse, Lever, Ashby, Other ATS and careers pages, Remote and niche boards), up to 3 at a time. Each can run for up to 20 minutes.',
+      ),
+    ).toBeInTheDocument();
+    expect(client.startDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('starts a max run on confirm and opens it', async () => {
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-max' } as never);
+    const { user, dialog } = await openMaxDialog();
+    await user.click(await within(dialog).findByRole('button', { name: 'Start Max-effort search' }));
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'max');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('starts nothing when the max dialog is cancelled', async () => {
+    const { user, dialog } = await openMaxDialog();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(client.startDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('turns the Max-effort button off while a run is starting', async () => {
+    vi.mocked(client.startDiscovery).mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPage();
+    const max = await screen.findByRole('button', { name: 'Max-effort search' });
+    expect(max).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Find jobs' }));
+    expect(max).toBeDisabled();
+  });
+});
+

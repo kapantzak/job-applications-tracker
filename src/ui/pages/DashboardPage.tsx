@@ -12,6 +12,7 @@ import {
   startSync,
 } from '../api/client.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { MaxSearchDialog } from '../components/MaxSearchDialog.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
@@ -102,10 +103,10 @@ export function DashboardPage() {
     };
   }, [profileId]);
 
-  const start = async (action: typeof startDiscovery) => {
+  const start = async (action: () => Promise<Run>) => {
     setBusy(true);
     try {
-      const run = await action(profileId);
+      const run = await action();
       navigate(href(`/runs/${run.id}`));
     } catch (e) {
       setErrors([message(e)]);
@@ -122,11 +123,16 @@ export function DashboardPage() {
         title="Dashboard"
         actions={
           <>
-            <Button type="button" disabled={busy} onClick={() => start(startDiscovery)}>
+            <MaxSearchDialog
+              profileId={profileId}
+              disabled={busy}
+              onStart={() => void start(() => startDiscovery(profileId, 'max'))}
+            />
+            <Button type="button" disabled={busy} onClick={() => start(() => startDiscovery(profileId))}>
               <SearchIcon />
               Find jobs
             </Button>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => start(startSync)}>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
               <MailIcon />
               Sync from Gmail
             </Button>
