@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { MAX_EFFORT_CONCURRENCY, MAX_EFFORT_SOURCES, type Run, type Settings } from '../../server/domain/types.js';
+import {
+  hasFailedWorkers,
+  MAX_EFFORT_CONCURRENCY,
+  MAX_EFFORT_SOURCES,
+  type Run,
+  type Settings,
+} from '../../server/domain/types.js';
 import { getSettings, listRuns } from '../api/client.js';
 import { formatUsage } from '../format.js';
 import {
@@ -38,11 +44,20 @@ function capLine(settings: Settings): string {
     : 'No spend cap is set in Settings; only the time limit stops a search.';
 }
 
+// Only complete runs are quoted: a cancelled, failed or partial Max run records just what its finished
+// workers reported, which would understate what a full search uses (SOW-0021).
 function lastMaxLine(runs: Run[]): string {
-  const last = runs.find((r) => r.kind === 'discover_jobs' && r.effort_mode === 'max' && formatUsage(r) !== null);
+  const last = runs.find(
+    (r) =>
+      r.kind === 'discover_jobs' &&
+      r.effort_mode === 'max' &&
+      r.status === 'succeeded' &&
+      !hasFailedWorkers(r.summary) &&
+      formatUsage(r) !== null,
+  );
   return last
-    ? `Your last Max-effort search reported ${formatUsage(last)}. A search that times out or is cancelled reports nothing, so the real use can be higher.`
-    : 'No earlier Max-effort search to compare with.';
+    ? `Your last complete Max-effort search reported ${formatUsage(last)}.`
+    : 'No earlier complete Max-effort search to compare with.';
 }
 
 interface Details {
@@ -107,7 +122,8 @@ export function MaxSearchDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction disabled={!details} onClick={onStart}>
+          {/* The details are informational, so a failed load does not block starting. */}
+          <AlertDialogAction disabled={!details && !loadError} onClick={onStart}>
             Start Max-effort search
           </AlertDialogAction>
         </AlertDialogFooter>

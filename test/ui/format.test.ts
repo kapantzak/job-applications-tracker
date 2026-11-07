@@ -32,4 +32,18 @@ describe('formatUsage', () => {
   it('shows tokens only when no cost was reported, with ? for a missing count', () => {
     expect(formatUsage({ ...none, usage_input_tokens: 900 })).toBe('900 tokens in, ? out');
   });
+
+  it('picks the unit after rounding, so counts just under a unit read as the next one', () => {
+    expect(formatUsage({ ...none, usage_input_tokens: 999_960, usage_output_tokens: 999 })).toBe('1.0M tokens in, 999 out');
+    expect(formatUsage({ ...none, usage_input_tokens: 999_949, usage_output_tokens: 1_000 })).toBe(
+      '999.9k tokens in, 1.0k out',
+    );
+  });
+
+  it('shows a cost under one cent as less than one cent, and zero as $0.00', () => {
+    expect(formatUsage({ ...none, usage_cost_usd: 0.0014 })).toBe('<$0.01 estimated');
+    expect(formatUsage({ ...none, usage_cost_usd: 0.0049 })).toBe('<$0.01 estimated');
+    expect(formatUsage({ ...none, usage_cost_usd: 0.012 })).toBe('$0.01 estimated');
+    expect(formatUsage({ ...none, usage_cost_usd: 0 })).toBe('$0.00 estimated');
+  });
 });

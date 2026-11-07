@@ -51,7 +51,8 @@ function claudeDiscoverFlags(settings: Settings): string[] {
     throw new Error('Invalid spend cap setting');
   }
   return [
-    ...(builtins.length ? ['--tools', builtins.join(',')] : []),
+    // An empty value turns every built-in tool off; leaving the flag out would load them all.
+    '--tools', builtins.join(','),
     ...(usesMcp ? [] : ['--strict-mcp-config']),
     ...(budget ? ['--max-budget-usd', budget] : []),
   ];

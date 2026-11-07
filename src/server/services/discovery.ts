@@ -12,6 +12,7 @@ import {
   type RunKind,
   type Settings,
   type VerificationStatus,
+  workersFailedNote,
 } from '../domain/types.js';
 import { reportedAgent, requestedAgent, selectionLogLine } from '../runs/agent-record.js';
 import type { RunHandler } from '../runs/queue.js';
@@ -221,10 +222,12 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
       parseable.push({ job, canonical });
     }
 
-    const verified = await mapLimit(parseable, VERIFY_CONCURRENCY, async (entry) => ({
-      ...entry,
-      verdict: await verify(entry.canonical),
-    }));
+    // Max workers overlap, so the same link can come back several times; check each one once.
+    const distinct = [...new Set(parseable.map((e) => e.canonical))];
+    const verdicts = new Map(
+      await mapLimit(distinct, VERIFY_CONCURRENCY, async (url) => [url, await verify(url)] as const),
+    );
+    const verified = parseable.map((entry) => ({ ...entry, verdict: verdicts.get(entry.canonical)! }));
 
     const existing = jobsRepo.existingDedupeKeys(profile.id);
     const seen = new Set<string>();
@@ -268,7 +271,7 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
       else if (statuses[i] === 'unverified') unverified++;
     });
 
-    const failedNote = failed.length ? `; ${failed.length} of ${outcomes.length} workers failed` : '';
+    const failedNote = failed.length ? workersFailedNote(failed.length, outcomes.length) : '';
     const summary = `${inserted.length} new, ${duplicates} duplicates, ${dead} dead, ${unverified} unverified${failedNote}`;
     ctx.log(summary);
     return { summary, promptVersion: version, adapterId: adapter.id };

@@ -557,10 +557,10 @@ describe('buildAdapterConfig', () => {
     expect(c.argv.slice(c.argv.indexOf('--tools'), c.argv.indexOf('--tools') + 2)).toEqual(['--tools', 'WebSearch,Bash']);
   });
 
-  it('claude discovery passes no --tools when no built-in tool is allowed', () => {
+  it('claude discovery turns every built-in tool off when none is allowed', () => {
     const settings = { ...DEFAULT_SETTINGS, adapter_id: 'claude' as const, allowed_tools_discover: 'mcp__search__query' };
     const c = buildAdapterConfig(settings, 'discover_jobs');
-    expect(c.argv).not.toContain('--tools');
+    expect(c.argv.slice(c.argv.indexOf('--tools'), c.argv.indexOf('--tools') + 2)).toEqual(['--tools', '']);
     expect(c.argv).not.toContain('--strict-mcp-config');
   });
 

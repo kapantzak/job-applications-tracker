@@ -27,6 +27,10 @@ export const MAX_EFFORT_SOURCES = [
   'Remote and niche boards',
 ] as const;
 export const MAX_EFFORT_CONCURRENCY = 3;
+
+// A Max run that lost workers ends its summary with this note; the UI uses it to tell partial runs apart.
+export const workersFailedNote = (failed: number, total: number): string => `; ${failed} of ${total} workers failed`;
+export const hasFailedWorkers = (summary: string | null): boolean => /; \d+ of \d+ workers failed$/.test(summary ?? '');
 export const VERIFICATION_STATUSES = ['ok', 'redirected', 'dead', 'unverified'] as const;
 export const PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;
 export const HISTORY_SOURCES = ['user', 'proposal'] as const;

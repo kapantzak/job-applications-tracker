@@ -14,7 +14,8 @@ const LimitQuery = z.coerce.number().int().min(1).max(200);
 
 const DiscoverBody = z.object({ mode: z.enum(EFFORT_MODES) }).partial().strict();
 
-// The button sends no body for a default run; any body must be JSON, so the 415 check still applies.
+// The UI always sends `{mode}`; other API callers may send no body for a default run. Any body must be JSON,
+// so the 415 check still applies.
 async function readDiscoverBody(c: Context): Promise<z.infer<typeof DiscoverBody>> {
   if (c.req.header('content-type') === undefined && (await c.req.text()) === '') return {};
   return readJson(c, DiscoverBody);

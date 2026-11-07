@@ -38,6 +38,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 
 ## Cancelling a run
 
+- Runs go one at a time, across all profiles. A Max-effort search runs up to three agents and can take up to about twice the run timeout, and other runs, scheduled Gmail syncs included, wait behind it.
 - A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as aborted with "Cancelled by user".
 - Once the agent has finished and the app is checking links and saving results, the run can no longer be cancelled: the Run page shows "Saving results…", and a cancel from the Runs list is refused with a message.
 - Stopping the agent can take a few seconds; the Run page shows "Cancelling…" meanwhile.
@@ -59,9 +60,9 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 ## Max-effort search
 
 - On the Dashboard and Jobs screens, "Find jobs" is a split button: the arrow picks Default or Max effort, and the button then reads "Find jobs" or "Find jobs with max effort". It starts on Default every time the page loads. Max effort runs five searches by source instead of one: Greenhouse, Lever, Ashby, other ATS and careers pages, and remote and niche job boards. Up to three run at a time, and each gets the full run timeout. The app merges the results, removes duplicates and checks every link as usual.
-- It uses several times the tokens of a normal search and can use up your Claude Code or Codex plan's limits. A dialog says so, with the time limit, the spend cap (Claude Code only) and what your last Max-effort search used, and nothing starts until you confirm. The app cannot see your bill, so it shows no cost estimate up front.
+- It uses several times the tokens of a normal search and can use up your Claude Code or Codex plan's limits. A dialog says so, with the time limit, the spend cap (Claude Code only) and what your last complete Max-effort search used, and nothing starts until you confirm. The app cannot see your bill, so it shows no cost estimate up front.
 - If some searches fail, the jobs from the others are kept and the run summary says how many failed. The run fails only when all five fail.
-- The Run page shows what each discovery run used, as the agent reported it: Claude Code's estimated cost (at list price, not your bill) and tokens, or Codex's tokens. A search that times out or is cancelled reports nothing, so the real use can be higher.
+- The Run page shows what each discovery run used, as the agent reported it: Claude Code's estimated cost (at list price, not your bill) and tokens, or Codex's tokens. A search that times out or is cancelled reports nothing, or for Max effort only what its finished searches used, so the real use can be higher. The Max-effort dialog quotes only your last complete Max-effort search.
 - The app then checks every link itself (it does not trust the agent) and shows a badge on each job:
   - **Verified**: the page loaded.
   - **Redirected**: the link led somewhere else; the final address is stored.
@@ -91,7 +92,7 @@ Sync needs a Gmail tool in your agent.
 - The server binds to `127.0.0.1` only, so other machines cannot reach it.
 - There is no authentication, on purpose: it is a single-user local tool.
 - Requests must carry a loopback `Host` header, and browser requests with a foreign `Origin` are rejected. This stops other websites from using the API through your browser.
-- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read). On Claude Code the app also loads only your user-level Claude settings, leaves out your personal `CLAUDE.md`, auto-memory and hooks, and blocks subagents. On Codex it turns subagents off, but Codex still reads your personal `~/.codex/AGENTS.md`: Codex has no switch for it, and running it from a separate Codex home could leave your normal Codex sign-in on an old token.
+- The agent runs with the permission mode and tool allow-list shown in Settings (read-only sandbox by default; Gmail tools limited to search and read). On Claude Code the app also loads only your user-level Claude settings, leaves out your personal `CLAUDE.md`, auto-memory and hooks, and blocks subagents. On Codex (tested with codex-cli 0.163.0 or newer) it turns subagents off, but Codex still reads your personal `~/.codex/AGENTS.md`: Codex has no switch for it, and running it from a separate Codex home could leave your normal Codex sign-in on an old token.
 - The app never applies to jobs, sends mail, or modifies labels or messages.
 
 ## Data and logs

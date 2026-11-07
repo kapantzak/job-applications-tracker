@@ -94,6 +94,17 @@ describe('FindJobsButton', () => {
     expect(client.listRuns).toHaveBeenCalledTimes(2);
   });
 
+  it('still lets the user start when the warning details fail to load', async () => {
+    vi.mocked(client.listRuns).mockRejectedValue(new Error('runs down'));
+    const { onStart, user } = renderButton();
+    await chooseMode(user, 'Max effort');
+    await user.click(screen.getByRole('button', { name: 'Find jobs with max effort' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Start a Max-effort search?' });
+    expect(await within(dialog).findByText('Could not load the search details: runs down')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Start Max-effort search' }));
+    expect(onStart).toHaveBeenCalledWith('max');
+  });
+
   it('switching back to Default runs a default search again', async () => {
     const { onStart, user } = renderButton();
     await chooseMode(user, 'Max effort');

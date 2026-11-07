@@ -162,6 +162,25 @@ describe('discovery handler', () => {
     expect(jobsRepo.list(profileId)).toHaveLength(2);
   });
 
+  it('checks each distinct link once, also when workers return it several times', async () => {
+    saveProfile();
+    const checked: string[] = [];
+    const adapter: AgentAdapter = {
+      id: 'custom',
+      check: async () => ({ id: 'custom', installed: true }),
+      listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+      run: async () => okResult([job(1), job(1, { title: 'Engineer 1 (EU)' }), job(2), job(1)]),
+    };
+    const verify = (async (url: string) => {
+      checked.push(url);
+      return { status: 'ok', finalUrl: url, httpStatus: 200 };
+    }) as typeof verifyLink;
+    const h = createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
+    const res = await h(ctx());
+    expect(checked.sort()).toEqual(['https://jobs.example.com/1', 'https://jobs.example.com/2']);
+    expect(res.summary).toBe('2 new, 2 duplicates, 0 dead, 0 unverified');
+  });
+
   it('stores dead jobs and counts them', async () => {
     saveProfile();
     const res = await makeHandler(okResult([job(1), job(2)]), {

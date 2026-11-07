@@ -218,7 +218,7 @@ describe('JobsPage max-effort search', () => {
     expect(within(dialog).getByText(/runs on your own Claude Code plan/)).toBeInTheDocument();
     expect(within(dialog).getByText(/can use up your plan's limits/)).toBeInTheDocument();
     expect(within(dialog).getByText("Each search stops when Claude Code's own cost estimate reaches $5.")).toBeInTheDocument();
-    expect(within(dialog).getByText('No earlier Max-effort search to compare with.')).toBeInTheDocument();
+    expect(within(dialog).getByText('No earlier complete Max-effort search to compare with.')).toBeInTheDocument();
     expect(client.listRuns).toHaveBeenCalledWith('pf1', 50);
   });
 
@@ -245,9 +245,31 @@ describe('JobsPage max-effort search', () => {
     const { dialog } = await openDialog();
     expect(
       await within(dialog).findByText(
-        'Your last Max-effort search reported $3.20 estimated · 2.0M tokens in, 40.0k out. A search that times out or is cancelled reports nothing, so the real use can be higher.',
+        'Your last complete Max-effort search reported $3.20 estimated · 2.0M tokens in, 40.0k out.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('quotes only complete max-effort searches, never a cancelled, failed or partial one', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue([
+      { ...lastMax, id: 'run-cancelled', status: 'aborted', usage_cost_usd: 1.2 } as Run,
+      { ...lastMax, id: 'run-failed', status: 'failed', usage_cost_usd: 0.4 } as Run,
+      {
+        ...lastMax,
+        id: 'run-partial',
+        usage_cost_usd: 2.1,
+        summary: '20 new, 0 duplicates, 0 dead, 0 unverified; 2 of 5 workers failed',
+      } as Run,
+      { ...lastMax, summary: '30 new, 0 duplicates, 1 dead, 0 unverified' } as Run,
+    ]);
+    const { dialog } = await openDialog();
+    expect(await within(dialog).findByText(/Your last complete Max-effort search reported \$3\.20 estimated/)).toBeInTheDocument();
+  });
+
+  it('says when there is no complete max-effort search to quote', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue([{ ...lastMax, status: 'aborted' } as Run]);
+    const { dialog } = await openDialog();
+    expect(await within(dialog).findByText('No earlier complete Max-effort search to compare with.')).toBeInTheDocument();
   });
 
   it('says no spend cap applies for Codex or when the Claude cap is empty', async () => {

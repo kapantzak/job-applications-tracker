@@ -191,7 +191,8 @@ export function createRunQueue(opts: RunQueueOptions) {
     drainDone = drain();
   }
 
-  // One queue for every profile (one agent at a time); "already active" is per profile and kind.
+  // One queue for every profile: one run at a time, though a Max discovery run starts up to three agents.
+  // Other runs, scheduled syncs included, wait behind it. "Already active" is per profile and kind.
   function enqueue(kind: RunKind, profileId: string, options: { effortMode?: EffortMode } = {}): Run {
     const effortMode = options.effortMode ?? 'default';
     let active = runsRepo.findActive(kind, profileId);
