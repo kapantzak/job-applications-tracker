@@ -58,7 +58,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 
 ## Max-effort search
 
-- "Max-effort search" on the Dashboard and Jobs screens runs five searches by source instead of one: Greenhouse, Lever, Ashby, other ATS and careers pages, and remote and niche job boards. Up to three run at a time, and each gets the full run timeout. The app merges the results, removes duplicates and checks every link as usual.
+- On the Dashboard and Jobs screens, "Find jobs" is a split button: the arrow picks Default or Max effort, and the button then reads "Find jobs" or "Find jobs with max effort". It starts on Default every time the page loads. Max effort runs five searches by source instead of one: Greenhouse, Lever, Ashby, other ATS and careers pages, and remote and niche job boards. Up to three run at a time, and each gets the full run timeout. The app merges the results, removes duplicates and checks every link as usual.
 - It uses several times the tokens of a normal search and can use up your Claude Code or Codex plan's limits. A dialog says so, with the time limit, the spend cap (Claude Code only) and what your last Max-effort search used, and nothing starts until you confirm. The app cannot see your bill, so it shows no cost estimate up front.
 - If some searches fail, the jobs from the others are kept and the run summary says how many failed. The run fails only when all five fail.
 - The Run page shows what each discovery run used, as the agent reported it: Claude Code's estimated cost (at list price, not your bill) and tokens, or Codex's tokens. A search that times out or is cancelled reports nothing, so the real use can be higher.

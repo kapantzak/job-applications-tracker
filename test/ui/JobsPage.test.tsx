@@ -200,7 +200,9 @@ describe('JobsPage max-effort search', () => {
   async function openDialog() {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Max-effort search' }));
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Max effort' }));
+    await user.click(screen.getByRole('button', { name: 'Find jobs with max effort' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'Start a Max-effort search?' });
     return { user, dialog };
   }

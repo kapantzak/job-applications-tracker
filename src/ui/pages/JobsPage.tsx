@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { BookmarkIcon, CheckIcon, ExternalLinkIcon, SearchIcon, XIcon } from 'lucide-react';
+import { BookmarkIcon, CheckIcon, ExternalLinkIcon, XIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   dismissJob,
@@ -10,7 +10,7 @@ import {
 } from '../api/client.js';
 import type { ApplicationStatus, EffortMode, FitChecks, FitVerdict, JobListItem } from '../../server/domain/types.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
-import { MaxSearchDialog } from '../components/MaxSearchDialog.js';
+import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { VerificationBadge } from '../components/VerificationBadge.js';
@@ -120,15 +120,7 @@ export function JobsPage() {
       <PageHeader
         title="Jobs"
         description="Openings found by discovery runs, with their links checked."
-        actions={
-          <div className="flex items-center gap-2">
-            <MaxSearchDialog profileId={profileId} onStart={() => void onFind('max')} />
-            <Button type="button" onClick={() => void onFind('default')}>
-              <SearchIcon />
-              Find jobs
-            </Button>
-          </div>
-        }
+        actions={<FindJobsButton profileId={profileId} onStart={(mode) => void onFind(mode)} />}
       />
       <div className="flex flex-col gap-4">
         {error && <ErrorAlert>{error}</ErrorAlert>}

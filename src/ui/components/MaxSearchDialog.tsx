@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { RocketIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { MAX_EFFORT_CONCURRENCY, MAX_EFFORT_SOURCES, type Run, type Settings } from '../../server/domain/types.js';
 import { getSettings, listRuns } from '../api/client.js';
 import { formatUsage } from '../format.js';
@@ -12,9 +11,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
 
 const AGENT_NAMES: Record<Settings['adapter_id'], string> = {
   claude: 'Claude Code',
@@ -53,35 +50,36 @@ interface Details {
   runs: Run[];
 }
 
+// Opened by the Find jobs split button when Max effort is selected; it loads fresh details each time.
 export function MaxSearchDialog({
   profileId,
+  open,
+  onOpenChange,
   onStart,
-  disabled = false,
 }: {
   profileId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onStart: () => void;
-  disabled?: boolean;
 }) {
   const [details, setDetails] = useState<Details | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = (open: boolean) => {
+  useEffect(() => {
     if (!open) return;
+    let active = true;
     setDetails(null);
     setLoadError(null);
     Promise.all([getSettings(), listRuns(profileId, 50)])
-      .then(([settings, runs]) => setDetails({ settings, runs }))
-      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)));
-  };
+      .then(([settings, runs]) => active && setDetails({ settings, runs }))
+      .catch((e: unknown) => active && setLoadError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      active = false;
+    };
+  }, [open, profileId]);
 
   return (
-    <AlertDialog onOpenChange={load}>
-      <AlertDialogTrigger asChild>
-        <Button type="button" variant="outline" disabled={disabled}>
-          <RocketIcon />
-          Max-effort search
-        </Button>
-      </AlertDialogTrigger>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Start a Max-effort search?</AlertDialogTitle>

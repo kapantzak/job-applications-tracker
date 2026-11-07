@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { BriefcaseIcon, FileTextIcon, InboxIcon, MailIcon, SearchIcon } from 'lucide-react';
+import { BriefcaseIcon, FileTextIcon, InboxIcon, MailIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Run, RunKind, Settings } from '../../server/domain/types.js';
 import {
@@ -12,7 +12,7 @@ import {
   startSync,
 } from '../api/client.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
-import { MaxSearchDialog } from '../components/MaxSearchDialog.js';
+import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
@@ -123,15 +123,11 @@ export function DashboardPage() {
         title="Dashboard"
         actions={
           <>
-            <MaxSearchDialog
+            <FindJobsButton
               profileId={profileId}
               disabled={busy}
-              onStart={() => void start(() => startDiscovery(profileId, 'max'))}
+              onStart={(mode) => void start(() => startDiscovery(profileId, mode))}
             />
-            <Button type="button" disabled={busy} onClick={() => start(() => startDiscovery(profileId))}>
-              <SearchIcon />
-              Find jobs
-            </Button>
             <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
               <MailIcon />
               Sync from Gmail

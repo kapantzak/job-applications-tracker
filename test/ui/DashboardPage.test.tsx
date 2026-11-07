@@ -89,7 +89,9 @@ describe('DashboardPage search buttons', () => {
   async function openMaxDialog() {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: 'Max-effort search' }));
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Max effort' }));
+    await user.click(screen.getByRole('button', { name: 'Find jobs with max effort' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'Start a Max-effort search?' });
     return { user, dialog };
   }
@@ -99,7 +101,7 @@ describe('DashboardPage search buttons', () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
-    expect(client.startDiscovery).toHaveBeenCalledWith('pf1');
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default');
     expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 
@@ -112,7 +114,7 @@ describe('DashboardPage search buttons', () => {
     expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 
-  it('Max-effort search warns first and starts nothing until confirmed', async () => {
+  it('Find jobs with max effort warns first and starts nothing until confirmed', async () => {
     const { dialog } = await openMaxDialog();
     expect(
       await within(dialog).findByText(
@@ -137,14 +139,16 @@ describe('DashboardPage search buttons', () => {
     expect(client.startDiscovery).not.toHaveBeenCalled();
   });
 
-  it('turns the Max-effort button off while a run is starting', async () => {
+  it('turns both parts of the split button off while a run is starting', async () => {
     vi.mocked(client.startDiscovery).mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup();
     renderPage();
-    const max = await screen.findByRole('button', { name: 'Max-effort search' });
-    expect(max).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Find jobs' }));
-    expect(max).toBeDisabled();
+    const find = await screen.findByRole('button', { name: 'Find jobs' });
+    const modes = screen.getByRole('button', { name: 'Choose search mode' });
+    expect(modes).toBeEnabled();
+    await user.click(find);
+    expect(find).toBeDisabled();
+    expect(modes).toBeDisabled();
   });
 });
 
