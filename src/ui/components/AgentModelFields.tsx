@@ -93,7 +93,7 @@ export function AgentModelFields({ adapterId, values, catalogs, onChange }: Agen
                 ))}
               </NativeSelect>
               {warnings.map((w) => (
-                <FieldDescription key={w} className="text-warning">
+                <FieldDescription key={w} className="text-warning-text">
                   {w}
                 </FieldDescription>
               ))}

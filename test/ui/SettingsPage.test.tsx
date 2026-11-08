@@ -124,7 +124,8 @@ describe('SettingsPage model and effort', () => {
     await user.type(screen.getByLabelText('Model (discovery)'), 'model-b');
     expect(effortOptions('Effort (discovery)')).toEqual(['', 'high', 'ultra']);
     await user.selectOptions(screen.getByLabelText('Effort (discovery)'), 'ultra');
-    expect(screen.getByText(/Ultra delegates work to subagents/)).toBeInTheDocument();
+    // The text-only amber, which passes contrast on light surfaces (SOW-0027).
+    expect(screen.getByText(/Ultra delegates work to subagents/)).toHaveClass('text-warning-text');
     // A model the catalog does not know gets every level the agent listed.
     await user.type(screen.getByLabelText('Model (mail sync)'), 'model-z');
     expect(effortOptions('Effort (mail sync)')).toEqual(['', 'low', 'medium', 'high', 'ultra']);

@@ -37,6 +37,8 @@
   --warning: oklch(0.666 0.179 58.318);
   /* Dark text: white on this amber is 3.1:1, below WCAG AA (SOW-0026). */
   --warning-foreground: oklch(0.141 0.005 285.823);
+  /* Amber for text on light surfaces; --warning is a badge fill and only 3.1:1 as text (SOW-0027). */
+  --warning-text: oklch(0.555 0.163 49);
 }
 
 .dark {
@@ -70,6 +72,7 @@
   --success-foreground: oklch(0.141 0.005 285.823);
   --warning: oklch(0.769 0.165 70.08);
   --warning-foreground: oklch(0.141 0.005 285.823);
+  --warning-text: oklch(0.769 0.165 70.08);
 }
 
 @theme inline {
@@ -109,6 +112,7 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
   /* Indeterminate progress bar (SOW-0023); see components/ui/progress.tsx. */
   --animate-progress-indeterminate: progress-indeterminate 1.6s ease-in-out infinite;
 
