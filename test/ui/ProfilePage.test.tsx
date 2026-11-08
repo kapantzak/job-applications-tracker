@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,7 +80,10 @@ describe('ProfilePage', () => {
   it('moves to the new slug after a rename', async () => {
     const user = userEvent.setup();
     const renamed = { ...TEST_PROFILE, name: 'Lead roles', slug: 'lead-roles' };
-    vi.mocked(client.updateProfile).mockResolvedValue(renamed);
+    // A slow save, so the assertion below cannot pass on timing luck.
+    vi.mocked(client.updateProfile).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(renamed), 50)),
+    );
     renderPage();
     const name = screen.getByLabelText('Name');
     await user.clear(name);
@@ -91,7 +94,8 @@ describe('ProfilePage', () => {
       expect.objectContaining({ name: 'Lead roles' }),
       undefined,
     );
-    expect(await screen.findByTestId('where')).toHaveTextContent('/profiles/lead-roles/profile');
+    // The probe is always rendered, so wait for its text rather than for the element.
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/profiles/lead-roles/profile'));
     expect(profileChanged).toHaveBeenCalledWith(renamed);
   });
 

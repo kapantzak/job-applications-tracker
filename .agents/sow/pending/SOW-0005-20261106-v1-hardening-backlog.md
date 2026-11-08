@@ -36,7 +36,8 @@ Server:
 - Origin check should also compare the port (another local dev server page could issue writes).
 - Product decisions for the user: duplicate applications on double Save / Save-then-Applied; manual applications do not infer `sender_domains`; `no_response` ageing.
 - Queue: `start()` after `stop()` is a silent no-op; stuck-row guard blocks later runs of the other kind (only on DB write failure).
-- Data directory: expand a leading `~`; close the db if migration fails before listen.
+- Done in SOW-0025: data directory expands a leading `~`. Still open: close the db if migration fails before listen.
+- From SOW-0025 review: a saved data directory on an unmounted Linux drive often leaves an empty mount-point folder, which passes the existence check, so the app starts empty there; consider refusing a saved folder without `data.db` that was saved with data in it.
 - Profile round-trip (routes are `GET`/`PUT /api/profiles/:pid` since SOW-0014; `id` is now returned too): `GET /api/profile` returns `created_at` but `PUT /api/profile` rejects it (`Unrecognized key`), so a client cannot PUT what it GOT (found in SOW-0008 validation).
 
 Tests:

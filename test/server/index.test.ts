@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { configFilePath, writeConfig } from '../../src/server/config/paths.js';
 import { startApp } from '../../src/server/index.js';
 
 type Started = Awaited<ReturnType<typeof startApp>>;
@@ -69,5 +70,32 @@ describe('startApp', () => {
   it('returns 404 at / when uiDir is null', async () => {
     const app = await start({ dataDir: tmp(), port: 0, uiDir: null });
     expect((await fetch(`${app.url}/`)).status).toBe(404);
+  });
+
+  it('uses the folder from the config file when no flag or env is set', async () => {
+    const home = tmp();
+    const chosen = join(home, 'chosen');
+    mkdirSync(chosen);
+    writeConfig({ dataDir: chosen }, home);
+    const app = await start({ port: 0, uiDir: null, env: {}, home });
+    expect(app.dataDir).toBe(chosen);
+    expect(existsSync(join(chosen, 'data.db'))).toBe(true);
+  });
+
+  it('refuses to start when the folder from the config file is missing, and creates nothing', async () => {
+    const home = tmp();
+    const gone = join(home, 'gone');
+    writeConfig({ dataDir: gone }, home);
+    await expect(startApp({ port: 0, uiDir: null, env: {}, home })).rejects.toThrow(
+      `The data directory ${gone} (set in ${configFilePath(home)}) does not exist.`,
+    );
+    expect(existsSync(gone)).toBe(false);
+  });
+
+  it('still creates a missing folder named by the flag', async () => {
+    const dir = join(tmp(), 'new', 'data');
+    const app = await start({ dataDir: dir, port: 0, uiDir: null, env: {} });
+    expect(app.dataDir).toBe(dir);
+    expect(existsSync(join(dir, 'data.db'))).toBe(true);
   });
 });

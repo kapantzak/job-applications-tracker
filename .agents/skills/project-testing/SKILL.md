@@ -51,6 +51,7 @@ Do not use this skill for:
 
 ## Bad Practices
 
+- `expect(await screen.findBy…(x)).toHaveTextContent(…)` (or `toHaveValue`) on an element that is already rendered before the expected state, such as a location or context probe: `findBy` resolves at once and the assertion races the update. It passed locally and failed on CI Node 22. Wait for the state instead: `await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(…))`; a mock that resolves after a short `setTimeout` proves the wait. Evidence: `test/ui/ProfilePage.test.tsx` ("moves to the new slug after a rename"), `test/ui/Layout.test.tsx`.
 - Bare `toThrow()` without a message match.
 - Reassigning `globalThis.fetch` without restoring it.
 - Running `npm test` and reporting counts without pasting the summary line.

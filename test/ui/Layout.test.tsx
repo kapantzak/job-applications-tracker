@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,7 +60,8 @@ afterEach(() => {
 describe('Layout', () => {
   it("inside a profile, resolves the slug and shows the profile's pages and its pending count", async () => {
     renderShell();
-    expect(await screen.findByTestId('shell')).toHaveTextContent('ready:pf1');
+    // The probe renders "loading:-" first, so wait for its text rather than for the element.
+    await waitFor(() => expect(screen.getByTestId('shell')).toHaveTextContent('ready:pf1'));
     expect(client.getProfileBySlug).toHaveBeenCalledWith('platform-roles');
     const review = await screen.findByRole('link', { name: 'Review, 2 pending' });
     expect(client.listProposals).toHaveBeenCalledWith('pf1');
