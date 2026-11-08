@@ -28,6 +28,7 @@ import {
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, getProfileBySlug, listProposals } from '../api/client.js';
 import { profilePath, ProfileShellContext, type ProfileShell } from '../profile-route.js';
+import { LogoMark } from './LogoMark.js';
 import { ThemeMenu } from './ThemeMenu.js';
 
 interface NavItem {
@@ -202,7 +203,7 @@ export function Layout() {
           ) : (
             <div className="flex items-center gap-2 px-2 py-1.5">
               <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <BriefcaseIcon className="size-4" />
+                <LogoMark className="size-5" data-testid="app-logo" />
               </div>
               <span className="font-semibold">Job Tracker</span>
             </div>
