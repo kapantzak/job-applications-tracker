@@ -35,7 +35,7 @@ const ICONS: Record<LogEntryKind, LucideIcon> = {
 
 const TONES: Record<NonNullable<LogEntry['tone']>, string> = {
   muted: 'text-muted-foreground',
-  warning: 'text-warning',
+  warning: 'text-warning-text',
   error: 'text-destructive',
 };
 

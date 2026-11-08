@@ -97,6 +97,16 @@ describe('Layout', () => {
     expect(client.listProposals).not.toHaveBeenCalled();
   });
 
+  it('shows the app logo beside the app name on the profiles screen, hidden from screen readers', () => {
+    renderShell('/');
+    const logo = screen.getByTestId('app-logo');
+    expect(logo.tagName.toLowerCase()).toBe('svg');
+    expect(logo).toHaveAttribute('aria-hidden', 'true');
+    // The Lens check stroke, so a placeholder or the old briefcase would fail.
+    expect(logo.querySelector('path[d="M10.2 14.3 13 17.1 18.1 11.6"]')).not.toBeNull();
+    expect(screen.getByText('Job Tracker').parentElement).toContainElement(logo);
+  });
+
   it('reports an unknown slug as missing and other lookup failures as errors', async () => {
     vi.mocked(client.getProfileBySlug).mockRejectedValue(new client.ApiError(404, 'Profile not found'));
     renderShell('/profiles/nope/jobs');

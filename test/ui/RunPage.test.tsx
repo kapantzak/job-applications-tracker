@@ -271,6 +271,19 @@ describe('RunPage', () => {
     expect(screen.getByRole('list', { name: 'Run log' })).toBeInTheDocument();
   });
 
+  it('colours warning rows with the text-only amber', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: 'done' });
+    vi.mocked(client.getRunLog).mockResolvedValue(
+      ['Worker 1 (Greenhouse) started', 'Worker 2 (Lever) failed: Agent run failed: Timed out after 1000 ms'].join('\n'),
+    );
+    renderPage();
+    const log = await screen.findByRole('list', { name: 'Run log' });
+    const [started, failed] = within(log).getAllByRole('listitem');
+    expect(failed).toHaveTextContent('Worker 2 (Lever) failed');
+    expect(failed).toHaveClass('text-warning-text');
+    expect(started).not.toHaveClass('text-warning-text');
+  });
+
   it('adds readable rows as lines stream in', async () => {
     renderPage();
     await screen.findByText(/discover_jobs/);

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The Lens mark from src/ui/components/LogoMark.tsx on a fixed zinc tile, so it reads on light and dark tab bars. -->
+  <rect width="32" height="32" rx="7" fill="#18181b"/>
+  <g transform="translate(5.12 5.12) scale(0.68)" fill="none" stroke="#fafafa" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="14" cy="14" r="8.6" stroke-width="2.6"/>
+    <path d="M20.6 20.6 26.6 26.6" stroke-width="3.2"/>
+    <path d="M10.2 14.3 13 17.1 18.1 11.6" stroke-width="2.7"/>
+  </g>
+</svg>

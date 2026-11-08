@@ -17,6 +17,7 @@ Collect every reviewer finding from SOW-0001 that was accepted as real but defer
 Settings and UI:
 - Show prompt template versions in use and an "Open logs folder" action in Settings (design 6.5).
 - Show `match_reason` and `description_excerpt` on the Jobs screen.
+- Done in SOW-0027: light-mode amber warning text (about 3:1) in `AgentModelFields.tsx` and `LogView.tsx` now uses the text-only `--warning-text` (about 5:1).
 - Done in SOW-0009: Saved/Applied state derived from `application_status` on the jobs list; a saved job can be marked applied.
 - Hide "Dismiss" on already dismissed rows; show the list (not "Loading") when the initial job load fails.
 - Detail page heading should refresh after save; add a detail-page test; disable Save buttons while a request is in flight.
