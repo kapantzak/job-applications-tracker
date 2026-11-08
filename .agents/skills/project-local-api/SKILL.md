@@ -33,6 +33,7 @@ Do not use this skill for:
 - `POST /api/profiles/:pid/runs/discover` (SOW-0016) takes no body (default) or a strict JSON body `{ mode }`; any body without a JSON content type is 415, so the form-post protection holds. Validation runs before the adapter check, so a bad body never enqueues.
 - SSE (`GET /api/profiles/:pid/runs/:id/events`) replays the log, forwards new lines, polls the run status and sends `event: done` on a terminal status; it never ends on the queue's finish line. The UI client closes the `EventSource` on `done`. Evidence: `src/server/api/runs.ts`, `src/ui/api/client.ts`.
 - Static UI is served from `<packageRoot>/dist/ui` only, with a traversal guard and SPA fallback that never shadows `/api/*`. Evidence: `src/server/app.ts`, `src/server/index.ts`.
+- Data directory (SOW-0025): `locateDataDir` in `src/server/config/paths.ts` resolves `--data-dir`, `JOBTRACK_DATA_DIR`, `~/.config/job-applications-tracker/config.json`, then `~/.job-applications-tracker`, expanding a leading `~`. The config file is read only when flag and env are unset, so a broken file never blocks a run that names its folder. `startApp` refuses a config-file folder that does not exist instead of recreating it empty. `bin/jobtrack.js` accepts one command, `config get|set|unset data-dir` (no other options), and runs `chooseDataDirOnFirstRun` before `startApp`; it asks only when stdin and stdout are TTYs, opens readline lazily, and exits 130 on Ctrl-C or end of input. Tests never touch the real home: unit tests pass `home`; bin tests that reach the data directory or the config file spawn through `homeEnv()` (temporary `HOME`/`USERPROFILE`, no `JOBTRACK_DATA_DIR`), and the rest exit before reading either or pass `--data-dir`. The TTY path is checked manually with `script -q <log> node bin/jobtrack.js ...` on a temporary `HOME`.
 - Shutdown order: scheduler stop, queue stop (aborts the running agent), CV service stop (aborts every running CV analysis), `closeAllConnections` (ends SSE), server close, db close; `close()` is idempotent. Evidence: `src/server/index.ts`.
 
 ## Best Practices
@@ -65,6 +66,7 @@ Before claiming done:
 ## Evidence
 
 - `src/server/api/guard.ts`, `test/server/api/guard.test.ts`.
+- `src/server/config/paths.ts`, `first-run.ts`, `cli.ts`; `test/server/config/*.test.ts`, `test/server/bin.test.ts` (SOW-0025).
 - `SOW-0001`: Task 15 final review finding and ruling.
 
 ## Update Rules
@@ -73,4 +75,5 @@ Update this skill when:
 
 - the guard's allow-list or any status-code mapping changes;
 - a new state-changing route is added;
-- the shutdown order changes.
+- the shutdown order changes;
+- the data directory precedence, the config file, or the bin commands change.

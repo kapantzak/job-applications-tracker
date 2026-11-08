@@ -15,7 +15,7 @@ import { createProfilesRepo } from './db/profiles-repo.js';
 import { createProposalsRepo } from './db/proposals-repo.js';
 import { createRunsRepo } from './db/runs-repo.js';
 import { createSettingsRepo } from './db/settings-repo.js';
-import { ensureDataDir, resolveDataDir } from './config/paths.js';
+import { ensureDataDir, locateDataDir } from './config/paths.js';
 import { createAgentMailSource } from './mail/agent-source.js';
 import { createLogStore } from './runs/log-store.js';
 import { createRunQueue } from './runs/queue.js';
@@ -25,6 +25,9 @@ import { createMailSyncHandler } from './services/mail-sync.js';
 import { createProposalService } from './services/proposals.js';
 
 export { APP_VERSION } from './version.js';
+// Used by bin/jobtrack.js before the server starts (SOW-0025).
+export { CONFIG_USAGE, runConfigCommand } from './config/cli.js';
+export { chooseDataDirOnFirstRun, createTerminalPrompt, PromptCancelledError } from './config/first-run.js';
 
 const PACKAGE_NAME = 'job-applications-tracker';
 const HOST = '127.0.0.1';
@@ -37,6 +40,8 @@ export interface StartAppOptions {
   // undefined = auto-detect; null = serve no UI.
   uiDir?: string | null;
   env?: NodeJS.ProcessEnv;
+  // Home folder for the default data directory and the config file; tests point it at a temp folder.
+  home?: string;
 }
 
 export interface RunningApp {
@@ -109,7 +114,17 @@ async function listenWithFallback(server: Server, port: number): Promise<number>
 }
 
 export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> {
-  const dataDir = resolveDataDir({ flag: opts.dataDir, env: opts.env ?? process.env });
+  const located = locateDataDir({ flag: opts.dataDir, env: opts.env ?? process.env, home: opts.home });
+  const dataDir = located.dir;
+  // A chosen folder that vanished (deleted, drive not mounted) must not come back empty: that would look
+  // like data loss (SOW-0025, decision 9). The flag and env var still create their folder.
+  if (located.source === 'config' && !existsSync(dataDir)) {
+    throw new Error(
+      `The data directory ${dataDir} (set in ${located.configFile}) does not exist. ` +
+        'Reconnect the drive or restore the folder, or choose another one with ' +
+        '"jobtrack config set data-dir <path>" or "jobtrack config unset data-dir".',
+    );
+  }
   const { dbFile, runsDir } = ensureDataDir(dataDir);
   const db = openDatabase(dbFile);
   migrate(db);

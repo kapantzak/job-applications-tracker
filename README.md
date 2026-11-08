@@ -122,7 +122,7 @@ Sync needs a Gmail tool in your agent.
 
 ## Data and logs
 
-- Data lives in `~/.job-applications-tracker/`:
+- Data lives in the data directory, `~/.job-applications-tracker/` unless you choose another (see [Choosing the data directory](#choosing-the-data-directory)):
   - `data.db`: profiles, jobs, applications, proposals, settings.
   - `runs/`: one log per run, plus a folder per run with the prompt, schema and agent output files.
   - `profiles/<profile id>/`: the CV kept with a profile (`cv.pdf`, `cv.docx`, `cv.txt` or `cv.md`) and the text read from it (`cv-text.txt`).
@@ -131,18 +131,47 @@ Sync needs a Gmail tool in your agent.
 - Run logs can contain agent output, including mail snippets. Do not share them.
 - A CV is personal data and stays on your disk. Remove CV on the Profile screen, Discard on an analysis, and deleting a profile each delete the file and its text.
 
+## Choosing the data directory
+
+- The first time you start `jobtrack` in a terminal, it asks where to keep your data. Press Enter for `~/.job-applications-tracker`, or type or drag in another folder (`~`, quotes and escaped spaces work). The folder is created if needed.
+- Your answer is saved in `~/.config/job-applications-tracker/config.json` (the same path on macOS, Linux and Windows) and used on every later start. You are not asked again.
+- You are not asked when:
+  - the start is not in a terminal (a script or CI): the default folder is used and nothing is saved;
+  - `--data-dir` or `JOBTRACK_DATA_DIR` is set;
+  - you already have data in `~/.job-applications-tracker`.
+- Change it later with the `config` command. Changes apply from the next start:
+
+  ```
+  jobtrack config get data-dir           # the folder in use and where it comes from
+  jobtrack config set data-dir <path>    # use another folder (created if missing)
+  jobtrack config unset data-dir         # go back to ~/.job-applications-tracker
+  ```
+
+- Which folder wins: `--data-dir`, then `JOBTRACK_DATA_DIR`, then the config file, then `~/.job-applications-tracker`.
+- If the saved folder is missing (deleted, or on a drive that is not connected), the app stops with an error instead of starting empty. Reconnect the drive, or run `config set` or `config unset`.
+- To start over with no data, stop the app, delete the data folder and run `jobtrack config unset data-dir`. Deleting the folder alone is not enough once a folder is saved, even the default one.
+- Your data is never moved for you. To move it:
+  1. Stop the app.
+  2. Move the whole folder to its new place, for example `mv ~/.job-applications-tracker ~/Documents/jobs`. Move the folder itself, so the database's `data.db-wal` and `data.db-shm` files go with it.
+  3. Run `jobtrack config set data-dir ~/Documents/jobs`.
+- Avoid folders synced by iCloud Drive, Dropbox or similar: syncing the database while the app is running can corrupt it.
+
 ## Command line
 
 ```
 jobtrack [options]
   --port <n>        port to listen on (default 4173; 0 picks a free port)
-  --data-dir <dir>  where to store data
+  --data-dir <dir>  where to store data (this run only; not saved)
   --no-open         do not open the browser
   --help            show help
   --version         show version
+
+jobtrack config get data-dir
+jobtrack config set data-dir <path>
+jobtrack config unset data-dir
 ```
 
-`JOBTRACK_DATA_DIR` sets the data directory; `--data-dir` takes precedence.
+`JOBTRACK_DATA_DIR` sets the data directory; `--data-dir` takes precedence. Both win over the saved folder.
 
 ## Known limitations
 
