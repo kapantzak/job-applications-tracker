@@ -7,5 +7,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["src/server", "test/server"]
+  "include": ["src/server", "test/server", "scripts"]
 }

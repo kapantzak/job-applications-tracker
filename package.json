@@ -38,6 +38,7 @@
     "build": "tsup && vite build",
     "dev:server": "tsx watch src/server/index.ts",
     "sandbox": "npm run build && node bin/jobtrack.js --data-dir .tmp/sandbox",
+    "sandbox:mock": "npm run build && tsx scripts/sandbox-mock/prepare.ts && node bin/jobtrack.js --data-dir .tmp/sandbox-mock",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
     "dev:ui": "vite",
