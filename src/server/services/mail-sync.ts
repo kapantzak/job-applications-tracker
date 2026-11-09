@@ -3,7 +3,7 @@ import type { ProfilesRepo } from '../db/profiles-repo.js';
 import type { createProposalsRepo, NewProposal } from '../db/proposals-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import { mailScopeQuery } from '../domain/mail-filter.js';
-import type { Settings } from '../domain/types.js';
+import { SCOPE_MATCHED_NOTHING_NOTE, type Settings } from '../domain/types.js';
 import type { MailSource } from '../mail/types.js';
 import type { RunHandler } from '../runs/queue.js';
 
@@ -30,6 +30,7 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
 
     const settings = settingsRepo.getAll();
     const source = mailSourceFactory(settings);
+    const scope = mailScopeQuery(profile.mail_filter_kind, profile.mail_filter);
     const findings = await source.sync(
       {
         applications: open.map((a) => ({
@@ -41,7 +42,7 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
           sender_domains: a.sender_domains,
         })),
         reviewed_message_ids: proposalsRepo.reviewedMessageIds(profileId),
-        mail_scope: mailScopeQuery(profile.mail_filter_kind, profile.mail_filter),
+        mail_scope: scope,
       },
       {
         log: ctx.log,
@@ -87,7 +88,10 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
     }
     if (collected.length > 0) proposalsRepo.createMany(ctx.run.id, collected);
 
-    const summary = `${collected.length} proposals created, ${skipped} skipped`;
+    // Only an explicit 0 counts: null or a missing count says nothing about the scope.
+    const scopeMissed = scope !== null && findings.scope_message_count === 0;
+    if (scopeMissed) ctx.log('The Gmail scope matched no mail; check the label or search on the Profile page');
+    const summary = `${collected.length} proposals created, ${skipped} skipped${scopeMissed ? SCOPE_MATCHED_NOTHING_NOTE : ''}`;
     ctx.log(summary);
     return { summary, promptVersion: findings.promptVersion, adapterId: findings.adapterId ?? settings.adapter_id };
   };

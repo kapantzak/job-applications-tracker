@@ -14,6 +14,7 @@ import {
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
@@ -132,6 +133,7 @@ export function DashboardPage() {
               <MailIcon />
               Sync from Gmail
             </Button>
+            <SyncScopeNote />
           </>
         }
       />

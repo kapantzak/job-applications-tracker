@@ -537,6 +537,18 @@ describe('ProfilePage Gmail sync', () => {
     expect(screen.getByLabelText('Gmail search')).toHaveValue('label:jobs OR to:you@example.com');
   });
 
+  it('points a search typed as a label to Custom Gmail search', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(screen.getByLabelText('Label name'), 'label:jobs');
+    expect(
+      screen.getByText('Type only the label name, without label:. For a full search, choose Custom Gmail search.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /^Custom Gmail search/ }));
+    await user.type(screen.getByLabelText('Gmail search'), 'label:jobs');
+    expect(screen.getByLabelText('Gmail search')).not.toHaveAttribute('aria-invalid');
+  });
+
   it('flags a label with double quotes and does not save', async () => {
     const user = userEvent.setup();
     renderPage();

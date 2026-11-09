@@ -91,7 +91,7 @@ describe('agent mail source', () => {
     const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
     await source.sync(req, ctx().c);
     expect(tasks[0]?.prompt).toContain(
-      '## Mailbox scope\n\nNo scope is set. Search only messages from the listed companies and the ATS domains above.\n',
+      '## Mailbox scope\n\nNo scope is set. Search only messages from the listed companies and the ATS domains above.\nSet `scope_message_count` to null.\n',
     );
   });
 
@@ -104,6 +104,9 @@ describe('agent mail source', () => {
       'Search only messages that match this Gmail search query, copied exactly as written:\n\nlabel:Jobs-Frontend OR to:you+frontend@example.com\n\n',
     );
     expect(prompt).toContain('wrap the query in parentheses first');
+    expect(prompt).toContain(
+      'First run this query once on its own, without date limits, and set `scope_message_count` to the number of messages or threads it returned',
+    );
     expect(prompt).not.toContain('No scope is set.');
   });
 

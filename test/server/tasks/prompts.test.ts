@@ -46,12 +46,13 @@ describe('renderPrompt', () => {
       ats_domains: 'D',
       mail_scope: 'SCOPE_X',
     });
-    expect(r.version).toBe('3');
+    expect(r.version).toBe('4');
     expect(r.text).toContain('## Mailbox scope\n\nSCOPE_X\n');
     expect(r.text).toContain('- Search only the messages the mailbox scope above allows.');
     expect(r.text).toContain('set `mail_access` to false and return an empty `findings` array.');
     expect(r.text).toContain('Gmail message id');
-    expect(r.text).not.toContain('version: 3');
+    expect(r.text).not.toContain('version: 4');
+    expect(r.text).toContain('- Set `scope_message_count` as the mailbox scope above says.');
     expect(r.text.toLowerCase()).toContain('read only');
   });
 

@@ -47,6 +47,8 @@ export const SyncMailOutput = z.object({
   mail_access: z.boolean(),
   findings: z.array(MailFinding),
   notes: z.string().default(''),
+  // What the profile's Gmail scope matched on its own, without date limits (SOW-0032); null without a scope.
+  scope_message_count: z.number().int().min(0).nullable().default(null),
 });
 
 // A CV analysis (SOW-0023). Seniority is a list of levels; the app joins it into the profile's text field.

@@ -102,7 +102,7 @@ describe('mail sync handler', () => {
     const handler = handlerFor({
       sync: async (_req, sctx) => {
         sctx.recordAgent({ adapter_id: 'claude', agent_model: 'sonnet', agent_effort: 'low' });
-        return { mail_access: true, findings: [], notes: '' } as MailSyncFindings;
+        return { mail_access: true, findings: [], notes: '', scope_message_count: null } as MailSyncFindings;
       },
     });
     await handler(c);
@@ -162,7 +162,7 @@ describe('mail sync handler', () => {
   it('reports the source adapter id, falling back to the configured adapter', async () => {
     const app = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
     const fromSource = handlerFor({
-      sync: async () => ({ mail_access: true, findings: [], notes: '', adapterId: 'codex' }) as MailSyncFindings,
+      sync: async () => ({ mail_access: true, findings: [], notes: '', scope_message_count: null, adapterId: 'codex' }) as MailSyncFindings,
     });
     expect((await fromSource(ctx())).adapterId).toBe('codex');
     settingsRepo.set({ adapter_id: 'custom' });
@@ -217,10 +217,27 @@ describe('mail sync handler', () => {
     const handler = handlerFor({
       sync: async (input) => {
         scopes.push(input.mail_scope);
-        return { mail_access: true, findings: [], notes: '' } as MailSyncFindings;
+        return { mail_access: true, findings: [], notes: '', scope_message_count: null } as MailSyncFindings;
       },
     });
     await handler(ctx());
     expect(scopes).toEqual([expected]);
+  });
+
+  it.each([
+    ['a scoped run whose scope matched nothing', 'Jobs/Frontend', 0, '0 proposals created, 0 skipped; the Gmail scope matched no mail'],
+    ['a scoped run whose scope matched mail', 'Jobs/Frontend', 4, '0 proposals created, 0 skipped'],
+    ['a scoped run without a count', 'Jobs/Frontend', null, '0 proposals created, 0 skipped'],
+    ['a run without a scope', '', 0, '0 proposals created, 0 skipped'],
+  ] as const)('summarises %s', async (_name, label, count, summary) => {
+    db.prepare("UPDATE profiles SET mail_filter_kind = 'label', mail_filter = ? WHERE id = ?").run(label, pid);
+    applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    const handler = handlerFor({
+      sync: async () => ({ mail_access: true, findings: [], notes: '', scope_message_count: count }) as MailSyncFindings,
+    });
+    const res = await handler(ctx());
+    expect(res.summary).toBe(summary);
+    const warned = logs.includes('The Gmail scope matched no mail; check the label or search on the Profile page');
+    expect(warned).toBe(summary.endsWith('matched no mail'));
   });
 });

@@ -104,7 +104,14 @@ function syncMail() {
       },
     };
   });
-  return { mail_access: true, findings, notes: 'Mock agent: no mailbox was read.' };
+  // Rendered by src/server/mail/agent-source.ts: a profile without a Gmail scope asks for null.
+  const scoped = !prompt.includes('No scope is set.');
+  return {
+    mail_access: true,
+    findings,
+    notes: 'Mock agent: no mailbox was read.',
+    scope_message_count: scoped ? apps.length : null,
+  };
 }
 
 function analyseCv() {

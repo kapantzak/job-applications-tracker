@@ -1,5 +1,5 @@
 ---
-version: 3
+version: 4
 ---
 # Task: check email for application updates
 
@@ -30,6 +30,7 @@ Skip every message id listed here:
 ## Rules
 
 - Search only the messages the mailbox scope above allows.
+- Set `scope_message_count` as the mailbox scope above says.
 - Consider only messages newer than each application's `applied_at`.
 - Return at most one finding per application.
 - Use `no_change` as `proposed_status` when nothing new happened.

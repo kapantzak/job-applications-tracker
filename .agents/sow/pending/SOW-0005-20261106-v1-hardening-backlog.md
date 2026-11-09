@@ -41,7 +41,7 @@ Server:
 - Done in SOW-0025: data directory expands a leading `~`. Still open: close the db if migration fails before listen.
 - From SOW-0025 review: a saved data directory on an unmounted Linux drive often leaves an empty mount-point folder, which passes the existence check, so the app starts empty there; consider refusing a saved folder without `data.db` that was saved with data in it.
 - Profile round-trip (routes are `GET`/`PUT /api/profiles/:pid` since SOW-0014; `id` is now returned too): `GET /api/profile` returns `created_at` but `PUT /api/profile` rejects it (`Unrecognized key`), so a client cannot PUT what it GOT (found in SOW-0008 validation).
-- From SOW-0031 review (Gmail scope): a label name with `(`, `)`, `{` or `}` becomes for example `label:Jobs-(2026)`, and how Gmail parses that is not probed (decision 6 refused only `"`); invisible format characters (`\p{Cf}`, for example a zero-width space) pass the one-line check and make a label match nothing without an error. Needs a user decision: refuse these characters, or probe Gmail first.
+- Done in SOW-0032 (label mode refuses brackets and `\p{Cf}`, user decision 4A; not probed against Gmail). Original item: from SOW-0031 review (Gmail scope): a label name with `(`, `)`, `{` or `}` becomes for example `label:Jobs-(2026)`, and how Gmail parses that is not probed (decision 6 refused only `"`); invisible format characters (`\p{Cf}`, for example a zero-width space) pass the one-line check and make a label match nothing without an error. Needs a user decision: refuse these characters, or probe Gmail first.
 
 Tests:
 - Auth-probe `hang` test should record the child pid and assert it is dead (SOW-0003 review).

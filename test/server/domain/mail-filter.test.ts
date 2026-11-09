@@ -35,6 +35,27 @@ describe('mail filter rule', () => {
     expect(mailFilterError('query', 'label:"Board Prep"')).toBeNull();
   });
 
+  it.each(['label:Jobs', 'LABEL:jobs-frontend', 'Label: Jobs', 'label:"Board Prep"', 'label:(a OR b)'])('refuses %j in label mode, which is a search', (value) => {
+    expect(mailFilterError('label', value)).toBe(
+      'Type only the label name, without label:. For a full search, choose Custom Gmail search.',
+    );
+    expect(mailFilterError('query', value)).toBeNull();
+  });
+
+  it('accepts a colon elsewhere in a label name', () => {
+    expect(mailFilterError('label', 'Jobs: 2026')).toBeNull();
+  });
+
+  it.each(['Jobs (2026)', 'Jobs)', '{Jobs}', 'Jobs\u200bFrontend', 'Jobs\u202eFrontend', '\ufeffJobs'])(
+    'refuses brackets or hidden characters in label %j but not in a query',
+    (value) => {
+      expect(mailFilterError('label', value)).toBe(
+        'Use Custom Gmail search for labels with brackets or hidden characters.',
+      );
+      expect(mailFilterError('query', value)).toBeNull();
+    },
+  );
+
   it('trims surrounding spaces', () => {
     expect(normalizeMailFilter('  Jobs/Frontend \t')).toBe('Jobs/Frontend');
   });

@@ -17,13 +17,17 @@ function renderApplications(apps: MailSyncRequest['applications']): string {
 // The query sits on a line of its own; validation keeps it to one line (SOW-0031).
 function renderScope(scope: string | null): string {
   if (scope === null) {
-    return 'No scope is set. Search only messages from the listed companies and the ATS domains above.';
+    return [
+      'No scope is set. Search only messages from the listed companies and the ATS domains above.',
+      'Set `scope_message_count` to null.',
+    ].join('\n');
   }
   return [
     'Search only messages that match this Gmail search query, copied exactly as written:',
     '',
     scope,
     '',
+    'First run this query once on its own, without date limits, and set `scope_message_count` to the number of messages or threads it returned (the search tool\'s estimate is fine; 0 when it returned none).',
     'To add date limits or other narrowing terms, wrap the query in parentheses first, for example `(<query>) after:2026/01/31`. Never search outside it.',
     'Messages in this scope may come from any sender, including recruiters writing from personal addresses. Match each message to an application by company, role or content.',
   ].join('\n');

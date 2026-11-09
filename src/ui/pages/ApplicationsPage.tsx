@@ -6,6 +6,7 @@ import { listApplications, setApplicationStatus, startSync } from '../api/client
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { StatusSelect } from '../components/StatusSelect.js';
 import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { formatTime } from '../format.js';
@@ -149,6 +150,7 @@ export function ApplicationsPage() {
                 </div>
               </SheetContent>
             </Sheet>
+            <SyncScopeNote />
           </>
         }
       />

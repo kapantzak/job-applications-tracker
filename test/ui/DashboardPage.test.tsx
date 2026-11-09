@@ -50,6 +50,12 @@ beforeEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('says what Sync from Gmail searches', async () => {
+    renderPage();
+    await screen.findByTestId('count-applications');
+    expect(screen.getByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
+  });
+
   it('renders the three counts', async () => {
     renderPage();
     expect(await screen.findByTestId('count-applications')).toHaveTextContent('2');

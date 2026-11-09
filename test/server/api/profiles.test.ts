@@ -173,6 +173,14 @@ describe('profiles: Gmail scope', () => {
     [{ mail_filter_kind: 'label', mail_filter: 'Board "Prep"' }, 'mail_filter: A label name cannot contain double quotes.'],
     [{ mail_filter: 'Jobs\nData' }, 'mail_filter: Use a single line without control characters.'],
     [{ mail_filter_kind: 'query', mail_filter: 'x'.repeat(301) }, 'mail_filter: Use at most 300 characters.'],
+    [
+      { mail_filter_kind: 'label', mail_filter: 'label:jobs' },
+      'mail_filter: Type only the label name, without label:. For a full search, choose Custom Gmail search.',
+    ],
+    [
+      { mail_filter_kind: 'label', mail_filter: 'Jobs (2026)' },
+      'mail_filter: Use Custom Gmail search for labels with brackets or hidden characters.',
+    ],
   ])('refuses %j with 400 and writes nothing', async (scope, error) => {
     const res = await h.app.request(h.base, json('PUT', { ...SAMPLE_PROFILE, notes: 'edited', ...scope }));
     expect(res.status).toBe(400);
@@ -192,7 +200,9 @@ describe('profiles: Gmail scope', () => {
     // A kind alone is checked with the stored value: that query is not a valid label.
     const kind = await h.app.request(h.base, json('PUT', { ...rest, mail_filter_kind: 'label' }));
     expect(kind.status).toBe(400);
-    expect(await kind.json()).toEqual({ error: 'mail_filter: A label name cannot contain double quotes.' });
+    expect(await kind.json()).toEqual({
+      error: 'mail_filter: Type only the label name, without label:. For a full search, choose Custom Gmail search.',
+    });
     expect(h.deps.profilesRepo.get(h.profile.id)?.mail_filter_kind).toBe('query');
   });
 

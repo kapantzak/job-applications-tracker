@@ -36,9 +36,17 @@ describe('task schemas', () => {
     expect(() => SyncMailOutput.parse({ mail_access: true, findings: [f] })).toThrow();
   });
 
+  it('sync_mail scope_message_count is a count or null, and null when missing', () => {
+    expect(SyncMailOutput.parse({ mail_access: true, findings: [] }).scope_message_count).toBeNull();
+    expect(SyncMailOutput.parse({ mail_access: true, findings: [], scope_message_count: 0 }).scope_message_count).toBe(0);
+    expect(() => SyncMailOutput.parse({ mail_access: true, findings: [], scope_message_count: -1 })).toThrow();
+    expect(() => SyncMailOutput.parse({ mail_access: true, findings: [], scope_message_count: 1.5 })).toThrow();
+  });
+
   it('json schema for sync_mail requires mail_access', () => {
     const s = outputJsonSchema('sync_mail');
     expect(s.required).toContain('mail_access');
+    expect(s.required).toContain('scope_message_count');
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });
 });
