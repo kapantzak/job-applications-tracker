@@ -1,16 +1,19 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { BriefcaseIcon, FileTextIcon, InboxIcon, MailIcon } from 'lucide-react';
+import { CircleCheckIcon, InboxIcon, MailIcon, MessagesSquareIcon, TrendingUpIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { DashboardSummary } from '../../server/domain/dashboard.js';
 import type { Run, RunKind, Settings } from '../../server/domain/types.js';
 import {
   getSettings,
-  listApplications,
+  getDashboard,
   listJobs,
-  listProposals,
   listRuns,
   startDiscovery,
   startSync,
 } from '../api/client.js';
+import { AttentionCard } from '../components/dashboard/AttentionCard.js';
+import { FunnelCard } from '../components/dashboard/FunnelCard.js';
+import { StatusBarCard } from '../components/dashboard/StatusBarCard.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -19,11 +22,11 @@ import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { formatTime } from '../format.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Stats {
-  applications: number | null;
-  proposals: number | null;
+  summary: DashboardSummary | null;
   jobs: number | null;
   runs: Run[] | null;
   settings: Settings | null;
@@ -78,24 +81,22 @@ export function DashboardPage() {
   useEffect(() => {
     let active = true;
     Promise.allSettled([
-      listApplications(profileId, true),
-      listProposals(profileId),
+      getDashboard(profileId),
       listJobs(profileId),
       listRuns(profileId),
       getSettings(),
     ]).then(
-      ([apps, proposals, jobs, runs, settings]) => {
+      ([summary, jobs, runs, settings]) => {
         if (!active) return;
         const value = <T,>(r: PromiseSettledResult<T>) => (r.status === 'fulfilled' ? r.value : null);
         setStats({
-          applications: value(apps)?.length ?? null,
-          proposals: value(proposals)?.length ?? null,
+          summary: value(summary),
           jobs: value(jobs)?.length ?? null,
           runs: value(runs),
           settings: value(settings),
         });
         setErrors(
-          [apps, proposals, jobs, runs, settings].flatMap((r) => (r.status === 'rejected' ? [message(r.reason)] : [])),
+          [summary, jobs, runs, settings].flatMap((r) => (r.status === 'rejected' ? [message(r.reason)] : [])),
         );
       },
     );
@@ -116,7 +117,10 @@ export function DashboardPage() {
   };
 
   if (!stats) return <LoadingState />;
-  const { settings } = stats;
+  const { settings, summary, jobs } = stats;
+  const counts = summary?.status_counts;
+  const inProgress = counts ? counts.applied + counts.screening + counts.interview : null;
+  const listLink = (query: string) => href(`/applications?${query}`);
 
   return (
     <div>
@@ -141,29 +145,63 @@ export function DashboardPage() {
         {errors.map((e) => (
           <ErrorAlert key={e}>{e}</ErrorAlert>
         ))}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard
-            label="Open applications"
-            value={stats.applications}
-            testId="count-applications"
-            to={href('/applications')}
-            icon={<FileTextIcon className="size-4" />}
+            label="In progress"
+            value={inProgress}
+            testId="count-in-progress"
+            to={listLink('status=applied&status=screening&status=interview')}
+            icon={<TrendingUpIcon className="size-4" />}
           />
           <StatCard
-            label="Pending proposals"
-            value={stats.proposals}
+            label="Interviews"
+            value={counts?.interview ?? null}
+            testId="count-interviews"
+            to={listLink('status=interview')}
+            icon={<MessagesSquareIcon className="size-4" />}
+          />
+          <StatCard
+            label="Offers"
+            value={counts?.offer ?? null}
+            testId="count-offers"
+            to={listLink('status=offer')}
+            icon={<CircleCheckIcon className="size-4" />}
+          />
+          <StatCard
+            label="To review"
+            value={summary?.pending_proposals ?? null}
             testId="count-proposals"
             to={href('/review')}
             icon={<InboxIcon className="size-4" />}
           />
-          <StatCard
-            label="Jobs"
-            value={stats.jobs}
-            testId="count-jobs"
-            to={href('/jobs')}
-            icon={<BriefcaseIcon className="size-4" />}
-          />
         </div>
+        {summary &&
+          (summary.total === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyTitle>No applications yet</EmptyTitle>
+                <EmptyDescription>
+                  Save or mark jobs as applied on the{' '}
+                  <Link to={href('/jobs')} className="underline underline-offset-4">
+                    Jobs
+                  </Link>{' '}
+                  page and they will show up here.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <>
+              <StatusBarCard total={summary.total} counts={summary.status_counts} href={href} />
+              <div className="grid gap-4 sm:grid-cols-5">
+                <div className="sm:col-span-3">
+                  <FunnelCard funnel={summary.funnel} />
+                </div>
+                <div className="sm:col-span-2">
+                  <AttentionCard pendingProposals={summary.pending_proposals} quiet={summary.quiet} href={href} />
+                </div>
+              </div>
+            </>
+          ))}
         <Card>
           <CardHeader>
             <CardTitle>
@@ -171,7 +209,9 @@ export function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-            <p className="text-muted-foreground">Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}</p>
+            <p className="text-muted-foreground">Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}
+              {jobs !== null && ` · ${jobs} jobs`}
+            </p>
             <p className="text-muted-foreground">Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
           </CardContent>
         </Card>

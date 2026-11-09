@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
+import type { DashboardSummary } from '../../src/server/domain/dashboard.js';
 import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
-  listApplications: vi.fn(),
-  listProposals: vi.fn(),
+  getDashboard: vi.fn(),
   listJobs: vi.fn(),
   listRuns: vi.fn(),
   getSettings: vi.fn(),
@@ -31,13 +31,38 @@ function renderPage() {
   );
 }
 
+const BASE = '/profiles/platform-roles';
+
+function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
+  return {
+    total: 34,
+    status_counts: {
+      saved: 5,
+      applied: 12,
+      screening: 3,
+      interview: 2,
+      offer: 1,
+      rejected: 6,
+      withdrawn: 2,
+      no_response: 3,
+    },
+    funnel: { applied: 24, screening: 8, interview: 3, offer: 1 },
+    pending_proposals: 3,
+    quiet: [
+      { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', since: '2026-10-01T00:00:00Z', days: 20 },
+      { id: 'a2', company: 'Globex', role: 'Analyst', status: 'screening', since: '2026-10-05T00:00:00Z', days: 16 },
+    ],
+    quiet_days: 14,
+    ...over,
+  };
+}
+
 afterEach(cleanup);
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(client.listApplications).mockResolvedValue([{}, {}] as never);
-  vi.mocked(client.listProposals).mockResolvedValue([{}, {}, {}] as never);
-  vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}, {}] as never);
+  vi.mocked(client.getDashboard).mockResolvedValue(summary());
+  vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}] as never);
   vi.mocked(client.listRuns).mockResolvedValue([]);
   vi.mocked(client.getSettings).mockResolvedValue({
     adapter_id: 'claude',
@@ -52,24 +77,84 @@ beforeEach(() => {
 describe('DashboardPage', () => {
   it('says what Sync from Gmail searches', async () => {
     renderPage();
-    await screen.findByTestId('count-applications');
+    await screen.findByTestId('count-in-progress');
     expect(screen.getByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
   });
 
-  it('renders the three counts', async () => {
+  it('tiles show counts and link to matching lists', async () => {
     renderPage();
-    expect(await screen.findByTestId('count-applications')).toHaveTextContent('2');
+    const inProgress = await screen.findByTestId('count-in-progress');
+    expect(inProgress).toHaveTextContent('17');
+    expect(inProgress).toHaveAttribute(
+      'href',
+      `${BASE}/applications?status=applied&status=screening&status=interview`,
+    );
+    expect(screen.getByTestId('count-interviews')).toHaveTextContent('2');
+    expect(screen.getByTestId('count-interviews')).toHaveAttribute('href', `${BASE}/applications?status=interview`);
+    expect(screen.getByTestId('count-offers')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-offers')).toHaveAttribute('href', `${BASE}/applications?status=offer`);
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('3');
-    expect(screen.getByTestId('count-jobs')).toHaveTextContent('4');
-    expect(screen.getByText(/Last discovery: never/)).toBeInTheDocument();
+    expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
+  });
+
+  it('shows the bar, funnel and attention cards', async () => {
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
+  });
+
+  it('discovery line carries the jobs count', async () => {
+    renderPage();
+    expect(await screen.findByText(/Last discovery: .+ · 3 jobs/)).toBeInTheDocument();
     expect(screen.getByText(/Last sync: never/)).toBeInTheDocument();
   });
 
-  it('renders what loaded when one fetch fails', async () => {
+  it('drops the jobs suffix and shows an alert when jobs fail to load', async () => {
     vi.mocked(client.listJobs).mockRejectedValue(new Error('jobs down'));
     renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('jobs down');
-    expect(screen.getByTestId('count-applications')).toHaveTextContent('2');
+    expect(screen.getByText(/Last discovery: never$/)).toBeInTheDocument();
+    expect(screen.queryByText(/· \d+ jobs/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('17');
+  });
+
+  it('empty profile shows the empty state', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(
+      summary({
+        total: 0,
+        status_counts: {
+          saved: 0,
+          applied: 0,
+          screening: 0,
+          interview: 0,
+          offer: 0,
+          rejected: 0,
+          withdrawn: 0,
+          no_response: 0,
+        },
+        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        pending_proposals: 0,
+        quiet: [],
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', `${BASE}/jobs`);
+    expect(screen.queryByText(/Where your/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('0');
+  });
+
+  it('a failed summary still shows runs and agent', async () => {
+    vi.mocked(client.getDashboard).mockRejectedValue(new Error('Summary failed'));
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Summary failed');
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('–');
+    expect(screen.getByTestId('count-interviews')).toHaveTextContent('–');
+    expect(screen.getByRole('heading', { name: 'Last successful runs' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Agent' })).toBeInTheDocument();
+    expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
   });
 
   it('shows the selected agent with its model and effort per run kind', async () => {
