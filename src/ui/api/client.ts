@@ -14,6 +14,7 @@ import type {
   Settings,
   StatusHistoryEntry,
 } from '../../server/domain/types.js';
+import type { DashboardSummary } from '../../server/domain/dashboard.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -129,6 +130,9 @@ export const getProfileBySlug = (slug: string): Promise<Profile> =>
 export const updateProfile = (profileId: string, profile: ProfileInput, cvAnalysisId?: string): Promise<Profile> =>
   request('PUT', scoped(profileId, ''), cvAnalysisId ? { ...profile, cv_analysis_id: cvAnalysisId } : profile);
 // Removes the profile with its jobs, applications, proposals, runs and run logs.
+export const getDashboard = (profileId: string): Promise<DashboardSummary> =>
+  request('GET', scoped(profileId, '/dashboard'));
+
 export const deleteProfile = (profileId: string): Promise<void> => request('DELETE', scoped(profileId, ''));
 export const removeProfileCv = (profileId: string): Promise<Profile> => request('DELETE', scoped(profileId, '/cv'));
 // A plain link: the browser downloads the file under its original name.

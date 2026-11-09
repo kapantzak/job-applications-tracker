@@ -78,6 +78,12 @@ export function createApplicationsRepo(db: Db) {
     'SELECT * FROM status_history WHERE application_id = ? ORDER BY changed_at ASC, rowid ASC',
   );
 
+  // One read for the dashboard; rowid breaks ties between changes made in the same millisecond.
+  const selectProfileHistory = db.prepare(
+    `SELECT h.* FROM status_history h JOIN applications a ON a.id = h.application_id
+     WHERE a.profile_id = ? ORDER BY h.changed_at ASC, h.rowid ASC`,
+  );
+
   function get(id: string): Application | null {
     const row = selectById.get(id) as AppRow | undefined;
     return row ? toApplication(row) : null;
@@ -204,5 +210,9 @@ export function createApplicationsRepo(db: Db) {
     return selectHistory.all(id) as StatusHistoryEntry[];
   }
 
-  return { create, get, findByJobId, list, profileIdsWithOpen, update, setStatus, history };
+  function historyForProfile(profileId: string): StatusHistoryEntry[] {
+    return selectProfileHistory.all(profileId) as StatusHistoryEntry[];
+  }
+
+  return { create, get, findByJobId, list, profileIdsWithOpen, update, setStatus, history, historyForProfile };
 }

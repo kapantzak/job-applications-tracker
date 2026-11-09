@@ -157,6 +157,21 @@ describe('applications repo', () => {
     const b = repo.create({ profile_id: pid, company: 'B', role: 'R' });
     expect(repo.list(pid).map((x) => x.id)).toEqual([b.id, a.id]);
   });
+
+  it("historyForProfile returns only that profile's rows, oldest first", () => {
+    const { db, repo, pid } = setup();
+    const other = insertTestProfile(db, 'Data roles');
+    const mine = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer', status: 'applied' });
+    const theirs = repo.create({ profile_id: other, company: 'Globex', role: 'Engineer', status: 'applied' });
+    for (const a of [mine, theirs]) {
+      repo.setStatus(a.id, 'screening', 'user');
+      repo.setStatus(a.id, 'interview', 'user');
+    }
+    const rows = repo.historyForProfile(pid);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.application_id === mine.id)).toBe(true);
+    expect(rows.map((r) => r.to_status)).toEqual(['screening', 'interview']);
+  });
 });
 
 describe('inferSenderDomain', () => {
