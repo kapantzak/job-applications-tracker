@@ -68,6 +68,7 @@ describe('dashboard', () => {
     expect(body.status_counts.offer).toBe(0);
     expect(body.funnel.interview).toBe(1);
     expect(body.funnel.offer).toBe(0);
+    expect(body.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
     expect(body.pending_proposals).toBe(1);
     expect(body.quiet_days).toBe(14);
   });

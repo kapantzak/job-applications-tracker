@@ -47,6 +47,7 @@ function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
       no_response: 3,
     },
     funnel: { applied: 24, screening: 8, interview: 3, offer: 1 },
+    rejected_at: { applied: 4, screening: 1, interview: 1, offer: 0 },
     pending_proposals: 3,
     quiet: [
       { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', since: '2026-10-01T00:00:00Z', days: 20 },
@@ -142,6 +143,7 @@ describe('DashboardPage', () => {
           no_response: 0,
         },
         funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
         pending_proposals: 0,
         quiet: [],
       }),

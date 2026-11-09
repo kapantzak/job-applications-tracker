@@ -11,6 +11,7 @@ import { StatusBarCard } from '../../src/ui/components/dashboard/StatusBarCard.j
 import { InProfile } from './profile-shell.js';
 
 const href = (p: string) => '/profiles/platform-roles' + p;
+const NONE = { applied: 0, screening: 0, interview: 0, offer: 0 };
 
 function renderCard(card: ReactNode) {
   return render(
@@ -121,7 +122,7 @@ describe('FunnelCard', () => {
   const rows = () => within(screen.getByRole('list', { name: 'Funnel steps' })).getAllByRole('listitem');
 
   it('funnel rows', () => {
-    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} />);
+    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
     expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
     const expected = [
       ['Applied', '30', null],
@@ -141,7 +142,7 @@ describe('FunnelCard', () => {
   });
 
   it('funnel with all zero counts', () => {
-    const { container } = renderCard(<FunnelCard funnel={{ applied: 0, screening: 0, interview: 0, offer: 0 }} />);
+    const { container } = renderCard(<FunnelCard funnel={{ applied: 0, screening: 0, interview: 0, offer: 0 }} rejectedAt={NONE} />);
     for (const row of rows()) {
       expect(within(row).queryByText(/%$/)).not.toBeInTheDocument();
     }
@@ -149,16 +150,58 @@ describe('FunnelCard', () => {
   });
 
   it('funnel hides % after an empty step', () => {
-    renderCard(<FunnelCard funnel={{ applied: 3, screening: 0, interview: 0, offer: 0 }} />);
+    renderCard(<FunnelCard funnel={{ applied: 3, screening: 0, interview: 0, offer: 0 }} rejectedAt={NONE} />);
     expect(rows()[1]).toHaveTextContent('0%');
     expect(rows()[2].textContent).toBe('Interview0');
   });
 
   it('row tooltip names the step above', async () => {
     const user = userEvent.setup();
-    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} />);
+    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
     await user.hover(within(rows()[2]).getByTestId('funnel-track'));
     expect(await screen.findByRole('tooltip')).toHaveTextContent('6 of 14 that reached screening');
+  });
+
+  it('shows no rejection parts or line without rejections', () => {
+    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
+    expect(screen.queryAllByTestId('funnel-rejected')).toHaveLength(0);
+    expect(screen.queryByText(/^Rejected after/)).not.toBeInTheDocument();
+  });
+
+  it('marks rejections inside each step and lists them as text', () => {
+    renderCard(
+      <FunnelCard
+        funnel={{ applied: 20, screening: 10, interview: 4, offer: 1 }}
+        rejectedAt={{ applied: 5, screening: 2, interview: 0, offer: 1 }}
+      />,
+    );
+    // Widths are shares of the Applied count; the blue part is what was not rejected at that step.
+    const reached = (i: number) => within(rows()[i]).getByTestId('funnel-reached') as HTMLElement;
+    const rejected = (i: number) => within(rows()[i]).queryByTestId('funnel-rejected') as HTMLElement | null;
+    expect(reached(0).style.width).toBe('75%');
+    expect(rejected(0)?.style.width).toBe('25%');
+    expect(reached(1).style.width).toBe('40%');
+    expect(rejected(1)?.style.width).toBe('10%');
+    expect(rejected(2)).toBeNull();
+    expect(reached(2).style.width).toBe('20%');
+    expect(reached(3).style.width).toBe('0%');
+    expect(rejected(3)?.style.width).toBe('5%');
+    // Row counts and shares are unchanged by rejections.
+    expect(within(rows()[1]).getByText('10')).toBeInTheDocument();
+    expect(within(rows()[1]).getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText(/^Rejected after/)).toHaveTextContent('Rejected after: applying 5 · screening 2 · the offer 1');
+  });
+
+  it('row tooltip adds the rejections at that step', async () => {
+    const user = userEvent.setup();
+    renderCard(
+      <FunnelCard
+        funnel={{ applied: 20, screening: 10, interview: 4, offer: 1 }}
+        rejectedAt={{ applied: 5, screening: 2, interview: 0, offer: 0 }}
+      />,
+    );
+    await user.hover(within(rows()[0]).getByTestId('funnel-track'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('20 applications sent; 5 rejected after applying');
   });
 });
 

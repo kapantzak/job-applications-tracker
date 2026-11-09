@@ -24,6 +24,8 @@ export interface DashboardSummary {
   total: number;
   status_counts: Record<ApplicationStatus, number>;
   funnel: Record<FunnelStage, number>;
+  // Currently rejected applications by the furthest step they reached; a subset of `funnel`.
+  rejected_at: Record<FunnelStage, number>;
   pending_proposals: number;
   quiet: QuietApplication[];
   quiet_days: number;
@@ -65,6 +67,7 @@ export function summarizeDashboard(
     number
   >;
   const funnel: Record<FunnelStage, number> = { applied: 0, screening: 0, interview: 0, offer: 0 };
+  const rejected_at: Record<FunnelStage, number> = { applied: 0, screening: 0, interview: 0, offer: 0 };
   const quiet: QuietApplication[] = [];
 
   for (const a of apps) {
@@ -80,6 +83,8 @@ export function summarizeDashboard(
     FUNNEL_STAGES.forEach((stage, i) => {
       if (reach >= i + 1) funnel[stage] += 1;
     });
+    // `rejected` ranks at least applied, so reach is always a real step here.
+    if (a.status === 'rejected') rejected_at[FUNNEL_STAGES[reach - 1]!] += 1;
 
     if (!isQuietStatus(a.status)) continue;
     // A backdated Applied date is the real clock until a status change is recorded.
@@ -96,6 +101,7 @@ export function summarizeDashboard(
     total: apps.length,
     status_counts,
     funnel,
+    rejected_at,
     pending_proposals: pendingProposals,
     quiet,
     quiet_days: QUIET_DAYS,

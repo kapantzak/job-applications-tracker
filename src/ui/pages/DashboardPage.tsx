@@ -202,7 +202,7 @@ export function DashboardPage() {
               <StatusBarCard total={summary.total} counts={summary.status_counts} href={href} />
               <div className="grid gap-4 sm:grid-cols-5">
                 <div className="min-w-0 sm:col-span-3">
-                  <FunnelCard funnel={summary.funnel} />
+                  <FunnelCard funnel={summary.funnel} rejectedAt={summary.rejected_at} />
                 </div>
                 <div className="min-w-0 sm:col-span-2">
                   <AttentionCard pendingProposals={summary.pending_proposals} quiet={summary.quiet} href={href} />

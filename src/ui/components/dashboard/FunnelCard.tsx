@@ -1,14 +1,25 @@
-import { FUNNEL_STAGES, type DashboardSummary } from '../../../server/domain/dashboard.js';
+import { FUNNEL_STAGES, type DashboardSummary, type FunnelStage } from '../../../server/domain/dashboard.js';
 import { STATUS_LABELS } from '../../labels.js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface FunnelCardProps {
   funnel: DashboardSummary['funnel'];
+  rejectedAt: DashboardSummary['rejected_at'];
 }
 
-export function FunnelCard({ funnel }: FunnelCardProps) {
+// Completes "rejected after …" for each step (SOW-0036).
+const AFTER: Record<FunnelStage, string> = {
+  applied: 'applying',
+  screening: 'screening',
+  interview: 'the interview',
+  offer: 'the offer',
+};
+
+export function FunnelCard({ funnel, rejectedAt }: FunnelCardProps) {
   const top = funnel.applied;
+  const pct = (n: number) => `${top > 0 ? (n / top) * 100 : 0}%`;
+  const rejections = FUNNEL_STAGES.filter((stage) => rejectedAt[stage] > 0);
 
   return (
     <Card className="h-full">
@@ -26,9 +37,11 @@ export function FunnelCard({ funnel }: FunnelCardProps) {
               const above = previous ? funnel[previous] : 0;
               // A share of an empty step means nothing, so it is left out rather than shown as 0% or NaN.
               const share = previous && above > 0 ? Math.round((count / above) * 100) : null;
-              const tip = previous
+              const rejected = rejectedAt[stage];
+              const reached = previous
                 ? `${count} of ${above} that reached ${STATUS_LABELS[previous].toLowerCase()}`
                 : `${count} ${count === 1 ? 'application' : 'applications'} sent`;
+              const tip = rejected > 0 ? `${reached}; ${rejected} rejected after ${AFTER[stage]}` : reached;
               return (
                 <li key={stage} className="grid grid-cols-[5.5rem_1fr_4.5rem] items-center gap-3">
                   <span>{STATUS_LABELS[stage]}</span>
@@ -38,10 +51,21 @@ export function FunnelCard({ funnel }: FunnelCardProps) {
                         data-testid="funnel-track"
                         className="block h-4 overflow-hidden rounded bg-muted"
                       >
-                        <span
-                          className="block h-full rounded bg-status-interview"
-                          style={{ width: `${top > 0 ? (count / top) * 100 : 0}%` }}
-                        />
+                        {/* Rejections at this step are a part of its count, drawn red at the end of the fill. */}
+                        <span className={`flex h-full ${rejected > 0 && count > rejected ? 'gap-0.5' : ''}`}>
+                          <span
+                            data-testid="funnel-reached"
+                            className="block h-full rounded bg-status-interview"
+                            style={{ width: pct(count - rejected) }}
+                          />
+                          {rejected > 0 && (
+                            <span
+                              data-testid="funnel-rejected"
+                              className="block h-full rounded bg-status-rejected"
+                              style={{ width: pct(rejected) }}
+                            />
+                          )}
+                        </span>
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>{tip}</TooltipContent>
@@ -56,6 +80,15 @@ export function FunnelCard({ funnel }: FunnelCardProps) {
           </ul>
         </TooltipProvider>
         <p className="text-xs text-muted-foreground">% = share of the step above</p>
+        {/* Tooltips are hover-only, so the exact rejection counts are also given as text. */}
+        {rejections.length > 0 && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden="true" className="inline-block size-2 shrink-0 rounded-full bg-status-rejected" />
+            <span>
+              Rejected after: {rejections.map((stage) => `${AFTER[stage]} ${rejectedAt[stage]}`).join(' · ')}
+            </span>
+          </p>
+        )}
       </CardContent>
     </Card>
   );

@@ -37,8 +37,30 @@ describe('summarizeDashboard', () => {
     expect(Object.keys(s.status_counts).sort()).toEqual([...APPLICATION_STATUSES].sort());
     for (const status of APPLICATION_STATUSES) expect(s.status_counts[status]).toBe(0);
     expect(s.funnel).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
+    expect(s.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
     expect(s.quiet).toEqual([]);
     expect(s.quiet_days).toBe(14);
+  });
+
+  it('counts each rejection at the furthest step it reached', () => {
+    const afterApplying = app({ status: 'rejected' });
+    const afterInterview = app({ status: 'rejected' });
+    const created = app({ status: 'rejected' });
+    const skipped = app({ status: 'rejected' });
+    const stillInterviewing = app({ status: 'interview' });
+    const history = [
+      row(afterApplying.id, 'applied', 'rejected', ago(2)),
+      row(afterInterview.id, 'applied', 'screening', ago(9)),
+      row(afterInterview.id, 'screening', 'interview', ago(5)),
+      row(afterInterview.id, 'interview', 'rejected', ago(1)),
+      row(skipped.id, 'applied', 'interview', ago(4)),
+      row(skipped.id, 'interview', 'rejected', ago(1)),
+      row(stillInterviewing.id, 'applied', 'interview', ago(3)),
+    ];
+    const s = summarizeDashboard([afterApplying, afterInterview, created, skipped, stillInterviewing], history, 0, NOW);
+    expect(s.rejected_at).toEqual({ applied: 2, screening: 0, interview: 2, offer: 0 });
+    // Rejections stay inside the reach counts, so the funnel itself is unchanged.
+    expect(s.funnel).toEqual({ applied: 5, screening: 3, interview: 3, offer: 0 });
   });
 
   it('counts every status', () => {
