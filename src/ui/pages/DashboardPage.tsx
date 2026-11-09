@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { CircleCheckIcon, InboxIcon, MailIcon, MessagesSquareIcon, TrendingUpIcon } from 'lucide-react';
+import { CircleCheckIcon, CircleXIcon, InboxIcon, MailIcon, MessagesSquareIcon, TrendingUpIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { DashboardSummary } from '../../server/domain/dashboard.js';
 import type { Run, RunKind, Settings } from '../../server/domain/types.js';
@@ -145,7 +145,7 @@ export function DashboardPage() {
         {errors.map((e) => (
           <ErrorAlert key={e}>{e}</ErrorAlert>
         ))}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
           <StatCard
             label="In progress"
             value={inProgress}
@@ -166,6 +166,14 @@ export function DashboardPage() {
             testId="count-offers"
             to={listLink('status=offer')}
             icon={<CircleCheckIcon className="size-4" />}
+          />
+          <StatCard
+            label="Rejected"
+            value={counts?.rejected ?? null}
+            testId="count-rejected"
+            to={listLink('status=rejected')}
+            // Red icon only: the number keeps the text colour so all tiles read alike (SOW-0035).
+            icon={<CircleXIcon className="size-4 text-destructive" />}
           />
           <StatCard
             label="To review"

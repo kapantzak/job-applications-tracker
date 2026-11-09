@@ -93,6 +93,8 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('count-interviews')).toHaveAttribute('href', `${BASE}/applications?status=interview`);
     expect(screen.getByTestId('count-offers')).toHaveTextContent('1');
     expect(screen.getByTestId('count-offers')).toHaveAttribute('href', `${BASE}/applications?status=offer`);
+    expect(screen.getByTestId('count-rejected')).toHaveTextContent('6');
+    expect(screen.getByTestId('count-rejected')).toHaveAttribute('href', `${BASE}/applications?status=rejected`);
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('3');
     expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
   });
