@@ -69,6 +69,14 @@ describe('dashboard', () => {
     expect(body.funnel.interview).toBe(1);
     expect(body.funnel.offer).toBe(0);
     expect(body.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
+    // Acme reached interview and is still there; Globex is saved, so it was never sent.
+    const none = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
+    expect(body.stopped_at).toEqual({
+      applied: none,
+      screening: none,
+      interview: { ...none, waiting: 1 },
+      offer: none,
+    });
     expect(body.pending_proposals).toBe(1);
     expect(body.quiet_days).toBe(14);
   });

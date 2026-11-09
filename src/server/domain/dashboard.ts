@@ -11,6 +11,14 @@ export const FUNNEL_STAGES = ['applied', 'screening', 'interview', 'offer'] as c
 export type FunnelStage = (typeof FUNNEL_STAGES)[number];
 export type QuietStatus = 'applied' | 'screening' | 'interview';
 
+// How the applications that stopped at a step ended there; `waiting` is any other status (SOW-0037).
+export interface StageStops {
+  waiting: number;
+  rejected: number;
+  no_response: number;
+  withdrawn: number;
+}
+
 export interface QuietApplication {
   id: string;
   company: string;
@@ -26,6 +34,9 @@ export interface DashboardSummary {
   funnel: Record<FunnelStage, number>;
   // Currently rejected applications by the furthest step they reached; a subset of `funnel`.
   rejected_at: Record<FunnelStage, number>;
+  // Sent applications by the furthest step they reached and how they stopped there;
+  // each step sums to funnel[step] - funnel[next step].
+  stopped_at: Record<FunnelStage, StageStops>;
   pending_proposals: number;
   quiet: QuietApplication[];
   quiet_days: number;
@@ -68,6 +79,9 @@ export function summarizeDashboard(
   >;
   const funnel: Record<FunnelStage, number> = { applied: 0, screening: 0, interview: 0, offer: 0 };
   const rejected_at: Record<FunnelStage, number> = { applied: 0, screening: 0, interview: 0, offer: 0 };
+  const stopped_at = Object.fromEntries(
+    FUNNEL_STAGES.map((stage) => [stage, { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 }]),
+  ) as Record<FunnelStage, StageStops>;
   const quiet: QuietApplication[] = [];
 
   for (const a of apps) {
@@ -85,6 +99,11 @@ export function summarizeDashboard(
     });
     // `rejected` ranks at least applied, so reach is always a real step here.
     if (a.status === 'rejected') rejected_at[FUNNEL_STAGES[reach - 1]!] += 1;
+    if (reach >= 1) {
+      const stops = stopped_at[FUNNEL_STAGES[reach - 1]!];
+      if (a.status === 'rejected' || a.status === 'no_response' || a.status === 'withdrawn') stops[a.status] += 1;
+      else stops.waiting += 1;
+    }
 
     if (!isQuietStatus(a.status)) continue;
     // A backdated Applied date is the real clock until a status change is recorded.
@@ -102,6 +121,7 @@ export function summarizeDashboard(
     status_counts,
     funnel,
     rejected_at,
+    stopped_at,
     pending_proposals: pendingProposals,
     quiet,
     quiet_days: QUIET_DAYS,

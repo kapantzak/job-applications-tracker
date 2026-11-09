@@ -32,6 +32,7 @@ function renderPage() {
 }
 
 const BASE = '/profiles/platform-roles';
+const NO_STOPS = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
 
 function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
   return {
@@ -48,6 +49,12 @@ function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
     },
     funnel: { applied: 24, screening: 8, interview: 3, offer: 1 },
     rejected_at: { applied: 4, screening: 1, interview: 1, offer: 0 },
+    stopped_at: {
+      applied: { waiting: 9, rejected: 4, no_response: 2, withdrawn: 1 },
+      screening: { waiting: 3, rejected: 1, no_response: 1, withdrawn: 0 },
+      interview: { waiting: 1, rejected: 1, no_response: 0, withdrawn: 0 },
+      offer: { waiting: 1, rejected: 0, no_response: 0, withdrawn: 0 },
+    },
     pending_proposals: 3,
     quiet: [
       { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', since: '2026-10-01T00:00:00Z', days: 20 },
@@ -144,6 +151,7 @@ describe('DashboardPage', () => {
         },
         funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
         rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
         pending_proposals: 0,
         quiet: [],
       }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeDashboard, type HistoryRow } from '../../../src/server/domain/dashboard.js';
+import { FUNNEL_STAGES, summarizeDashboard, type HistoryRow } from '../../../src/server/domain/dashboard.js';
 import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '../../../src/server/domain/types.js';
 
 const NOW = new Date('2026-11-09T12:00:00Z');
@@ -38,6 +38,8 @@ describe('summarizeDashboard', () => {
     for (const status of APPLICATION_STATUSES) expect(s.status_counts[status]).toBe(0);
     expect(s.funnel).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
     expect(s.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
+    const none = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
+    expect(s.stopped_at).toEqual({ applied: none, screening: none, interview: none, offer: none });
     expect(s.quiet).toEqual([]);
     expect(s.quiet_days).toBe(14);
   });
@@ -61,6 +63,80 @@ describe('summarizeDashboard', () => {
     expect(s.rejected_at).toEqual({ applied: 2, screening: 0, interview: 2, offer: 0 });
     // Rejections stay inside the reach counts, so the funnel itself is unchanged.
     expect(s.funnel).toEqual({ applied: 5, screening: 3, interview: 3, offer: 0 });
+  });
+
+  it('counts each sent application once, at its furthest step, by how it stopped', () => {
+    const waitingApplied = app({ status: 'applied' });
+    const waitingScreening = app({ status: 'screening' });
+    const silentDirect = app({ status: 'no_response' });
+    const silentAfterInterview = app({ status: 'no_response' });
+    const withdrawnAfterScreening = app({ status: 'withdrawn' });
+    const rejectedAfterInterview = app({ status: 'rejected' });
+    const offer = app({ status: 'offer' });
+    const saved = app({ status: 'saved' });
+    const withdrawnUnsent = app({ status: 'withdrawn' });
+    const history = [
+      row(waitingScreening.id, 'applied', 'screening', ago(3)),
+      row(silentAfterInterview.id, 'applied', 'interview', ago(9)),
+      row(silentAfterInterview.id, 'interview', 'no_response', ago(2)),
+      row(withdrawnAfterScreening.id, 'applied', 'screening', ago(6)),
+      row(withdrawnAfterScreening.id, 'screening', 'withdrawn', ago(1)),
+      row(rejectedAfterInterview.id, 'applied', 'interview', ago(8)),
+      row(rejectedAfterInterview.id, 'interview', 'rejected', ago(1)),
+      row(withdrawnUnsent.id, 'saved', 'withdrawn', ago(1)),
+    ];
+    const s = summarizeDashboard(
+      [
+        waitingApplied,
+        waitingScreening,
+        silentDirect,
+        silentAfterInterview,
+        withdrawnAfterScreening,
+        rejectedAfterInterview,
+        offer,
+        saved,
+        withdrawnUnsent,
+      ],
+      history,
+      0,
+      NOW,
+    );
+    expect(s.stopped_at).toEqual({
+      applied: { waiting: 1, rejected: 0, no_response: 1, withdrawn: 0 },
+      screening: { waiting: 1, rejected: 0, no_response: 0, withdrawn: 1 },
+      interview: { waiting: 0, rejected: 1, no_response: 1, withdrawn: 0 },
+      // At the last step, "waiting" is holding the offer.
+      offer: { waiting: 1, rejected: 0, no_response: 0, withdrawn: 0 },
+    });
+  });
+
+  it('splits every step into the ones that moved on and the ones that stopped there', () => {
+    const statuses: ApplicationStatus[] = ['applied', 'screening', 'interview', 'offer', 'rejected', 'no_response', 'withdrawn'];
+    const apps: Application[] = [];
+    const history: HistoryRow[] = [];
+    // Every status, reached through every path up the funnel, so each step has each kind of stop.
+    for (const status of statuses) {
+      for (const via of [[], ['screening'], ['screening', 'interview'], ['interview', 'offer']] as ApplicationStatus[][]) {
+        const a = app({ status });
+        apps.push(a);
+        let from: ApplicationStatus = 'applied';
+        for (const to of [...via, status]) {
+          if (to === from) continue;
+          history.push(row(a.id, from, to, ago(1)));
+          from = to;
+        }
+      }
+    }
+    const s = summarizeDashboard(apps, history, 0, NOW);
+    FUNNEL_STAGES.forEach((stage, i) => {
+      const next = FUNNEL_STAGES[i + 1];
+      const stopped = s.stopped_at[stage];
+      const sum = stopped.waiting + stopped.rejected + stopped.no_response + stopped.withdrawn;
+      expect(sum).toBe(s.funnel[stage] - (next ? s.funnel[next] : 0));
+      expect(stopped.rejected).toBe(s.rejected_at[stage]);
+    });
+    // Past the offer: four active statuses via the offer path plus three offers by the other paths.
+    expect(s.stopped_at.offer).toEqual({ waiting: 7, rejected: 1, no_response: 1, withdrawn: 1 });
   });
 
   it('counts every status', () => {
