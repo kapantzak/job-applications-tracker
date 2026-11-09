@@ -1,5 +1,6 @@
-import { FUNNEL_STAGES, type DashboardSummary, type FunnelStage } from '../../../server/domain/dashboard.js';
+import { FUNNEL_STAGES, type DashboardSummary } from '../../../server/domain/dashboard.js';
 import { STATUS_LABELS } from '../../labels.js';
+import { AFTER_STEP } from './steps.js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -7,14 +8,6 @@ interface FunnelCardProps {
   funnel: DashboardSummary['funnel'];
   rejectedAt: DashboardSummary['rejected_at'];
 }
-
-// Completes "rejected after …" for each step (SOW-0036).
-const AFTER: Record<FunnelStage, string> = {
-  applied: 'applying',
-  screening: 'screening',
-  interview: 'the interview',
-  offer: 'the offer',
-};
 
 export function FunnelCard({ funnel, rejectedAt }: FunnelCardProps) {
   const top = funnel.applied;
@@ -41,7 +34,7 @@ export function FunnelCard({ funnel, rejectedAt }: FunnelCardProps) {
               const reached = previous
                 ? `${count} of ${above} that reached ${STATUS_LABELS[previous].toLowerCase()}`
                 : `${count} ${count === 1 ? 'application' : 'applications'} sent`;
-              const tip = rejected > 0 ? `${reached}; ${rejected} rejected after ${AFTER[stage]}` : reached;
+              const tip = rejected > 0 ? `${reached}; ${rejected} rejected after ${AFTER_STEP[stage]}` : reached;
               return (
                 <li key={stage} className="grid grid-cols-[5.5rem_1fr_4.5rem] items-center gap-3">
                   <span>{STATUS_LABELS[stage]}</span>
@@ -85,7 +78,7 @@ export function FunnelCard({ funnel, rejectedAt }: FunnelCardProps) {
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span aria-hidden="true" className="inline-block size-2 shrink-0 rounded-full bg-status-rejected" />
             <span>
-              Rejected after: {rejections.map((stage) => `${AFTER[stage]} ${rejectedAt[stage]}`).join(' · ')}
+              Rejected after: {rejections.map((stage) => `${AFTER_STEP[stage]} ${rejectedAt[stage]}`).join(' · ')}
             </span>
           </p>
         )}
