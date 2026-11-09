@@ -39,6 +39,16 @@
   --warning-foreground: oklch(0.141 0.005 285.823);
   /* Amber for text on light surfaces; --warning is a badge fill and only 3.1:1 as text (SOW-0027). */
   --warning-text: oklch(0.555 0.163 49);
+  /* Dashboard status colours (SOW-0034): one blue ramp for active stages, grays for closed
+     outcomes. Steps checked with the dataviz palette validator against #ffffff. */
+  --status-saved: #86b6ef;
+  --status-applied: #5598e7;
+  --status-screening: #2a78d6;
+  --status-interview: #1c5cab;
+  --status-offer: #104281;
+  --status-rejected: #52525b;
+  --status-withdrawn: #7c7c85;
+  --status-no-response: #a6a6ae;
 }
 
 .dark {
@@ -73,6 +83,16 @@
   --warning: oklch(0.769 0.165 70.08);
   --warning-foreground: oklch(0.141 0.005 285.823);
   --warning-text: oklch(0.769 0.165 70.08);
+  /* Own steps for the dark card surface, kept light to dark so the order matches light mode;
+     the darkest steps still clear 3:1 against --card. */
+  --status-saved: #cde2fb;
+  --status-applied: #9ec5f4;
+  --status-screening: #6da7ec;
+  --status-interview: #3987e5;
+  --status-offer: #256abf;
+  --status-rejected: #71717a;
+  --status-withdrawn: #a1a1aa;
+  --status-no-response: #d4d4d8;
 }
 
 @theme inline {
@@ -113,6 +133,14 @@
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-text: var(--warning-text);
+  --color-status-saved: var(--status-saved);
+  --color-status-applied: var(--status-applied);
+  --color-status-screening: var(--status-screening);
+  --color-status-interview: var(--status-interview);
+  --color-status-offer: var(--status-offer);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-withdrawn: var(--status-withdrawn);
+  --color-status-no-response: var(--status-no-response);
   /* Indeterminate progress bar (SOW-0023); see components/ui/progress.tsx. */
   --animate-progress-indeterminate: progress-indeterminate 1.6s ease-in-out infinite;
 
