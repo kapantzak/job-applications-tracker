@@ -35,9 +35,8 @@ export function FunnelCard({ funnel }: FunnelCardProps) {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span
-                        tabIndex={0}
                         data-testid="funnel-track"
-                        className="block h-4 overflow-hidden rounded bg-muted focus-visible:outline-2 focus-visible:outline-offset-2"
+                        className="block h-4 overflow-hidden rounded bg-muted"
                       >
                         <span
                           className="block h-full rounded bg-status-interview"

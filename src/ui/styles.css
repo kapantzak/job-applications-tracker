@@ -40,7 +40,7 @@
   /* Amber for text on light surfaces; --warning is a badge fill and only 3.1:1 as text (SOW-0027). */
   --warning-text: oklch(0.555 0.163 49);
   /* Dashboard status colours (SOW-0034): one blue ramp for active stages, grays for closed
-     outcomes. Steps checked with the dataviz palette validator against #ffffff. */
+     outcomes. Contrast and lightness checks are recorded in SOW-0034 Validation. */
   --status-saved: #86b6ef;
   --status-applied: #5598e7;
   --status-screening: #2a78d6;
@@ -83,16 +83,16 @@
   --warning: oklch(0.769 0.165 70.08);
   --warning-foreground: oklch(0.141 0.005 285.823);
   --warning-text: oklch(0.769 0.165 70.08);
-  /* Own steps for the dark card surface, kept light to dark so the order matches light mode;
-     the darkest steps still clear 3:1 against --card. */
-  --status-saved: #cde2fb;
-  --status-applied: #9ec5f4;
-  --status-screening: #6da7ec;
-  --status-interview: #3987e5;
-  --status-offer: #256abf;
-  --status-rejected: #71717a;
-  --status-withdrawn: #a1a1aa;
-  --status-no-response: #d4d4d8;
+  /* Own steps for the dark card, faint to strong so emphasis grows with progress: saved sits
+     closest to --card, offer and rejected stand out most (SOW-0034 Decision 8). */
+  --status-saved: #184f95;
+  --status-applied: #256abf;
+  --status-screening: #3987e5;
+  --status-interview: #6da7ec;
+  --status-offer: #9ec5f4;
+  --status-rejected: #a1a1aa;
+  --status-withdrawn: #71717a;
+  --status-no-response: #52525b;
 }
 
 @theme inline {

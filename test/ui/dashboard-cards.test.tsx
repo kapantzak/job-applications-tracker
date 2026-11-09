@@ -94,6 +94,19 @@ describe('StatusBarCard', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]).toHaveAttribute('data-status', 'applied');
     expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'Applied: 3');
+    expect(segments[0]).toHaveClass('rounded-l', 'rounded-r');
+  });
+
+  it('segment widths follow the counts', () => {
+    const { container } = renderCard(<StatusBarCard total={34} counts={FULL} href={href} />);
+    const segment = (s: string) => container.querySelector<HTMLElement>(`[data-status="${s}"]`)!;
+    expect(segment('applied').style.flexGrow).toBe('12');
+    expect(segment('rejected').style.flexGrow).toBe('6');
+    expect(segment('saved')).toHaveClass('rounded-l');
+    expect(segment('saved')).not.toHaveClass('rounded-r');
+    expect(segment('no_response')).toHaveClass('rounded-r');
+    // Hover-only tooltips (SOW-0034 Decision 7): the legend links are the keyboard path.
+    expect(container.querySelectorAll('[data-status][tabindex]')).toHaveLength(0);
   });
 
   it('segment tooltip', async () => {
@@ -110,7 +123,20 @@ describe('FunnelCard', () => {
   it('funnel rows', () => {
     renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} />);
     expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
-    expect(rows().map((r) => r.textContent)).toEqual(['Applied30', 'Screening1447%', 'Interview643%', 'Offer117%']);
+    const expected = [
+      ['Applied', '30', null],
+      ['Screening', '14', '47%'],
+      ['Interview', '6', '43%'],
+      ['Offer', '1', '17%'],
+    ] as const;
+    expect(rows()).toHaveLength(4);
+    expected.forEach(([label, count, share], i) => {
+      const row = within(rows()[i]);
+      expect(row.getByText(label)).toBeInTheDocument();
+      expect(row.getByText(count)).toBeInTheDocument();
+      if (share) expect(row.getByText(share)).toBeInTheDocument();
+      else expect(row.queryByText(/%$/)).not.toBeInTheDocument();
+    });
     expect(screen.getByText('% = share of the step above')).toBeInTheDocument();
   });
 

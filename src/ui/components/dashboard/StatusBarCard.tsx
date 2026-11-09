@@ -28,16 +28,17 @@ export function StatusBarCard({ total, counts, href }: StatusBarCardProps) {
       <CardContent className="flex flex-col gap-3">
         {/* Page tests and the composed page render without the sidebar's provider. */}
         <TooltipProvider>
+          {/* Segments are hover-only, outside the tab order: the img role hides them from assistive
+              tech, and the legend links are the keyboard path to the same data (SOW-0034 Decision 7). */}
           <div role="img" aria-label={label} className="flex h-3.5 gap-0.5">
             {present.map((s, i) => (
               <Tooltip key={s}>
                 <TooltipTrigger asChild>
                   <span
-                    tabIndex={0}
                     data-status={s}
                     style={{ flexGrow: counts[s] }}
                     className={cn(
-                      'block h-full basis-0 focus-visible:outline-2 focus-visible:outline-offset-2',
+                      'block h-full basis-0',
                       STATUS_COLOR_CLASS[s],
                       i === 0 && 'rounded-l',
                       i === present.length - 1 && 'rounded-r',
