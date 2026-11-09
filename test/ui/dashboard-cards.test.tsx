@@ -340,6 +340,22 @@ describe('JourneyCard', () => {
     expect(exitLabels(c2, 'offer')).toEqual(['2 offers']);
   });
 
+  it('keeps Offer-stage labels clear of the right edge', () => {
+    const { container } = renderCard(
+      <JourneyCard
+        funnel={{ applied: 300, screening: 120, interview: 60, offer: 40 }}
+        stoppedAt={{ applied: stops(180), screening: stops(60), interview: stops(20), offer: stops(10, 10, 10, 10) }}
+        saved={0}
+      />,
+    );
+    const labels = [...stage(container, 'offer').querySelectorAll('[data-exit] text')];
+    expect(labels.map((t) => t.textContent)).toContain('10 no response');
+    // 120 units hold "1000 no response" at font size 12.
+    for (const t of labels) expect(Number(t.getAttribute('x'))).toBeLessThanOrEqual(940 - 120);
+    // Proportional digits: Manrope's tabular "1" stands apart from its neighbours (Decision 8).
+    expect(screen.getByRole('img').getAttribute('style') ?? '').not.toContain('tabular');
+  });
+
   it('describes every stage and its exits in the image label', () => {
     renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={4} />);
     expect(screen.getByRole('img')).toHaveAttribute(

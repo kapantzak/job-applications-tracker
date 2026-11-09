@@ -263,7 +263,6 @@ describe('DashboardPage search buttons', () => {
   });
 });
 
-
 describe('DashboardPage views', () => {
   const sent = (applied: number) => summary({ funnel: { applied, screening: 0, interview: 0, offer: 0 } });
   const switcher = () => screen.queryByRole('group', { name: 'Dashboard view' });
@@ -321,18 +320,31 @@ describe('DashboardPage views', () => {
     expect(journeyHeading()).not.toBeInTheDocument();
   });
 
-  it('shows only Breakdown, without the switch, on a narrow window', async () => {
-    vi.stubGlobal('innerWidth', 500);
+  // The graph's labels are only readable from 1280 px windows (SOW-0037 Decision 7).
+  const stubWidth = (width: number) => {
+    vi.stubGlobal('innerWidth', width);
     vi.stubGlobal(
       'matchMedia',
-      vi.fn(() => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })),
+      vi.fn(() => ({ matches: width >= 1280, addEventListener: () => {}, removeEventListener: () => {} })),
     );
+  };
+
+  it('shows only Breakdown, without the switch, below 1280 px', async () => {
+    stubWidth(1279);
     localStorage.setItem('dashboard-view', 'journey');
     vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
     renderPage();
     expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
     expect(journeyHeading()).not.toBeInTheDocument();
     expect(switcher()).not.toBeInTheDocument();
+  });
+
+  it('offers the switch and Journey from 1280 px', async () => {
+    stubWidth(1280);
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('hides the switch for a profile without applications', async () => {

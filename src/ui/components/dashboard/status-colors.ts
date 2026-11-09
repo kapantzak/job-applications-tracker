@@ -11,3 +11,15 @@ export const STATUS_COLOR_CLASS: Record<ApplicationStatus, string> = {
   withdrawn: 'bg-status-withdrawn',
   no_response: 'bg-status-no-response',
 };
+
+// The same tokens for drawings that set colours through style (SOW-0037 journey graph).
+export const STATUS_COLOR_VAR: Record<ApplicationStatus, string> = {
+  saved: 'var(--status-saved)',
+  applied: 'var(--status-applied)',
+  screening: 'var(--status-screening)',
+  interview: 'var(--status-interview)',
+  offer: 'var(--status-offer)',
+  rejected: 'var(--status-rejected)',
+  withdrawn: 'var(--status-withdrawn)',
+  no_response: 'var(--status-no-response)',
+};

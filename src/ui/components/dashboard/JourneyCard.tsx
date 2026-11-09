@@ -6,6 +6,7 @@ import {
   type StageStops,
 } from '../../../server/domain/dashboard.js';
 import { STATUS_LABELS } from '../../labels.js';
+import { STATUS_COLOR_VAR } from './status-colors.js';
 import { AFTER_STEP } from './steps.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -23,37 +24,26 @@ const TRUNK_H = 200; // height of the Applied bar
 const MIN_H = 3; // thinnest bar or ribbon that still shows
 const NODE_W = 14;
 const NODE_X0 = 28;
-// Node spacing and exit length are sized so the last stage's longest label still fits in VIEW_W.
+// Spacing and exit length keep one stage's labels clear of the next stage's exits.
 const NODE_GAP = 220;
 const EXIT_DX = 136;
 const EXIT_DROP = 26; // first exit's drop below the point it leaves
 const EXIT_STEP = 14; // extra drop per following exit, so labels never collide
 const CAP_W = 4;
 const LABEL_GAP = 6;
+// Room right of a cap for its label: "1000 no response" at font size 12. The last stage's exits are
+// shortened to keep it, since nothing follows them.
+const LABEL_ROOM = 120;
 const PAD_BOTTOM = 10;
 
 const EXITS = ['waiting', 'rejected', 'no_response', 'withdrawn'] as const;
 type Exit = (typeof EXITS)[number];
 
-const EXIT_WORD: Record<Exit, string> = {
-  waiting: 'waiting',
-  rejected: 'rejected',
-  no_response: 'no response',
-  withdrawn: 'withdrawn',
-};
+// Stops are statuses and read as their labels; waiting is any other status.
+const exitWord = (exit: Exit) => (exit === 'waiting' ? 'waiting' : STATUS_LABELS[exit].toLowerCase());
 
-// CSS variables, so both themes recolour the drawing without new tokens.
-const STAGE_COLOR: Record<FunnelStage, string> = {
-  applied: 'var(--status-applied)',
-  screening: 'var(--status-screening)',
-  interview: 'var(--status-interview)',
-  offer: 'var(--status-offer)',
-};
-const STOP_COLOR: Record<Exclude<Exit, 'waiting'>, string> = {
-  rejected: 'var(--status-rejected)',
-  no_response: 'var(--status-no-response)',
-  withdrawn: 'var(--status-withdrawn)',
-};
+// Stage and stop colours are the status tokens, waiting the stage's own; both themes recolour the drawing.
+const exitColor = (stage: FunnelStage, exit: Exit) => STATUS_COLOR_VAR[exit === 'waiting' ? stage : exit];
 // Still waiting is the stage's own colour, held back so the stops stand out.
 const WAITING_ALPHA = 0.6;
 
@@ -130,12 +120,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 function exitLabel(stage: FunnelStage, exit: Exit, n: number): string {
   // At the last step, still waiting means holding the offer.
   if (stage === 'offer' && exit === 'waiting') return plural(n, 'offer', 'offers');
-  return `${n} ${EXIT_WORD[exit]}`;
+  return `${n} ${exitWord(exit)}`;
 }
 
 function exitTip(stage: FunnelStage, exit: Exit, n: number): string {
   if (stage === 'offer' && exit === 'waiting') return `${n} with an offer`;
-  return `${n} ${EXIT_WORD[exit]} after ${AFTER_STEP[stage]}`;
+  return `${n} ${exitWord(exit)} after ${AFTER_STEP[stage]}`;
 }
 
 function journeyLabel(shapes: StageShape[], sent: number): string {
@@ -185,7 +175,6 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
             viewBox={`0 0 ${VIEW_W} ${height}`}
             width="100%"
             className="block h-auto"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
           >
             <defs>
               {shapes.map((s, i) => {
@@ -193,20 +182,19 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                 return [
                   s.moved && next && (
                     <linearGradient key={`${s.stage}-moved`} id={gradient(`${s.stage}-moved`)}>
-                      <stop offset="0" style={{ stopColor: STAGE_COLOR[s.stage], stopOpacity: 0.45 }} />
-                      <stop offset="1" style={{ stopColor: STAGE_COLOR[next], stopOpacity: 0.45 }} />
+                      <stop offset="0" style={{ stopColor: STATUS_COLOR_VAR[s.stage], stopOpacity: 0.45 }} />
+                      <stop offset="1" style={{ stopColor: STATUS_COLOR_VAR[next], stopOpacity: 0.45 }} />
                     </linearGradient>
                   ),
                   ...s.exits.map((e) => (
                     <linearGradient key={`${s.stage}-${e.exit}`} id={gradient(`${s.stage}-${e.exit}`)}>
-                      <stop offset="0" style={{ stopColor: STAGE_COLOR[s.stage], stopOpacity: 0.35 }} />
+                      <stop offset="0" style={{ stopColor: STATUS_COLOR_VAR[s.stage], stopOpacity: 0.35 }} />
                       <stop
                         offset="1"
-                        style={
-                          e.exit === 'waiting'
-                            ? { stopColor: STAGE_COLOR[s.stage], stopOpacity: WAITING_ALPHA }
-                            : { stopColor: STOP_COLOR[e.exit], stopOpacity: 0.9 }
-                        }
+                        style={{
+                          stopColor: exitColor(s.stage, e.exit),
+                          stopOpacity: e.exit === 'waiting' ? WAITING_ALPHA : 0.9,
+                        }}
                       />
                     </linearGradient>
                   )),
@@ -215,7 +203,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
             </defs>
             {shapes.map((s, i) => {
               const right = s.x + NODE_W;
-              const capX = right + EXIT_DX;
+              const capX = right + Math.min(EXIT_DX, VIEW_W - LABEL_ROOM - LABEL_GAP - CAP_W - right);
               return (
                 <g key={s.stage} data-stage={s.stage}>
                   <text
@@ -252,7 +240,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                   )}
                   {s.exits.map((e) => {
                     const offer = s.stage === 'offer' && e.exit === 'waiting';
-                    const color = e.exit === 'waiting' ? STAGE_COLOR[s.stage] : STOP_COLOR[e.exit];
+                    const color = exitColor(s.stage, e.exit);
                     return (
                       <g key={e.exit} data-exit={e.exit}>
                         <Hover tip={exitTip(s.stage, e.exit, e.count)}>
@@ -279,7 +267,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                           fontSize={12}
                           fontWeight={offer ? 700 : undefined}
                           // The offer colour is light in dark mode and dark in light mode, so it stays readable.
-                          style={{ fill: offer ? 'var(--status-offer)' : 'currentColor' }}
+                          style={{ fill: offer ? STATUS_COLOR_VAR.offer : 'currentColor' }}
                         >
                           {exitLabel(s.stage, e.exit, e.count)}
                         </text>
@@ -295,7 +283,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                         width={NODE_W}
                         height={round(s.nodeH)}
                         rx={4}
-                        style={{ fill: STAGE_COLOR[s.stage] }}
+                        style={{ fill: STATUS_COLOR_VAR[s.stage] }}
                         className={hoverable}
                       />
                     </Hover>

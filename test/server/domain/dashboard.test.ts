@@ -110,6 +110,13 @@ describe('summarizeDashboard', () => {
     });
   });
 
+  it('counts an application moved back to saved as waiting at applied', () => {
+    const a = app({ status: 'saved' });
+    const s = summarizeDashboard([a], [row(a.id, 'applied', 'saved', ago(1))], 0, NOW);
+    expect(s.funnel.applied).toBe(1);
+    expect(s.stopped_at.applied).toEqual({ waiting: 1, rejected: 0, no_response: 0, withdrawn: 0 });
+  });
+
   it('splits every step into the ones that moved on and the ones that stopped there', () => {
     const statuses: ApplicationStatus[] = ['applied', 'screening', 'interview', 'offer', 'rejected', 'no_response', 'withdrawn'];
     const apps: Application[] = [];

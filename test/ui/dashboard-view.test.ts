@@ -3,6 +3,7 @@ import {
   chooseView,
   DASHBOARD_VIEW_STORAGE_KEY,
   JOURNEY_MIN_SENT,
+  JOURNEY_MIN_WIDTH,
   readStoredView,
   storeView,
 } from '../../src/ui/dashboard-view.js';
@@ -30,6 +31,7 @@ describe('chooseView', () => {
   });
 
   it('always uses Breakdown on a narrow window', () => {
+    expect(JOURNEY_MIN_WIDTH).toBe(1280);
     expect(chooseView(null, 200, true)).toBe('breakdown');
     expect(chooseView('journey', 200, true)).toBe('breakdown');
   });

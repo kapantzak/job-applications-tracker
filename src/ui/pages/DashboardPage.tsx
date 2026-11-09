@@ -20,10 +20,9 @@ import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
-import { chooseView, readStoredView, storeView, type DashboardView } from '../dashboard-view.js';
+import { chooseView, readStoredView, storeView, useJourneyFits, type DashboardView } from '../dashboard-view.js';
 import { formatTime } from '../format.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
-import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -58,7 +57,7 @@ function StatCard({ label, value, testId, to, icon }: StatCardProps) {
       <CardHeader>
         <CardDescription>{label}</CardDescription>
         <CardAction className="text-muted-foreground">{icon}</CardAction>
-        <CardTitle className="text-3xl tabular-nums">
+        <CardTitle className="text-3xl">
           <Link
             to={to}
             className="hover:underline"
@@ -81,7 +80,7 @@ export function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const narrow = useIsMobile();
+  const narrow = !useJourneyFits();
   const [storedView, setStoredView] = useState<DashboardView | null>(readStoredView);
 
   // Only an explicit choice is stored, so the automatic rule keeps applying until the user picks.
@@ -215,7 +214,7 @@ export function DashboardPage() {
             </Empty>
           ) : (
             <>
-              {/* The graph needs the width, so narrow windows get Breakdown only (SOW-0037 Decision 6). */}
+              {/* The graph needs the width, so windows under 1280 px get Breakdown only (SOW-0037 Decision 7). */}
               {!narrow && (
                 <div className="-mb-2 flex justify-end">
                   <ButtonGroup aria-label="Dashboard view">
