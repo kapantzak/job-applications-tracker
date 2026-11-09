@@ -1,6 +1,9 @@
 import { useId } from 'react';
 import { MailIcon } from 'lucide-react';
 import type { AdapterStatus } from '../api/client.js';
+import { FIELD_HELP } from '../help-text.js';
+import { ADAPTER_LABELS } from '../labels.js';
+import { InfoTip, WithInfo } from './InfoTip.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -45,8 +48,12 @@ export function AdapterChooser({
 
   return (
     <div className="flex flex-col gap-6">
-      <FieldSet>
-        <FieldLegend variant="label">Agent adapter</FieldLegend>
+      {/* Named by the legend text alone, so the ⓘ button does not join the group's name. */}
+      <FieldSet aria-labelledby={`${prefix}-legend`}>
+        <FieldLegend variant="label" className="flex items-center gap-1">
+          <span id={`${prefix}-legend`}>Agent adapter</span>
+          <InfoTip topic="Agent adapter" text={FIELD_HELP.agentAdapter} />
+        </FieldLegend>
         <RadioGroup
           name="adapter"
           value={adapterId}
@@ -61,7 +68,7 @@ export function AdapterChooser({
                   <RadioGroupItem id={id} value={a.id} />
                   <FieldContent>
                     <FieldTitle>
-                      {a.id}
+                      {ADAPTER_LABELS[a.id]}
                       {a.installed ? (
                         <Badge variant="success">Installed</Badge>
                       ) : (
@@ -78,7 +85,9 @@ export function AdapterChooser({
       </FieldSet>
       {adapterId === 'custom' && (
         <Field>
-          <FieldLabel htmlFor={commandId}>Custom command</FieldLabel>
+          <WithInfo topic="Custom command" text={FIELD_HELP.customCommand}>
+            <FieldLabel htmlFor={commandId}>Custom command</FieldLabel>
+          </WithInfo>
           <Input
             id={commandId}
             className="font-mono"

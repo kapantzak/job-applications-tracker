@@ -51,6 +51,27 @@ beforeEach(() => {
 });
 
 describe('ApplicationsPage', () => {
+  it('explains each field of a new application and lists readable statuses', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Acme');
+    await user.click(screen.getByRole('button', { name: 'Add application' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add application' });
+    for (const topic of ['Company', 'Role', 'URL', 'Status', 'Applied date', 'Notes']) {
+      expect(within(sheet).getByRole('button', { name: `About ${topic}` })).toBeInTheDocument();
+    }
+    expect(within(within(sheet).getByLabelText('Status')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Saved',
+      'Applied',
+      'Screening',
+      'Interview',
+      'Offer',
+      'Rejected',
+      'Withdrawn',
+      'No response',
+    ]);
+  });
+
   it('says what Sync from Gmail searches', async () => {
     renderPage();
     expect(await screen.findByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
@@ -68,7 +89,7 @@ describe('ApplicationsPage', () => {
     });
     await user.selectOptions(select, 'interview');
     expect(client.setApplicationStatus).toHaveBeenCalledWith('pf1', 'a1', 'interview');
-    expect(await screen.findByDisplayValue('interview')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Interview')).toBeInTheDocument();
   });
 
   it('does not render a link for non-http urls', async () => {

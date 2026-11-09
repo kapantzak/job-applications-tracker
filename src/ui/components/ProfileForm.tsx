@@ -8,7 +8,9 @@ import {
 import { mailFilterError, normalizeMailFilter } from '../../server/domain/mail-filter.js';
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, type ProfileInput } from '../api/client.js';
+import { FIELD_HELP } from '../help-text.js';
 import { ErrorAlert, SuccessMessage } from './feedback.js';
+import { WithInfo } from './InfoTip.js';
 import { MailScopeInput } from './MailScopeInput.js';
 import { SeniorityInput } from './SeniorityInput.js';
 import { TagInput } from './TagInput.js';
@@ -118,7 +120,9 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
         <CardContent>
           <FieldGroup>
             <Field data-invalid={nameError ? true : undefined}>
-              <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
+              <WithInfo topic="Name" text={FIELD_HELP.profileName}>
+                <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
+              </WithInfo>
               <Input
                 id={`${id}-name`}
                 value={form.name}
@@ -132,10 +136,22 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
                 <FieldDescription id={`${id}-name-help`}>{PROFILE_NAME_HINT}</FieldDescription>
               )}
             </Field>
-            <TagInput label="Target roles" value={form.target_roles} onChange={(v) => set('target_roles', v)} />
-            <TagInput label="Locations" value={form.locations} onChange={(v) => set('locations', v)} />
+            <TagInput
+              label="Target roles"
+              help={FIELD_HELP.targetRoles}
+              value={form.target_roles}
+              onChange={(v) => set('target_roles', v)}
+            />
+            <TagInput
+              label="Locations"
+              help={FIELD_HELP.locations}
+              value={form.locations}
+              onChange={(v) => set('locations', v)}
+            />
             <Field className="sm:max-w-xs">
-              <FieldLabel htmlFor={`${id}-remote`}>Remote</FieldLabel>
+              <WithInfo topic="Remote" text={FIELD_HELP.remote}>
+                <FieldLabel htmlFor={`${id}-remote`}>Remote</FieldLabel>
+              </WithInfo>
               <NativeSelect
                 id={`${id}-remote`}
                 value={form.remote}
@@ -148,14 +164,22 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
               </NativeSelect>
             </Field>
             <SeniorityInput key={applied} value={form.seniority} onChange={(v) => set('seniority', v)} />
-            <TagInput label="Keywords" value={form.keywords} onChange={(v) => set('keywords', v)} />
+            <TagInput
+              label="Keywords"
+              help={FIELD_HELP.keywords}
+              value={form.keywords}
+              onChange={(v) => set('keywords', v)}
+            />
             <TagInput
               label="Excluded companies"
+              help={FIELD_HELP.excludedCompanies}
               value={form.excluded_companies}
               onChange={(v) => set('excluded_companies', v)}
             />
             <Field>
-              <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
+              <WithInfo topic="Notes" text={FIELD_HELP.profileNotes}>
+                <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
+              </WithInfo>
               <Textarea id={`${id}-notes`} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
             <MailScopeInput

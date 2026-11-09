@@ -1,6 +1,9 @@
 import { useId } from 'react';
 import type { ModelCatalog, Settings } from '../../server/domain/types.js';
 import type { ModelCatalogs } from '../api/client.js';
+import { FIELD_HELP } from '../help-text.js';
+import { ADAPTER_LABELS } from '../labels.js';
+import { InfoTip, WithInfo } from './InfoTip.js';
 import {
   effortWarning,
   FALLBACK_EFFORTS,
@@ -47,11 +50,17 @@ export function AgentModelFields({ adapterId, values, catalogs, onChange }: Agen
   const listId = `${prefix}-models`;
 
   return (
-    <FieldSet>
-      <FieldLegend variant="label">Model and effort</FieldLegend>
+    // Named by the legend text alone, so the ⓘ button does not join the group's name.
+    <FieldSet aria-labelledby={`${prefix}-legend`}>
+      <FieldLegend variant="label" className="flex items-center gap-1">
+        <span id={`${prefix}-legend`}>Model and effort</span>
+        <InfoTip topic="Model and effort" text={FIELD_HELP.modelAndEffort} />
+      </FieldLegend>
       <FieldDescription>
-        Leave the model empty and the effort on Agent default to use what your {adapterId} configuration sets.
-        {catalog?.source === 'unavailable' && ` Could not read the ${adapterId} model list; type a model id.`}
+        Leave the model empty and the effort on Agent default to use what your {ADAPTER_LABELS[adapterId]} configuration
+        sets.
+        {catalog?.source === 'unavailable' &&
+          ` Could not read the ${ADAPTER_LABELS[adapterId]} model list; type a model id.`}
       </FieldDescription>
       <datalist id={listId}>
         {catalog?.models.map((m) => (
@@ -68,7 +77,9 @@ export function AgentModelFields({ adapterId, values, catalogs, onChange }: Agen
           );
           return [
             <Field key={modelKey}>
-              <FieldLabel htmlFor={`${prefix}-${modelKey}`}>Model ({label})</FieldLabel>
+              <WithInfo topic={`Model (${label})`} text={FIELD_HELP.model}>
+                <FieldLabel htmlFor={`${prefix}-${modelKey}`}>Model ({label})</FieldLabel>
+              </WithInfo>
               <Input
                 id={`${prefix}-${modelKey}`}
                 className="font-mono"
@@ -79,7 +90,9 @@ export function AgentModelFields({ adapterId, values, catalogs, onChange }: Agen
               />
             </Field>,
             <Field key={effortKey}>
-              <FieldLabel htmlFor={`${prefix}-${effortKey}`}>Effort ({label})</FieldLabel>
+              <WithInfo topic={`Effort (${label})`} text={FIELD_HELP.effort}>
+                <FieldLabel htmlFor={`${prefix}-${effortKey}`}>Effort ({label})</FieldLabel>
+              </WithInfo>
               <NativeSelect
                 id={`${prefix}-${effortKey}`}
                 value={effort}

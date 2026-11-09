@@ -1,5 +1,7 @@
 import { useId, useState } from 'react';
 import type { MailFilterKind } from '../../server/domain/mail-filter.js';
+import { FIELD_HELP } from '../help-text.js';
+import { InfoTip, WithInfo } from './InfoTip.js';
 import {
   Field,
   FieldContent,
@@ -39,8 +41,12 @@ export function MailScopeInput({ kind, value, error, onChange }: MailScopeInputP
   const helpId = `${id}-help`;
 
   return (
-    <FieldSet>
-      <FieldLegend>Gmail sync</FieldLegend>
+    // Named by the legend text alone, so the ⓘ button does not join the group's name.
+    <FieldSet aria-labelledby={`${id}-legend`}>
+      <FieldLegend className="flex items-center gap-1">
+        <span id={`${id}-legend`}>Gmail sync</span>
+        <InfoTip topic="Gmail sync" text={FIELD_HELP.gmailSync} />
+      </FieldLegend>
       <FieldDescription>
         Tell sync where this profile's replies are in Gmail. Leave it empty to search by company and job-board
         senders. The app never labels or moves mail: create the label and a Gmail filter that applies it yourself.
@@ -69,7 +75,12 @@ export function MailScopeInput({ kind, value, error, onChange }: MailScopeInputP
         </FieldLabel>
       </RadioGroup>
       <Field data-invalid={error ? true : undefined}>
-        <FieldLabel htmlFor={inputId}>{isLabel ? 'Label name' : 'Gmail search'}</FieldLabel>
+        <WithInfo
+          topic={isLabel ? 'Label name' : 'Gmail search'}
+          text={isLabel ? FIELD_HELP.gmailLabel : FIELD_HELP.gmailSearch}
+        >
+          <FieldLabel htmlFor={inputId}>{isLabel ? 'Label name' : 'Gmail search'}</FieldLabel>
+        </WithInfo>
         <Input
           id={inputId}
           value={value}

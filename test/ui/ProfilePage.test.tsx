@@ -48,6 +48,32 @@ beforeEach(() => {
 });
 
 describe('ProfilePage', () => {
+  it('explains every profile field without changing the fields\' names', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    for (const topic of [
+      'Name',
+      'Target roles',
+      'Locations',
+      'Remote',
+      'Seniority',
+      'Keywords',
+      'Excluded companies',
+      'Notes',
+      'Gmail sync',
+      'Label name',
+    ]) {
+      expect(screen.getByRole('button', { name: `About ${topic}` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('textbox', { name: 'Name' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Seniority' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Gmail sync' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'About Excluded companies' }));
+    expect(await screen.findByRole('dialog', { name: 'About Excluded companies' })).toHaveTextContent(
+      'the app does not filter them itself',
+    );
+  });
+
   it('saves the edited fields for the current profile and tells the shell', async () => {
     const user = userEvent.setup();
     vi.mocked(client.updateProfile).mockResolvedValue({ ...TEST_PROFILE, target_roles: ['Engineer', 'Lead'] });
@@ -248,6 +274,20 @@ describe('ProfilePage: Replace CV and Add CV', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('heading', { name: 'Replace your CV' })).not.toBeInTheDocument();
     expect(client.uploadCv).not.toHaveBeenCalled();
+  });
+
+  it('explains a suggested field inside the review panel and closes the help without closing the panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getCvAnalysis).mockResolvedValue(READY);
+    renderPage(WITH_CV);
+    const panel = await openReview(user);
+    // Replace CV lists only the differing fields; use the first one listed.
+    const field = within(panel).getAllByRole('heading', { level: 3 })[0]!.textContent!;
+    await user.click(within(panel).getByRole('button', { name: `About ${field}` }));
+    expect(await screen.findByRole('dialog', { name: `About ${field}` })).toHaveTextContent(/Discovery/);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: `About ${field}` })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: 'Review the suggested changes' })).toBeInTheDocument();
   });
 
   it('lists only the differing fields with Keep current pre-selected, compared with the unsaved form', async () => {

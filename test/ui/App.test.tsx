@@ -10,6 +10,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   getAdapters: vi.fn(),
   listProfiles: vi.fn(),
   getProfileBySlug: vi.fn(),
+  getHealth: vi.fn(),
   listProposals: vi.fn(),
   listJobs: vi.fn(),
   updateProfile: vi.fn(),
@@ -21,6 +22,7 @@ async function renderApp(path: string, configure?: (client: typeof ClientModule)
   vi.resetModules();
   const client = await import('../../src/ui/api/client.js');
   vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'claude' } as never);
+  vi.mocked(client.getHealth).mockResolvedValue({ ok: true, version: '9.9.9', dataDir: '/data' });
   vi.mocked(client.getAdapters).mockResolvedValue([{ id: 'claude', installed, gmail_guide: false }]);
   vi.mocked(client.listProfiles).mockResolvedValue([]);
   vi.mocked(client.getCvAnalysis).mockResolvedValue(null);

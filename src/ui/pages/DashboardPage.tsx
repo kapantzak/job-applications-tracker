@@ -22,6 +22,7 @@ import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { chooseView, readStoredView, storeView, useJourneyFits, type DashboardView } from '../dashboard-view.js';
 import { formatTime } from '../format.js';
+import { SCREEN_INTROS } from '../help-text.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -141,6 +142,7 @@ export function DashboardPage() {
     <div>
       <PageHeader
         title="Dashboard"
+        description={SCREEN_INTROS.dashboard}
         actions={
           <>
             <FindJobsButton

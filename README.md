@@ -25,6 +25,44 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 2. Profile: the app opens on your profiles. With none yet, it offers two ways to create one: start from your CV (see below), or fill in the form by hand with a name, target roles, locations, remote preference, seniority, keywords and companies to exclude.
 3. Find jobs: open the profile and start a discovery run from its Dashboard or Jobs screen, then follow its progress.
 
+Not sure what a field asks for? Click the ⓘ next to it. Every screen also says what it is for under its title.
+
+## Tour
+
+The screenshots use the invented data of `npm run sandbox:mock`.
+
+**Profiles.** One profile per job search, each with its own jobs, applications and runs.
+
+![Profiles screen with four profile cards](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profiles.png)
+
+**Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, where every application stands, how far they get, and what needs your attention.
+
+![Dashboard with status tiles, a status bar, a funnel and a needs-attention list](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
+
+**Jobs.** Openings your agent found, with each link checked by the app and a Fit column for location, remote and seniority.
+
+![Jobs table with verification badges and fit checks](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/jobs.png)
+
+**Applications.** Everything you applied to, with its status. Sync from Gmail proposes changes; you can also change a status yourself.
+
+![Applications table with a status per row](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/applications.png)
+
+**Review.** Status changes proposed from your mail, with the evidence. Nothing changes until you accept.
+
+![Review screen with proposals showing sender, date, subject and snippet](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/review.png)
+
+**Profile.** What you are looking for. The ⓘ next to each field explains what it asks for and how the app uses it.
+
+![Profile form with the help for Target roles open](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profile-help.png)
+
+**Run.** One job search or Gmail sync: what the agent did, in plain words, and the result.
+
+![Run page with run details and a readable log](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/run.png)
+
+**Settings.** The agent and app settings, shared by all profiles, each with its own help.
+
+![Settings Runs and Server sections with the Sync interval help open](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/settings.png)
+
 ## Profiles
 
 - Keep one profile per search, for example "Platform roles" and "Data roles". Each profile has its own jobs, applications, proposals and runs; the agent and app settings are shared.
@@ -167,6 +205,27 @@ Sync needs a Gmail tool in your agent.
   3. Run `jobtrack config set data-dir ~/Documents/jobs`.
 - Avoid folders synced by iCloud Drive, Dropbox or similar: syncing the database while the app is running can corrupt it.
 
+## Moving to another device
+
+All your data is in the data folder, so moving to another computer means copying that folder.
+
+1. On the old device, stop the app (Ctrl+C in its terminal), so everything is written to disk.
+2. Copy the whole data folder. `jobtrack config get data-dir` shows where it is; by default it is `~/.job-applications-tracker`. Copy the folder itself, so `data.db-wal` and `data.db-shm` go with `data.db`.
+3. On the new device, install the same version of the app or a newer one (`jobtrack --version` shows it). An older version opens a newer database without a warning and may mishandle it.
+4. Put the folder in place before you start the app there:
+   - at `~/.job-applications-tracker`, the default: the app finds it and does not ask where to keep data;
+   - anywhere else: run `jobtrack config set data-dir <path>`.
+
+   If the app already ran on the new device, stop it first and replace its data folder, or point it at the copy with `config set`.
+5. Install your agent CLI on the new device and sign in. Claude Code's Gmail connector belongs to your claude.ai account; for Codex or a custom command, set up its Gmail MCP server again.
+6. Start the app and open Settings → Agent. The agent choice, custom command, permissions and port came with the data; a custom command may point to paths that do not exist on this device.
+
+Keep in mind:
+
+- The database stores file names, not full paths, so the folder works wherever you put it.
+- The folder holds your CVs, and run logs can hold mail snippets. Move it over a channel you trust, such as your own drive, and delete copies you no longer need.
+- Use the app on one device at a time. Two copies never merge: changes made on the old device after the copy stay there.
+
 ## Command line
 
 ```
@@ -194,6 +253,8 @@ jobtrack config unset data-dir
 
 - The Dashboard shows In progress, Interviews, Offers, Rejected and To review tiles (each number links to the rows behind it), a bar of every status with a legend (Rejected in red, as in the status badges), how far applications get (Applied → Screening → Interview → Offer, with the share of the step above, and in red how many were rejected after each step), and applications with no change in 14 days ("Applied 20 days ago, no reply"; five shown, "Show 3 more" for the rest). A profile with no applications shows "No applications yet". Chart tooltips appear on hover; the legend links are the keyboard route to the same counts.
 - On wide windows (1280 px or more) the Dashboard offers two views under the tiles: Journey, a flow graph where applications move from Applied to Offer and those that stop at a stage branch off (waiting, rejected, no response, withdrawn), and Breakdown, the bar and funnel described above. Journey is the default from 10 sent applications; your choice is remembered in the browser.
+- Every form field has an ⓘ button next to its label: click it (or press Enter on it) to see what the field asks for and how the app uses it. Esc or a click elsewhere closes it. Every screen says what it is for under its title.
+- Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository (where you can star the project) and the issue tracker. The links open in a new tab; the app never contacts GitHub by itself.
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
 - Purging run logs, dismissing a job, cancelling a run, cancelling or discarding a CV analysis and removing a CV ask for confirmation first.
 - The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick a date range on a calendar (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; rows without a date drop out). Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back. The Runs table loads the newest 200 runs.

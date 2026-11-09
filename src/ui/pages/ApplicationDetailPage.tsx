@@ -4,10 +4,12 @@ import { Link, useParams } from 'react-router-dom';
 import { getApplication, patchApplication, type ApplicationDetail } from '../api/client.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
+import { WithInfo } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { TagInput } from '../components/TagInput.js';
 import { dayToIso, formatTime, isoToDay } from '../format.js';
+import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useListReturnHref } from '../hooks/use-table-view.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -93,6 +95,7 @@ export function ApplicationDetailPage() {
             {app.company} - {app.role}
           </>
         }
+        description={SCREEN_INTROS.applicationDetail}
         actions={<StatusBadge status={app.status} />}
       />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -107,7 +110,9 @@ export function ApplicationDetailPage() {
               <FieldGroup>
                 <div className="grid grid-cols-2 gap-4">
                   <Field>
-                    <FieldLabel htmlFor={`${fieldId}-company`}>Company</FieldLabel>
+                    <WithInfo topic="Company" text={FIELD_HELP.company}>
+                      <FieldLabel htmlFor={`${fieldId}-company`}>Company</FieldLabel>
+                    </WithInfo>
                     <Input
                       id={`${fieldId}-company`}
                       value={company}
@@ -116,16 +121,22 @@ export function ApplicationDetailPage() {
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor={`${fieldId}-role`}>Role</FieldLabel>
+                    <WithInfo topic="Role" text={FIELD_HELP.role}>
+                      <FieldLabel htmlFor={`${fieldId}-role`}>Role</FieldLabel>
+                    </WithInfo>
                     <Input id={`${fieldId}-role`} value={role} onChange={(e) => setRole(e.target.value)} required />
                   </Field>
                 </div>
                 <Field>
-                  <FieldLabel htmlFor={`${fieldId}-url`}>URL</FieldLabel>
+                  <WithInfo topic="URL" text={FIELD_HELP.url}>
+                    <FieldLabel htmlFor={`${fieldId}-url`}>URL</FieldLabel>
+                  </WithInfo>
                   <Input id={`${fieldId}-url`} value={url} onChange={(e) => setUrl(e.target.value)} />
                 </Field>
                 <Field className="max-w-xs">
-                  <FieldLabel htmlFor={`${fieldId}-applied`}>Applied date</FieldLabel>
+                  <WithInfo topic="Applied date" text={FIELD_HELP.appliedDate}>
+                    <FieldLabel htmlFor={`${fieldId}-applied`}>Applied date</FieldLabel>
+                  </WithInfo>
                   <Input
                     id={`${fieldId}-applied`}
                     type="date"
@@ -134,10 +145,18 @@ export function ApplicationDetailPage() {
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor={`${fieldId}-notes`}>Notes</FieldLabel>
+                  <WithInfo topic="Notes" text={FIELD_HELP.applicationNotes}>
+                    <FieldLabel htmlFor={`${fieldId}-notes`}>Notes</FieldLabel>
+                  </WithInfo>
                   <Textarea id={`${fieldId}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} />
                 </Field>
-                <TagInput label="Sender domains" value={domains} onChange={setDomains} placeholder="example.com" />
+                <TagInput
+                  label="Sender domains"
+                  help={FIELD_HELP.senderDomains}
+                  value={domains}
+                  onChange={setDomains}
+                  placeholder="example.com"
+                />
               </FieldGroup>
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-3 border-t">

@@ -1,4 +1,5 @@
 import { APPLICATION_STATUSES, type ApplicationStatus } from '../../server/domain/types.js';
+import { STATUS_LABELS } from '../labels.js';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 interface StatusSelectProps {
@@ -21,7 +22,7 @@ export function StatusSelect({ id, value, onChange, disabled, size }: StatusSele
     >
       {APPLICATION_STATUSES.map((s) => (
         <NativeSelectOption key={s} value={s}>
-          {s}
+          {STATUS_LABELS[s]}
         </NativeSelectOption>
       ))}
     </NativeSelect>
