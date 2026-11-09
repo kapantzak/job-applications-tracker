@@ -183,6 +183,7 @@ jobtrack config unset data-dir
 
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
 - Purging run logs, dismissing a job, cancelling a run, cancelling or discarding a CV analysis and removing a CV ask for confirmation first.
+- The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick a date range on a calendar (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; rows without a date drop out). Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back. The Runs table loads the newest 200 runs.
 - The run log shows what the agent is doing in plain words (web searches, pages opened, Gmail reads, errors, a finish summary). Tick "Show raw output" to see everything the agent printed, exactly as saved.
 - Desktop browsers only. The interface needs Chrome or Edge 111+, Safari 16.4+, or Firefox 128+.
 

@@ -9,6 +9,7 @@ import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
 import { formatTime, formatUsage } from '../format.js';
+import { useListReturnHref } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -23,6 +24,7 @@ const NO_GMAIL = 'Your agent has no Gmail tool';
 export function RunPage() {
   const profileId = useProfileId();
   const href = useProfileHref();
+  const backHref = useListReturnHref(href('/runs'));
   const { id = '' } = useParams();
   const [run, setRun] = useState<Run | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -101,7 +103,7 @@ export function RunPage() {
     <div className="flex flex-col gap-6">
       <div>
         <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-          <Link to={href('/runs')}>
+          <Link to={backHref}>
             <ArrowLeftIcon />
             Runs
           </Link>

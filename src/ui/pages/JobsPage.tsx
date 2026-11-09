@@ -8,13 +8,26 @@ import {
   saveJob,
   startDiscovery,
 } from '../api/client.js';
-import type { ApplicationStatus, EffortMode, FitChecks, FitVerdict, JobListItem } from '../../server/domain/types.js';
+import {
+  APPLICATION_STATUSES,
+  VERIFICATION_STATUSES,
+  type ApplicationStatus,
+  type EffortMode,
+  type FitChecks,
+  type FitVerdict,
+  type JobListItem,
+} from '../../server/domain/types.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
-import { VerificationBadge } from '../components/VerificationBadge.js';
+import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
+import { VERIFICATION_LABELS, VerificationBadge } from '../components/VerificationBadge.js';
+import { formatTime } from '../format.js';
+import { useTableView } from '../hooks/use-table-view.js';
+import { STATUS_LABELS } from '../labels.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
+import { type ColumnDef, orderIndex } from '../table-view.js';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +79,98 @@ function FitBadges({ checks }: { checks: FitChecks | null }) {
   );
 }
 
+// One verdict for the whole row, for the Fit filter: any mismatch wins, then anything not stated.
+type FitSummary = 'pass' | 'unknown' | 'fail' | 'none';
+const FIT_SUMMARY_ORDER: readonly FitSummary[] = ['pass', 'unknown', 'fail', 'none'];
+const FIT_SUMMARY_LABELS: Record<FitSummary, string> = {
+  pass: 'All match',
+  unknown: 'Some not stated',
+  fail: 'Has a mismatch',
+  none: 'No verdict',
+};
+function fitSummary(checks: FitChecks | null): FitSummary {
+  if (!checks) return 'none';
+  const verdicts = FIT_FIELDS.map(([field]) => checks[field]);
+  if (verdicts.includes('fail')) return 'fail';
+  return verdicts.every((v) => v === 'pass') ? 'pass' : 'unknown';
+}
+const fitPasses = (checks: FitChecks | null) =>
+  checks ? FIT_FIELDS.filter(([field]) => checks[field] === 'pass').length : null;
+// "Not tracked" is a real choice in the Application filter, so it is not the empty option.
+const NOT_TRACKED = 'none';
+const APPLICATION_ORDER = [...APPLICATION_STATUSES, NOT_TRACKED];
+
+const COLUMNS: ColumnDef<JobListItem>[] = [
+  {
+    id: 'company',
+    label: 'Company',
+    sortValue: (j) => j.company,
+    searchText: (j) => j.company,
+    filter: { kind: 'values', value: (j) => j.company },
+  },
+  {
+    id: 'title',
+    label: 'Title',
+    sortValue: (j) => j.title,
+    searchText: (j) => j.title,
+    filter: { kind: 'text', value: (j) => j.title },
+  },
+  {
+    id: 'location',
+    label: 'Location',
+    sortValue: (j) => j.location,
+    searchText: (j) => j.location,
+    filter: { kind: 'values', value: (j) => j.location, emptyLabel: 'No location' },
+  },
+  {
+    id: 'source',
+    label: 'Source',
+    sortValue: (j) => j.source_site,
+    searchText: (j) => j.source_site,
+    filter: { kind: 'values', value: (j) => j.source_site, emptyLabel: 'No source' },
+  },
+  {
+    id: 'fit',
+    label: 'Fit',
+    sortValue: (j) => fitPasses(j.fit_checks),
+    filter: {
+      kind: 'values',
+      value: (j) => fitSummary(j.fit_checks),
+      order: FIT_SUMMARY_ORDER,
+      optionLabel: (v) => FIT_SUMMARY_LABELS[v as FitSummary] ?? v,
+    },
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    sortValue: (j) => orderIndex(VERIFICATION_STATUSES, j.verification_status),
+    filter: {
+      kind: 'values',
+      value: (j) => j.verification_status,
+      order: VERIFICATION_STATUSES,
+      optionLabel: (v) => VERIFICATION_LABELS[v as keyof typeof VERIFICATION_LABELS] ?? v,
+    },
+  },
+  {
+    id: 'found',
+    label: 'Found',
+    sortValue: (j) => j.created_at,
+    filter: { kind: 'date', value: (j) => j.created_at },
+  },
+  // Shown as a badge in the Actions column, so it filters but has no header to sort by.
+  {
+    id: 'application',
+    label: 'Application',
+    filter: {
+      kind: 'values',
+      value: (j) => j.application_status ?? NOT_TRACKED,
+      order: APPLICATION_ORDER,
+      optionLabel: (v) => (v === NOT_TRACKED ? 'Not tracked' : (STATUS_LABELS[v as ApplicationStatus] ?? v)),
+    },
+  },
+];
+const NO_JOBS: JobListItem[] = [];
+
 export function JobsPage() {
   const id = useId();
   const profileId = useProfileId();
@@ -76,6 +181,7 @@ export function JobsPage() {
   const [includeDismissed, setIncludeDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const view = useTableView(COLUMNS, jobs ?? NO_JOBS);
 
   useEffect(() => {
     let active = true;
@@ -152,99 +258,122 @@ export function JobsPage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <Card className="py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">Company</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Fit</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="pr-4 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs.map((job) => {
-                  const href = job.canonical_url || job.url;
-                  return (
-                    <TableRow key={job.id}>
-                      <TableCell className="pl-4 font-medium">{job.company}</TableCell>
-                      <TableCell className="max-w-64 truncate">{job.title}</TableCell>
-                      <TableCell className="text-muted-foreground">{job.location ?? '–'}</TableCell>
-                      <TableCell className="text-muted-foreground">{job.source_site ?? '–'}</TableCell>
-                      <TableCell>
-                        <FitBadges checks={job.fit_checks} />
-                      </TableCell>
-                      <TableCell>
-                        <VerificationBadge status={job.verification_status} />
-                      </TableCell>
-                      <TableCell className="pr-4">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {isHttpUrl(href) && (
-                            <Button asChild variant="ghost" size="sm">
-                              <a href={href} target="_blank" rel="noopener noreferrer">
-                                <ExternalLinkIcon />
-                                Open
-                              </a>
-                            </Button>
-                          )}
-                          {job.application_status && <StatusBadge status={job.application_status} />}
-                          {!job.application_status && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => run(() => saveJob(profileId, job.id), (a) => setStatus(job.id, a.status))}
-                            >
-                              <BookmarkIcon />
-                              Save
-                            </Button>
-                          )}
-                          {(!job.application_status || job.application_status === 'saved') && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => run(() => markApplied(profileId, job.id), (a) => setStatus(job.id, a.status))}
-                            >
-                              <CheckIcon />
-                              Mark applied
-                            </Button>
-                          )}
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
-                                <XIcon />
-                                Dismiss
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Dismiss this job?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {job.company}, {job.title} will be hidden from the list. Turn on Show dismissed to
-                                  see it again.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => run(() => dismissJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
-                                >
-                                  Dismiss job
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+          <>
+            <TableToolbar view={view} noun="jobs" />
+            {view.visible.length === 0 ? (
+              <NoMatches onClear={view.reset} />
+            ) : (
+              <Card className="py-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortableHead view={view} id="company" className="pl-4">
+                        Company
+                      </SortableHead>
+                      <SortableHead view={view} id="title">
+                        Title
+                      </SortableHead>
+                      <SortableHead view={view} id="location">
+                        Location
+                      </SortableHead>
+                      <SortableHead view={view} id="source">
+                        Source
+                      </SortableHead>
+                      <SortableHead view={view} id="fit">
+                        Fit
+                      </SortableHead>
+                      <SortableHead view={view} id="status">
+                        Status
+                      </SortableHead>
+                      <SortableHead view={view} id="found">
+                        Found
+                      </SortableHead>
+                      <TableHead className="pr-4 text-right">Actions</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {view.visible.map((job) => {
+                      const href = job.canonical_url || job.url;
+                      return (
+                        <TableRow key={job.id}>
+                          <TableCell className="pl-4 font-medium">{job.company}</TableCell>
+                          <TableCell className="max-w-64 truncate">{job.title}</TableCell>
+                          <TableCell className="text-muted-foreground">{job.location ?? '–'}</TableCell>
+                          <TableCell className="text-muted-foreground">{job.source_site ?? '–'}</TableCell>
+                          <TableCell>
+                            <FitBadges checks={job.fit_checks} />
+                          </TableCell>
+                          <TableCell>
+                            <VerificationBadge status={job.verification_status} />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">{formatTime(job.created_at)}</TableCell>
+                          <TableCell className="pr-4">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isHttpUrl(href) && (
+                                <Button asChild variant="ghost" size="sm">
+                                  <a href={href} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLinkIcon />
+                                    Open
+                                  </a>
+                                </Button>
+                              )}
+                              {job.application_status && <StatusBadge status={job.application_status} />}
+                              {!job.application_status && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => run(() => saveJob(profileId, job.id), (a) => setStatus(job.id, a.status))}
+                                >
+                                  <BookmarkIcon />
+                                  Save
+                                </Button>
+                              )}
+                              {(!job.application_status || job.application_status === 'saved') && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => run(() => markApplied(profileId, job.id), (a) => setStatus(job.id, a.status))}
+                                >
+                                  <CheckIcon />
+                                  Mark applied
+                                </Button>
+                              )}
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
+                                    <XIcon />
+                                    Dismiss
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Dismiss this job?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {job.company}, {job.title} will be hidden from the list. Turn on Show dismissed to
+                                      see it again.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => run(() => dismissJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
+                                    >
+                                      Dismiss job
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </div>

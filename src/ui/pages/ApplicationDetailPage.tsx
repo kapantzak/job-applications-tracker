@@ -8,6 +8,7 @@ import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { TagInput } from '../components/TagInput.js';
 import { formatTime } from '../format.js';
+import { useListReturnHref } from '../hooks/use-table-view.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -21,6 +22,7 @@ export function ApplicationDetailPage() {
   const fieldId = useId();
   const profileId = useProfileId();
   const href = useProfileHref();
+  const backHref = useListReturnHref(href('/applications'));
   const { id = '' } = useParams();
   const [app, setApp] = useState<ApplicationDetail | null>(null);
   const [company, setCompany] = useState('');
@@ -82,7 +84,7 @@ export function ApplicationDetailPage() {
   return (
     <div>
       <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-        <Link to={href('/applications')}>
+        <Link to={backHref}>
           <ArrowLeftIcon />
           Applications
         </Link>
