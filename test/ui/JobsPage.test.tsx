@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JobsPage } from '../../src/ui/pages/JobsPage.js';
 import * as client from '../../src/ui/api/client.js';
@@ -48,10 +48,15 @@ function job(over: Partial<JobListItem>): JobListItem {
 const unverified = job({ id: 'j1', company: 'Acme', verification_status: 'unverified' });
 const dead = job({ id: 'j2', company: 'Deadco', verification_status: 'dead' });
 
-function renderPage() {
+function SearchProbe() {
+  return <output data-testid="search">{useLocation().search}</output>;
+}
+
+function renderPage(search = '') {
   return render(
     <InProfile>
-      <MemoryRouter initialEntries={['/profiles/platform-roles/jobs']}>
+      <MemoryRouter initialEntries={[`/profiles/platform-roles/jobs${search}`]}>
+        <SearchProbe />
         <Routes>
           <Route path="/profiles/:profileSlug/jobs" element={<JobsPage />} />
           <Route path="/profiles/:profileSlug/runs/:id" element={<p>Run page</p>} />
@@ -300,3 +305,196 @@ describe('JobsPage max-effort search', () => {
   });
 });
 
+
+describe('JobsPage sorting, search and filters', () => {
+  // Server order is newest first.
+  const jobs = [
+    job({
+      id: 'j3',
+      company: 'Initech',
+      title: 'SRE',
+      location: 'Remote',
+      source_site: 'boards.example.com',
+      created_at: '2026-11-06T10:00:00',
+      application_status: 'applied',
+    }),
+    job({
+      id: 'j2',
+      company: 'Globex',
+      title: 'Data Engineer',
+      location: 'Remote',
+      source_site: null,
+      fit_checks: { location: 'pass', remote: 'pass', seniority: 'pass' },
+      created_at: '2026-11-04T10:00:00',
+      application_status: 'saved',
+    }),
+    job({
+      id: 'j1',
+      company: 'Acme',
+      title: 'Platform Engineer',
+      location: 'Berlin',
+      source_site: 'jobs.example.com',
+      fit_checks: { location: 'pass', remote: 'fail', seniority: 'pass' },
+      created_at: '2026-11-01T10:00:00',
+    }),
+  ];
+  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0]!.textContent);
+  const toolbar = () => screen.getByRole('group', { name: 'Filter jobs' });
+  const header = (name: string) => screen.getByRole('columnheader', { name: new RegExp(`^${name}`) });
+
+  beforeEach(() => {
+    vi.mocked(client.listJobs).mockResolvedValue(jobs);
+  });
+
+  it('sorts by a column: ascending, descending, then the default order', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    expect(header('Company')).toHaveAttribute('aria-sort', 'none');
+
+    await user.click(within(header('Company')).getByRole('button'));
+    expect(companies()).toEqual(['Acme', 'Globex', 'Initech']);
+    expect(header('Company')).toHaveAttribute('aria-sort', 'ascending');
+    expect(screen.getByTestId('search')).toHaveTextContent('?sort=company');
+
+    await user.click(within(header('Company')).getByRole('button'));
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    expect(header('Company')).toHaveAttribute('aria-sort', 'descending');
+
+    await user.click(within(header('Found')).getByRole('button'));
+    expect(companies()).toEqual(['Acme', 'Globex', 'Initech']);
+    expect(header('Company')).toHaveAttribute('aria-sort', 'none');
+
+    await user.click(within(header('Found')).getByRole('button'));
+    await user.click(within(header('Found')).getByRole('button'));
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    expect(screen.getByTestId('search')).toBeEmptyDOMElement();
+  });
+
+  it('sorts Fit by the number of passes, with jobs without verdicts last', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await user.click(within(header('Fit')).getByRole('button'));
+    expect(companies()).toEqual(['Acme', 'Globex', 'Initech']);
+    await user.click(within(header('Fit')).getByRole('button'));
+    expect(companies()).toEqual(['Globex', 'Acme', 'Initech']);
+  });
+
+  it('searches the text columns and counts what is shown', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    expect(screen.getByText('Showing 3 of 3 jobs')).toBeInTheDocument();
+    await user.type(within(toolbar()).getByRole('searchbox', { name: 'Search jobs' }), 'engineer');
+    expect(companies()).toEqual(['Globex', 'Acme']);
+    expect(screen.getByText('Showing 2 of 3 jobs')).toBeInTheDocument();
+    await user.clear(screen.getByRole('searchbox', { name: 'Search jobs' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search jobs' }), ' berlin');
+    expect(companies()).toEqual(['Acme']);
+    // A leading space stays in the box while typing; it is not part of the match.
+    expect(screen.getByRole('searchbox', { name: 'Search jobs' })).toHaveValue(' berlin');
+  });
+
+  it('filters by checked values with counts, and shows the choice on the button', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await user.click(within(toolbar()).getByRole('button', { name: /^Filter by location/ }));
+    const popover = await screen.findByRole('dialog', { name: 'Filter by location' });
+    const remote = within(popover).getByRole('checkbox', { name: 'Remote' });
+    expect(remote.parentElement).toHaveTextContent('Remote2');
+    await user.click(remote);
+    expect(companies()).toEqual(['Initech', 'Globex']);
+    expect(within(toolbar()).getByRole('button', { name: /^Filter by location/ })).toHaveTextContent('Remote');
+    await user.click(within(popover).getByRole('checkbox', { name: 'Berlin' }));
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    expect(within(toolbar()).getByRole('button', { name: 'Filter by location: 2 selected' })).toHaveTextContent('2 selected');
+  });
+
+  it('filters by an empty value, the fit summary and the application status', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+
+    await user.click(within(toolbar()).getByRole('button', { name: /^Filter by source/ }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by source' })).getByRole('checkbox', { name: 'No source' }));
+    expect(companies()).toEqual(['Globex']);
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    await user.click(within(toolbar()).getByRole('button', { name: /^Filter by fit/ }));
+    const fit = await screen.findByRole('dialog', { name: 'Filter by fit' });
+    expect(within(fit).getAllByRole('checkbox').map((c) => c.parentElement!.textContent)).toEqual([
+      'All match1',
+      'Has a mismatch1',
+      'No verdict1',
+    ]);
+    await user.click(within(fit).getByRole('checkbox', { name: 'Has a mismatch' }));
+    expect(companies()).toEqual(['Acme']);
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    await user.click(within(toolbar()).getByRole('button', { name: /^Filter by application/ }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by application' })).getByRole('checkbox', { name: 'Not tracked' }));
+    expect(companies()).toEqual(['Acme']);
+  });
+
+  it('filters the title by text', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await user.click(within(toolbar()).getByRole('button', { name: /^Filter by title/ }));
+    await user.type(await screen.findByRole('textbox', { name: 'Title contains' }), 'data');
+    expect(companies()).toEqual(['Globex']);
+    expect(screen.getByTestId('search')).toHaveTextContent('?title=data');
+  });
+
+  it('filters the Found date with a range picked on the calendar', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 9, 12));
+    try {
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('Initech');
+      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found/ }));
+      const popover = await screen.findByRole('dialog', { name: 'Filter by found' });
+      await user.click(within(popover).getByRole('button', { name: /November 4th, 2026/ }));
+      expect(companies()).toEqual(['Globex']);
+      await user.click(within(popover).getByRole('button', { name: /November 6th, 2026/ }));
+      expect(companies()).toEqual(['Initech', 'Globex']);
+      expect(screen.getByTestId('search')).toHaveTextContent('?found=2026-11-04..2026-11-06');
+      await user.click(within(popover).getByRole('button', { name: 'Clear' }));
+      expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the view from the URL and keeps it when the list reloads after a dismiss', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.dismissJob).mockResolvedValue(undefined);
+    renderPage('?q=engineer&sort=company');
+    await screen.findByText('Globex');
+    expect(companies()).toEqual(['Acme', 'Globex']);
+    expect(screen.getByRole('searchbox', { name: 'Search jobs' })).toHaveValue('engineer');
+    vi.mocked(client.listJobs).mockResolvedValue(jobs.slice(0, 2));
+    await user.click(within(screen.getByText('Acme').closest('tr')!).getByRole('button', { name: 'Dismiss' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Dismiss job' }));
+    await vi.waitFor(() => expect(companies()).toEqual(['Globex']));
+    expect(screen.getByTestId('search')).toHaveTextContent('?q=engineer&sort=company');
+  });
+
+  it('says when nothing matches and clears search and filters, keeping the sort', async () => {
+    const user = userEvent.setup();
+    renderPage('?q=nothing&company=Acme&sort=-company');
+    expect(await screen.findByText('No rows match your filters')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search jobs' })).toHaveValue('nothing');
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    await vi.waitFor(() => expect(screen.getByRole('searchbox', { name: 'Search jobs' })).toHaveValue(''));
+    expect(screen.getByTestId('search')).toHaveTextContent('?sort=-company');
+  });
+});

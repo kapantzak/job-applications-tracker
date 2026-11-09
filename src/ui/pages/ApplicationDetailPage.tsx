@@ -7,7 +7,8 @@ import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { TagInput } from '../components/TagInput.js';
-import { formatTime } from '../format.js';
+import { dayToIso, formatTime, isoToDay } from '../format.js';
+import { useListReturnHref } from '../hooks/use-table-view.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -15,12 +16,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '');
-
 export function ApplicationDetailPage() {
   const fieldId = useId();
   const profileId = useProfileId();
   const href = useProfileHref();
+  const backHref = useListReturnHref(href('/applications'));
   const { id = '' } = useParams();
   const [app, setApp] = useState<ApplicationDetail | null>(null);
   const [company, setCompany] = useState('');
@@ -44,7 +44,7 @@ export function ApplicationDetailPage() {
         setRole(a.role);
         setUrl(a.url ?? '');
         setNotes(a.notes ?? '');
-        setAppliedDate(toDateInput(a.applied_at));
+        setAppliedDate(isoToDay(a.applied_at));
         setDomains(a.sender_domains);
       })
       .catch((e: unknown) => {
@@ -67,7 +67,7 @@ export function ApplicationDetailPage() {
         url: url || null,
         notes: notes || null,
         sender_domains: domains,
-        applied_at: appliedDate ? new Date(`${appliedDate}T00:00:00Z`).toISOString() : null,
+        applied_at: appliedDate ? dayToIso(appliedDate) : null,
       });
       setSaved(true);
     } catch (err) {
@@ -82,7 +82,7 @@ export function ApplicationDetailPage() {
   return (
     <div>
       <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-        <Link to={href('/applications')}>
+        <Link to={backHref}>
           <ArrowLeftIcon />
           Applications
         </Link>

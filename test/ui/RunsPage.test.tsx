@@ -186,3 +186,65 @@ describe('RunsPage cancel', () => {
     expect(screen.getByText('2 new')).toBeInTheDocument();
   });
 });
+
+describe('RunsPage sorting and filters', () => {
+  const runs = [
+    { ...makeRun('run-c', 'running', 'sync_mail'), started_at: '2026-11-06T10:00:00' },
+    { ...makeRun('run-b', 'failed'), started_at: '2026-11-04T10:00:00', finished_at: '2026-11-04T10:05:00', error: 'Agent timed out' },
+    { ...makeRun('run-a', 'succeeded'), started_at: '2026-11-01T10:00:00', finished_at: '2026-11-01T10:09:00', summary: '4 new jobs' },
+  ];
+  const order = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => r.querySelector('a')!.getAttribute('href')!.split('/').pop());
+
+  it('asks for the newest 200 runs and says so when that many are loaded', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue(Array.from({ length: 200 }, (_, i) => makeRun(`run-${i}`, 'succeeded')));
+    renderPage();
+    expect(await screen.findByText('Showing 200 of 200 runs. Only the newest 200 runs are loaded')).toBeInTheDocument();
+    expect(client.listRuns).toHaveBeenCalledWith('pf1', 200);
+  });
+
+  it('does not mention the limit below it', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue(runs);
+    renderPage();
+    expect(await screen.findByText('Showing 3 of 3 runs')).toBeInTheDocument();
+  });
+
+  it('sorts by Finished with unfinished runs last, and searches the result', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listRuns).mockResolvedValue(runs);
+    renderPage();
+    await screen.findByText('4 new jobs');
+    await user.click(within(screen.getByRole('columnheader', { name: /^Finished/ })).getByRole('button'));
+    expect(order()).toEqual(['run-a', 'run-b', 'run-c']);
+    await user.type(screen.getByRole('searchbox', { name: 'Search runs' }), 'timed out');
+    expect(order()).toEqual(['run-b']);
+  });
+
+  it('filters by kind and status', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listRuns).mockResolvedValue(runs);
+    renderPage();
+    await screen.findByText('4 new jobs');
+    await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by kind/ }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by kind' })).getByRole('checkbox', { name: 'discover_jobs' }));
+    expect(order()).toEqual(['run-b', 'run-a']);
+    await user.keyboard('{Escape}');
+    await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by status/ }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by status' })).getByRole('checkbox', { name: 'failed' }));
+    expect(order()).toEqual(['run-b']);
+  });
+
+  it('filters the Started date', async () => {
+    vi.mocked(client.listRuns).mockResolvedValue(runs);
+    render(
+      <InProfile>
+        <MemoryRouter initialEntries={['/profiles/platform-roles/runs?started=2026-11-02..2026-11-06']}>
+          <Routes>
+            <Route path="/profiles/:profileSlug/runs" element={<RunsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </InProfile>,
+    );
+    await screen.findByText('Agent timed out');
+    expect(order()).toEqual(['run-c', 'run-b']);
+  });
+});

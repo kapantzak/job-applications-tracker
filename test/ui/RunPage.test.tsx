@@ -36,10 +36,10 @@ const run: Run = {
   created_at: '2026-01-01T00:00:00Z',
 };
 
-function renderPage() {
+function renderPage(listSearch?: string) {
   return render(
     <InProfile>
-      <MemoryRouter initialEntries={['/profiles/platform-roles/runs/r1']}>
+      <MemoryRouter initialEntries={[{ pathname: '/profiles/platform-roles/runs/r1', state: listSearch && { listSearch } }]}>
         <Routes>
           <Route path="/profiles/:profileSlug/runs/:id" element={<RunPage />} />
         </Routes>
@@ -96,6 +96,23 @@ describe('RunPage', () => {
     expect(await screen.findByText(/line two/)).toBeInTheDocument();
     expect(client.subscribeRunEvents).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute('href', '/settings');
+  });
+
+  it('links back to the Runs list with the view it was opened from', async () => {
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
+    renderPage('?status=failed&sort=-started');
+    expect(await screen.findByRole('link', { name: 'Runs' })).toHaveAttribute(
+      'href',
+      '/profiles/platform-roles/runs?status=failed&sort=-started',
+    );
+  });
+
+  it('links back to the plain Runs list when opened directly', async () => {
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/profiles/platform-roles/runs');
   });
 
   it('offers the follow-up link for failed discovery runs too', async () => {

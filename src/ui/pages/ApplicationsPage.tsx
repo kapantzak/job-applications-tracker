@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { ExternalLinkIcon, MailIcon, PlusIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { Application, ApplicationStatus } from '../../server/domain/types.js';
+import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '../../server/domain/types.js';
 import { listApplications, setApplicationStatus, startSync } from '../api/client.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusSelect } from '../components/StatusSelect.js';
+import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { formatTime } from '../format.js';
+import { useListLinkState, useTableView } from '../hooks/use-table-view.js';
+import { STATUS_LABELS } from '../labels.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
+import { type ColumnDef, orderIndex } from '../table-view.js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -26,6 +30,41 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Stored URLs are untrusted; never render javascript: and friends as links.
 const isHttp = (url: string | null): url is string => !!url && /^https?:\/\//i.test(url);
 
+const COLUMNS: ColumnDef<Application>[] = [
+  {
+    id: 'company',
+    label: 'Company',
+    sortValue: (a) => a.company,
+    searchText: (a) => a.company,
+    filter: { kind: 'values', value: (a) => a.company },
+  },
+  {
+    id: 'role',
+    label: 'Role',
+    sortValue: (a) => a.role,
+    searchText: (a) => a.role,
+    filter: { kind: 'text', value: (a) => a.role },
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    sortValue: (a) => orderIndex(APPLICATION_STATUSES, a.status),
+    filter: {
+      kind: 'values',
+      value: (a) => a.status,
+      order: APPLICATION_STATUSES,
+      optionLabel: (v) => STATUS_LABELS[v as ApplicationStatus] ?? v,
+    },
+  },
+  {
+    id: 'applied',
+    label: 'Applied',
+    sortValue: (a) => a.applied_at,
+    filter: { kind: 'date', value: (a) => a.applied_at },
+  },
+];
+const NO_APPS: Application[] = [];
+
 export function ApplicationsPage() {
   const profileId = useProfileId();
   const href = useProfileHref();
@@ -35,6 +74,8 @@ export function ApplicationsPage() {
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const view = useTableView(COLUMNS, apps ?? NO_APPS);
+  const linkState = useListLinkState();
 
   useEffect(() => {
     let active = true;
@@ -123,53 +164,70 @@ export function ApplicationsPage() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <Card className="py-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">Company</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Applied</TableHead>
-                  <TableHead className="pr-4">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {apps.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="pl-4 font-medium">{a.company}</TableCell>
-                    <TableCell>{a.role}</TableCell>
-                    <TableCell>
-                      <StatusSelect
-                        size="sm"
-                        value={a.status}
-                        disabled={busyId === a.id}
-                        onChange={(next) => changeStatus(a.id, next)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatTime(a.applied_at)}</TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button asChild variant="outline" size="sm">
-                          <Link to={href(`/applications/${a.id}`)}>Details</Link>
-                        </Button>
-                        {isHttp(a.url) && (
-                          <Button asChild variant="ghost" size="sm">
-                            <a href={a.url} target="_blank" rel="noopener noreferrer">
-                              <ExternalLinkIcon />
-                              Open posting
-                            </a>
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+          <>
+            <TableToolbar view={view} noun="applications" />
+            {view.visible.length === 0 ? (
+              <NoMatches onClear={view.reset} />
+            ) : (
+              <Card className="py-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <SortableHead view={view} id="company" className="pl-4">
+                        Company
+                      </SortableHead>
+                      <SortableHead view={view} id="role">
+                        Role
+                      </SortableHead>
+                      <SortableHead view={view} id="status">
+                        Status
+                      </SortableHead>
+                      <SortableHead view={view} id="applied">
+                        Applied
+                      </SortableHead>
+                      <TableHead className="pr-4">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {view.visible.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell className="pl-4 font-medium">{a.company}</TableCell>
+                        <TableCell>{a.role}</TableCell>
+                        <TableCell>
+                          <StatusSelect
+                            size="sm"
+                            value={a.status}
+                            disabled={busyId === a.id}
+                            onChange={(next) => changeStatus(a.id, next)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{formatTime(a.applied_at)}</TableCell>
+                        <TableCell className="pr-4">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button asChild variant="outline" size="sm">
+                              <Link to={href(`/applications/${a.id}`)} state={linkState}>
+                                Details
+                              </Link>
+                            </Button>
+                            {isHttp(a.url) && (
+                              <Button asChild variant="ghost" size="sm">
+                                <a href={a.url} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLinkIcon />
+                                  Open posting
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </div>
