@@ -185,6 +185,14 @@ ALTER TABLE cv_analyses ADD COLUMN profile_id TEXT REFERENCES profiles(id);
 CREATE INDEX cv_analyses_profile ON cv_analyses (profile_id);
 `,
   },
+  {
+    // Gmail scope per profile (SOW-0031): an empty value keeps the company and ATS sender search.
+    id: 8,
+    sql: `
+ALTER TABLE profiles ADD COLUMN mail_filter_kind TEXT NOT NULL DEFAULT 'label' CHECK (mail_filter_kind IN ('label','query'));
+ALTER TABLE profiles ADD COLUMN mail_filter TEXT NOT NULL DEFAULT '';
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

@@ -5,9 +5,11 @@ import {
   PROFILE_NAME_ERROR,
   PROFILE_NAME_HINT,
 } from '../../server/domain/profile-name.js';
+import { mailFilterError, normalizeMailFilter } from '../../server/domain/mail-filter.js';
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, type ProfileInput } from '../api/client.js';
 import { ErrorAlert, SuccessMessage } from './feedback.js';
+import { MailScopeInput } from './MailScopeInput.js';
 import { SeniorityInput } from './SeniorityInput.js';
 import { TagInput } from './TagInput.js';
 import { Button } from '@/components/ui/button';
@@ -26,6 +28,8 @@ export const EMPTY_PROFILE: ProfileInput = {
   keywords: [],
   excluded_companies: [],
   notes: '',
+  mail_filter_kind: 'label',
+  mail_filter: '',
 };
 
 export function toProfileInput(profile: Profile): ProfileInput {
@@ -78,6 +82,9 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
   // Same rule as the server (SOW-0015). Checked as the user types; surrounding spaces are trimmed on save.
   const name = normalizeProfileName(form.name);
   const nameError = name !== '' && !isValidProfileName(name) ? PROFILE_NAME_ERROR : null;
+  // Same rule as the server (SOW-0031); shown under the field as the user types.
+  const mailFilter = normalizeMailFilter(form.mail_filter);
+  const mailFilterProblem = mailFilterError(form.mail_filter_kind, mailFilter);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -87,16 +94,16 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
       setError('Give the profile a name');
       return;
     }
-    // The message is already under the Name field.
-    if (nameError) return;
+    // The messages are already under their fields.
+    if (nameError || mailFilterProblem) return;
     if (form.target_roles.length === 0) {
       setError('Add at least one target role');
       return;
     }
     setBusy(true);
     try {
-      await onSubmit({ ...form, name });
-      setForm((prev) => ({ ...prev, name }));
+      await onSubmit({ ...form, name, mail_filter: mailFilter });
+      setForm((prev) => ({ ...prev, name, mail_filter: mailFilter }));
       if (successMessage) setStatus(successMessage);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -151,6 +158,12 @@ export function ProfileForm({ ref, initial, submitLabel, onSubmit, successMessag
               <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
               <Textarea id={`${id}-notes`} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
+            <MailScopeInput
+              kind={form.mail_filter_kind}
+              value={form.mail_filter}
+              error={mailFilterProblem}
+              onChange={(kind, value) => setForm((prev) => ({ ...prev, mail_filter_kind: kind, mail_filter: value }))}
+            />
           </FieldGroup>
         </CardContent>
         <CardFooter className="flex flex-col items-start gap-3 border-t">

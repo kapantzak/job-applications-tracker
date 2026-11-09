@@ -32,7 +32,7 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 - Inside a profile, the top left shows its name; click it to go back to all profiles.
 - The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it.
 - The same job posting can show up in more than one profile.
-- Gmail sync runs per profile: it only looks at that profile's open applications. A scheduled sync runs once for each profile that has open applications.
+- Gmail sync runs per profile: it only looks at that profile's open applications. A scheduled sync runs once for each profile that has open applications. To keep two profiles' replies apart, give each one a Gmail label or search (see [How Gmail sync works](#how-gmail-sync-works)).
 - Deleting a profile (Delete on its card, then confirm) removes the profile with its CV, its CV analysis and all its jobs, applications, proposals, status history and run logs. It cannot be undone. While one of its runs is queued or running, cancel the run first.
 - Seniority is a set of levels you can toggle (Intern, Junior, Mid-level, Senior, Staff, Principal, Lead, Manager, Director, Executive), plus an Other box for anything else. It is saved as text such as `Senior, Staff`; a value typed before this existed shows up in Other unchanged.
 - Upgrading from a version with a single profile keeps your data: the existing profile becomes your first profile, named after its first target role (characters other than letters, numbers and spaces are replaced by spaces).
@@ -102,6 +102,13 @@ The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your
 - Results appear as proposals, for example "move this application to interview". Nothing changes until you accept a proposal; you can also reject it.
 - Each proposal shows its evidence (sender, date, subject, snippet) and a link to the message so you can verify it.
 - Sync can run on demand from a profile, or on a schedule (Settings). Scheduled sync only runs while the app is running, once per profile with open applications.
+- By default the agent searches for mail from the companies you applied to and from known job-board senders (Greenhouse, Lever, and so on). Profiles share one mailbox, so two profiles that applied to the same company, or through the same job board, can pick up each other's replies.
+- To tell the agent where a profile's mail is, open the profile and fill in **Gmail sync**:
+  - **Gmail label** (the default): the label name as Gmail shows it, for example `Jobs/Frontend`. Gmail has no folders; labels are its folders. Create the label in Gmail and a Gmail filter that applies it to the replies, for example to mail sent to the address you applied with. The app turns the name into the search `label:Jobs-Frontend` (each space or other blank character and each `/` becomes `-`, which is how Gmail matches label names). A label name cannot contain `"`.
+  - **Custom Gmail search (advanced)**: any [Gmail search](https://support.google.com/mail/answer/7190), used as typed, for example `label:jobs-frontend OR to:you+frontend@gmail.com`. A plus address (`you+frontend@gmail.com`) is a handy way to tell profiles apart: apply with it, and replies arrive at it.
+  - Either way the value is one line of at most 300 characters. Leave it empty to keep the company and job-board search.
+- When a profile has a label or search, the agent reads only the mail that matches it, from any sender, including recruiters who write from a personal address. Mail your Gmail filter did not catch is not seen; a label or search that matches nothing finds no replies and reports no error.
+- The app never labels, moves or changes mail; set up the labels and Gmail filters yourself.
 
 ## Gmail access for other agents
 

@@ -1,3 +1,5 @@
+import type { MailFilterKind } from './mail-filter.js';
+
 // Enum value lists are exported as const arrays so repositories can validate input.
 export const APPLICATION_STATUSES = [
   'saved',
@@ -69,6 +71,9 @@ export interface Profile {
   keywords: string[];
   excluded_companies: string[];
   notes: string;
+  // Where sync looks in Gmail (SOW-0031): a label name or a Gmail search; '' searches by company and ATS sender.
+  mail_filter_kind: MailFilterKind;
+  mail_filter: string;
   // The CV kept with the profile (SOW-0023); null when the profile has none.
   cv: ProfileCv | null;
   created_at: string;

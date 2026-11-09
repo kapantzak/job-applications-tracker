@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 ---
 # Task: check email for application updates
 
@@ -17,6 +17,10 @@ If you have no tool that can search Gmail, set `mail_access` to false and return
 
 {{ats_domains}}
 
+## Mailbox scope
+
+{{mail_scope}}
+
 ## Already reviewed message ids
 
 Skip every message id listed here:
@@ -25,7 +29,7 @@ Skip every message id listed here:
 
 ## Rules
 
-- Search only messages from the listed companies and the ATS domains above.
+- Search only the messages the mailbox scope above allows.
 - Consider only messages newer than each application's `applied_at`.
 - Return at most one finding per application.
 - Use `no_change` as `proposed_status` when nothing new happened.

@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import type { ProfileInput } from '../db/profiles-repo.js';
+import { MAIL_FILTER_KINDS, mailFilterError, normalizeMailFilter } from '../domain/mail-filter.js';
 import {
   isValidProfileName,
   normalizeProfileName,
@@ -32,11 +33,29 @@ const profileFields = {
   keywords: z.array(z.string()),
   excluded_companies: z.array(z.string()),
   notes: z.string(),
+  // Optional so a body without them keeps the stored scope on Save (SOW-0031).
+  mail_filter_kind: z.enum(MAIL_FILTER_KINDS).optional(),
+  mail_filter: z.string().transform(normalizeMailFilter).optional(),
 };
 
 // Create profile may take the new-profile CV analysis it was reviewed from (SOW-0023); Save may take the
 // profile's own analysis whose suggestions were applied, which also replaces its CV (SOW-0024).
 const ProfileBody = z.object({ ...profileFields, cv_analysis_id: z.string().min(1).optional() }).strict();
+
+type ProfileBodyInput = Omit<z.infer<typeof ProfileBody>, 'cv_analysis_id'>;
+
+// Fills a scope the body left out from the profile being saved, or with no scope for a new profile, then
+// checks the result: a body may send only the kind or only the value, and the pair is what gets stored.
+function withMailScope(body: ProfileBodyInput, current?: Profile): ProfileInput {
+  const input = {
+    ...body,
+    mail_filter_kind: body.mail_filter_kind ?? current?.mail_filter_kind ?? 'label',
+    mail_filter: body.mail_filter ?? current?.mail_filter ?? '',
+  };
+  const message = mailFilterError(input.mail_filter_kind, input.mail_filter);
+  if (message) throw new HttpError(400, `mail_filter: ${message}`);
+  return input;
+}
 
 const CV_CONTENT_TYPES: Record<CvFileType, string> = {
   pdf: 'application/pdf',
@@ -72,7 +91,8 @@ export function createProfilesRouter(deps: AppDeps): Hono {
   router.get('/', (c) => c.json(deps.profilesRepo.list()));
 
   router.post('/', async (c) => {
-    const { cv_analysis_id: analysisId, ...input } = await readJson(c, ProfileBody);
+    const { cv_analysis_id: analysisId, ...body } = await readJson(c, ProfileBody);
+    const input = withMailScope(body);
     requireFreeName(input.name);
     const profile = analysisId
       ? deps.cvService.createProfile(input, analysisId, randomUUID())
@@ -100,8 +120,10 @@ export function createProfilesRouter(deps: AppDeps): Hono {
   scoped.get('/:pid', (c) => c.json(c.get('profile')));
 
   scoped.put('/:pid', async (c) => {
-    const { id } = c.get('profile');
-    const { cv_analysis_id: analysisId, ...input } = await readJson(c, ProfileBody);
+    const current = c.get('profile');
+    const { id } = current;
+    const { cv_analysis_id: analysisId, ...body } = await readJson(c, ProfileBody);
+    const input = withMailScope(body, current);
     requireFreeName(input.name, id);
     return c.json(
       analysisId ? deps.cvService.applyToProfile(input, analysisId, id) : deps.profilesRepo.update(id, input),

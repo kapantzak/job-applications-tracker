@@ -71,6 +71,8 @@ const fieldsOf = (p: Profile) => ({
   keywords: p.keywords,
   excluded_companies: p.excluded_companies,
   notes: p.notes,
+  mail_filter_kind: p.mail_filter_kind,
+  mail_filter: p.mail_filter,
 });
 
 // A profile created from a PDF CV through the SOW-0023 flow.

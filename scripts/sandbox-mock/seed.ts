@@ -283,6 +283,8 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         keywords: ['React', 'TypeScript', 'Design systems', 'Accessibility', 'Vite', 'Testing Library'],
         excluded_companies: ['Initrode'],
         notes: 'Prefers product teams with a shared component library. No agencies.',
+        mail_filter_kind: 'label',
+        mail_filter: 'Jobs/Frontend',
       }, 40],
       sparse: [{
         name: 'Data Analyst Roles',
@@ -293,6 +295,8 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         keywords: ['SQL', 'Python'],
         excluded_companies: [],
         notes: '',
+        mail_filter_kind: 'query',
+        mail_filter: 'to:you+data@example.com OR label:jobs-data',
       }, 10],
       empty: [{
         name: 'Empty Search',
@@ -303,6 +307,8 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         keywords: [],
         excluded_companies: [],
         notes: '',
+        mail_filter_kind: 'label',
+        mail_filter: '',
       }, 1],
     };
     const profiles = {} as Record<'rich' | 'sparse' | 'empty', { id: string; name: string; slug: string }>;

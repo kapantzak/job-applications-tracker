@@ -53,6 +53,8 @@ export const SAMPLE_PROFILE: ProfileInput = {
   keywords: ['typescript'],
   excluded_companies: ['Initech'],
   notes: 'invented profile',
+  mail_filter_kind: 'label',
+  mail_filter: '',
 };
 
 export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string[] } = {}): Harness {

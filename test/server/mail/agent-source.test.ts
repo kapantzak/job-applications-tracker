@@ -13,6 +13,7 @@ const req: MailSyncRequest = {
     { id: 'app-2', company: 'Globex', role: 'Dev', applied_at: '2026-01-02', sender_domains: [] },
   ],
   reviewed_message_ids: ['msg-001', 'msg-002'],
+  mail_scope: null,
 };
 
 function ctx() {
@@ -83,6 +84,27 @@ describe('agent mail source', () => {
     );
     expect(tasks[0]?.prompt).toContain('sender_domains: (none)');
     expect(logs).toContain('Using adapter custom');
+  });
+
+  it('keeps the company and ATS sender search when the profile has no scope', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync(req, ctx().c);
+    expect(tasks[0]?.prompt).toContain(
+      '## Mailbox scope\n\nNo scope is set. Search only messages from the listed companies and the ATS domains above.\n',
+    );
+  });
+
+  it('puts the profile scope on a line of its own', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync({ ...req, mail_scope: 'label:Jobs-Frontend OR to:you+frontend@example.com' }, ctx().c);
+    const prompt = tasks[0]?.prompt ?? '';
+    expect(prompt).toContain(
+      'Search only messages that match this Gmail search query, copied exactly as written:\n\nlabel:Jobs-Frontend OR to:you+frontend@example.com\n\n',
+    );
+    expect(prompt).toContain('wrap the query in parentheses first');
+    expect(prompt).not.toContain('No scope is set.');
   });
 
   it('renders (none) when nothing was reviewed', async () => {

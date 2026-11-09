@@ -66,7 +66,7 @@ describe('mock agent', () => {
   async function sync(applications: MailSyncRequest['applications']) {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
-      { applications, reviewed_message_ids: ['msg-001'] },
+      { applications, reviewed_message_ids: ['msg-001'], mail_scope: 'label:Jobs-Frontend' },
       { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
     );
     return { findings, logs };

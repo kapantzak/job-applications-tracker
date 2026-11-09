@@ -1,22 +1,27 @@
 import type { createApplicationsRepo } from '../db/applications-repo.js';
+import type { ProfilesRepo } from '../db/profiles-repo.js';
 import type { createProposalsRepo, NewProposal } from '../db/proposals-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
+import { mailScopeQuery } from '../domain/mail-filter.js';
 import type { Settings } from '../domain/types.js';
 import type { MailSource } from '../mail/types.js';
 import type { RunHandler } from '../runs/queue.js';
 
 export interface MailSyncDeps {
   applicationsRepo: ReturnType<typeof createApplicationsRepo>;
+  profilesRepo: ProfilesRepo;
   proposalsRepo: ReturnType<typeof createProposalsRepo>;
   settingsRepo: ReturnType<typeof createSettingsRepo>;
   mailSourceFactory: (settings: Settings) => MailSource;
 }
 
 export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
-  const { applicationsRepo, proposalsRepo, settingsRepo, mailSourceFactory } = deps;
+  const { applicationsRepo, profilesRepo, proposalsRepo, settingsRepo, mailSourceFactory } = deps;
 
   return async (ctx) => {
     const profileId = ctx.run.profile_id;
+    const profile = profilesRepo.get(profileId);
+    if (!profile) throw new Error('Profile not found');
     const open = applicationsRepo.list(profileId, { open: true });
     if (open.length === 0) {
       ctx.log('No open applications to check');
@@ -36,6 +41,7 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
           sender_domains: a.sender_domains,
         })),
         reviewed_message_ids: proposalsRepo.reviewedMessageIds(profileId),
+        mail_scope: mailScopeQuery(profile.mail_filter_kind, profile.mail_filter),
       },
       {
         log: ctx.log,

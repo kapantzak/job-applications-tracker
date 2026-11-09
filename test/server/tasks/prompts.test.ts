@@ -40,11 +40,18 @@ describe('renderPrompt', () => {
   });
 
   it('renders sync_mail with the no-mail-tool instruction', () => {
-    const r = renderPrompt('sync_mail', { applications: 'A', reviewed_message_ids: 'R', ats_domains: 'D' });
-    expect(r.version).toBe('2');
+    const r = renderPrompt('sync_mail', {
+      applications: 'A',
+      reviewed_message_ids: 'R',
+      ats_domains: 'D',
+      mail_scope: 'SCOPE_X',
+    });
+    expect(r.version).toBe('3');
+    expect(r.text).toContain('## Mailbox scope\n\nSCOPE_X\n');
+    expect(r.text).toContain('- Search only the messages the mailbox scope above allows.');
     expect(r.text).toContain('set `mail_access` to false and return an empty `findings` array.');
     expect(r.text).toContain('Gmail message id');
-    expect(r.text).not.toContain('version: 2');
+    expect(r.text).not.toContain('version: 3');
     expect(r.text.toLowerCase()).toContain('read only');
   });
 

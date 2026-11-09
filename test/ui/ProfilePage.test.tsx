@@ -69,6 +69,8 @@ describe('ProfilePage', () => {
         keywords: [],
         excluded_companies: [],
         notes: '',
+        mail_filter_kind: 'label',
+        mail_filter: '',
       },
       undefined,
     );
@@ -312,6 +314,8 @@ describe('ProfilePage: Replace CV and Add CV', () => {
         keywords: ['Kubernetes', 'Go'],
         excluded_companies: [],
         notes: 'Unsaved note',
+        mail_filter_kind: 'label',
+        mail_filter: '',
       },
       'cva-p',
     );
@@ -320,6 +324,32 @@ describe('ProfilePage: Replace CV and Add CV', () => {
     // The analysis ended with the Save; the note goes and Replace CV comes back.
     expect(screen.queryByText(/Save to keep them/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review changes' })).not.toBeInTheDocument();
+  });
+
+  it('Apply keeps the Gmail scope and the other mode text, and Save sends the scope', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getCvAnalysis).mockResolvedValue(READY);
+    vi.mocked(client.updateProfile).mockResolvedValue(WITH_CV);
+    renderPage({ ...WITH_CV, mail_filter_kind: 'query', mail_filter: 'to:you+platform@example.com' });
+    await user.click(screen.getByRole('radio', { name: /^Gmail label/ }));
+    await user.type(screen.getByLabelText('Label name'), 'Jobs/Platform');
+    await user.click(screen.getByRole('radio', { name: /^Custom Gmail search/ }));
+
+    const panel = await openReview(user);
+    const group = (name: string) => within(panel).getByRole('radiogroup', { name });
+    await user.click(within(group('Remote')).getByRole('radio', { name: 'Use suggested' }));
+    await user.click(within(panel).getByRole('button', { name: 'Apply' }));
+
+    expect(screen.getByLabelText('Gmail search')).toHaveValue('to:you+platform@example.com');
+    await user.click(screen.getByRole('radio', { name: /^Gmail label/ }));
+    expect(screen.getByLabelText('Label name')).toHaveValue('Jobs/Platform');
+    await user.click(screen.getByRole('radio', { name: /^Custom Gmail search/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(client.updateProfile).toHaveBeenCalledWith(
+      'pf1',
+      expect.objectContaining({ remote: 'hybrid', mail_filter_kind: 'query', mail_filter: 'to:you+platform@example.com' }),
+      'cva-p',
+    );
   });
 
   it('Apply updates the seniority chips', async () => {
@@ -461,5 +491,60 @@ describe('ProfilePage: Replace CV and Add CV', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Remote')).toHaveValue('hybrid');
     expect(screen.queryByText(/Save to keep them and replace/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ProfilePage Gmail sync', () => {
+  const saved = () => vi.mocked(client.updateProfile).mock.calls[0]?.[1];
+
+  it('starts on Gmail label, explains the setup and saves a trimmed label', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.updateProfile).mockResolvedValue(TEST_PROFILE);
+    renderPage();
+    expect(screen.getByRole('radio', { name: /^Gmail label/ })).toBeChecked();
+    expect(screen.getByText(/The app never labels or moves mail/)).toBeInTheDocument();
+    expect(screen.getByText('Sync reads only mail with this label, from any sender.')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Label name'), '  Jobs/Frontend ');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saved()).toMatchObject({ mail_filter_kind: 'label', mail_filter: 'Jobs/Frontend' });
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(screen.getByLabelText('Label name')).toHaveValue('Jobs/Frontend');
+  });
+
+  it('saves only the selected mode and keeps each mode text while switching', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.updateProfile).mockResolvedValue(TEST_PROFILE);
+    renderPage();
+    await user.type(screen.getByLabelText('Label name'), 'Jobs/Frontend');
+    await user.click(screen.getByRole('radio', { name: /^Custom Gmail search \(advanced\)/ }));
+    const search = screen.getByLabelText('Gmail search');
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Gmail search operators' })).toHaveAttribute(
+      'href',
+      'https://support.google.com/mail/answer/7190',
+    );
+    await user.type(search, 'to:you+frontend@example.com');
+    await user.click(screen.getByRole('radio', { name: /^Gmail label/ }));
+    expect(screen.getByLabelText('Label name')).toHaveValue('Jobs/Frontend');
+    await user.click(screen.getByRole('radio', { name: /^Custom Gmail search/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saved()).toMatchObject({ mail_filter_kind: 'query', mail_filter: 'to:you+frontend@example.com' });
+  });
+
+  it('shows a stored search in advanced mode', () => {
+    renderPage({ ...TEST_PROFILE, mail_filter_kind: 'query', mail_filter: 'label:jobs OR to:you@example.com' });
+    expect(screen.getByRole('radio', { name: /^Custom Gmail search/ })).toBeChecked();
+    expect(screen.getByLabelText('Gmail search')).toHaveValue('label:jobs OR to:you@example.com');
+  });
+
+  it('flags a label with double quotes and does not save', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const input = screen.getByLabelText('Label name');
+    await user.type(input, 'Board "Prep"');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('A label name cannot contain double quotes.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(client.updateProfile).not.toHaveBeenCalled();
   });
 });

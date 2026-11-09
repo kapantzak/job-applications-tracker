@@ -58,6 +58,17 @@ describe('seedMockData', () => {
     expect(sparse.cv).toBeNull();
   });
 
+  it('shows each Gmail scope mode: a label, a custom search and none', () => {
+    const scopes = createProfilesRepo(db)
+      .list()
+      .map((p) => [p.name, p.mail_filter_kind, p.mail_filter]);
+    expect(scopes).toEqual([
+      ['Data Analyst Roles', 'query', 'to:you+data@example.com OR label:jobs-data'],
+      ['Empty Search', 'label', ''],
+      ['Frontend Platform', 'label', 'Jobs/Frontend'],
+    ]);
+  });
+
   it('keeps a CV file with the rich profile', () => {
     const rich = profileByName('Frontend Platform');
     expect(rich.cv?.file_name).toBe('frontend-cv.md');

@@ -133,6 +133,76 @@ describe('profiles: one profile', () => {
   });
 });
 
+describe('profiles: Gmail scope', () => {
+  const { mail_filter_kind: _kind, mail_filter: _filter, ...WITHOUT_SCOPE } = OTHER;
+
+  it('POST without a scope stores an empty label scope', async () => {
+    const res = await h.app.request('/api/profiles', json('POST', WITHOUT_SCOPE));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ mail_filter_kind: 'label', mail_filter: '' });
+  });
+
+  it('POST and PUT store a trimmed label or query', async () => {
+    const created = (await (
+      await h.app.request('/api/profiles', json('POST', { ...OTHER, mail_filter: '  Jobs/Data ' }))
+    ).json()) as Profile;
+    expect(h.deps.profilesRepo.get(created.id)).toMatchObject({ mail_filter_kind: 'label', mail_filter: 'Jobs/Data' });
+
+    const query = 'label:"Board Prep" OR to:you+data@example.com';
+    const res = await h.app.request(
+      `/api/profiles/${created.id}`,
+      json('PUT', { ...OTHER, mail_filter_kind: 'query', mail_filter: query }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.deps.profilesRepo.get(created.id)).toMatchObject({ mail_filter_kind: 'query', mail_filter: query });
+  });
+
+  it('PUT without a scope keeps the stored one', async () => {
+    h.deps.profilesRepo.update(h.profile.id, { ...SAMPLE_PROFILE, mail_filter_kind: 'query', mail_filter: 'to:you@example.com' });
+    const { mail_filter_kind: _k, mail_filter: _f, ...rest } = SAMPLE_PROFILE;
+    const res = await h.app.request(h.base, json('PUT', { ...rest, notes: 'edited' }));
+    expect(res.status).toBe(200);
+    expect(h.deps.profilesRepo.get(h.profile.id)).toMatchObject({
+      notes: 'edited',
+      mail_filter_kind: 'query',
+      mail_filter: 'to:you@example.com',
+    });
+  });
+
+  it.each([
+    [{ mail_filter_kind: 'label', mail_filter: 'Board "Prep"' }, 'mail_filter: A label name cannot contain double quotes.'],
+    [{ mail_filter: 'Jobs\nData' }, 'mail_filter: Use a single line without control characters.'],
+    [{ mail_filter_kind: 'query', mail_filter: 'x'.repeat(301) }, 'mail_filter: Use at most 300 characters.'],
+  ])('refuses %j with 400 and writes nothing', async (scope, error) => {
+    const res = await h.app.request(h.base, json('PUT', { ...SAMPLE_PROFILE, notes: 'edited', ...scope }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error });
+    expect(h.deps.profilesRepo.get(h.profile.id)?.notes).toBe(SAMPLE_PROFILE.notes);
+  });
+
+  it('checks a partial body against the stored scope it is combined with', async () => {
+    h.deps.profilesRepo.update(h.profile.id, { ...SAMPLE_PROFILE, mail_filter_kind: 'query', mail_filter: 'subject:"offer"' });
+    const { mail_filter_kind: _k, mail_filter: _f, ...rest } = SAMPLE_PROFILE;
+
+    // A value alone is checked as the stored kind: quotes are fine in a query.
+    const value = await h.app.request(h.base, json('PUT', { ...rest, mail_filter: 'label:"Board Prep"' }));
+    expect(value.status).toBe(200);
+    expect(h.deps.profilesRepo.get(h.profile.id)).toMatchObject({ mail_filter_kind: 'query', mail_filter: 'label:"Board Prep"' });
+
+    // A kind alone is checked with the stored value: that query is not a valid label.
+    const kind = await h.app.request(h.base, json('PUT', { ...rest, mail_filter_kind: 'label' }));
+    expect(kind.status).toBe(400);
+    expect(await kind.json()).toEqual({ error: 'mail_filter: A label name cannot contain double quotes.' });
+    expect(h.deps.profilesRepo.get(h.profile.id)?.mail_filter_kind).toBe('query');
+  });
+
+  it('refuses an unknown scope kind', async () => {
+    const res = await h.app.request(h.base, json('PUT', { ...SAMPLE_PROFILE, mail_filter_kind: 'folder' }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/^mail_filter_kind: /);
+  });
+});
+
 describe('profiles: delete', () => {
   // A finished discovery and sync with a job, an application, an accepted proposal and history.
   function populate(profileId: string): { runIds: string[]; app: Application } {
