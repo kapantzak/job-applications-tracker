@@ -1,3 +1,5 @@
+import { fromIsoDay, toIsoDay } from './table-view.js';
+
 // Agent-supplied dates (e.g. mail evidence) may not parse; show them as written rather than "Invalid Date".
 export const formatTime = (iso: string | null): string => {
   if (!iso) return '–';
@@ -28,6 +30,17 @@ export function formatUsage(run: {
     parts.push(`${input} tokens in, ${output} out`);
   }
   return parts.length ? parts.join(' · ') : null;
+}
+
+// A typed calendar day (date input, YYYY-MM-DD) is stored as local midnight, so the table, the Applied
+// filter and the form all show the day the user typed (SOW-0030).
+export const dayToIso = (day: string): string => fromIsoDay(day).toISOString();
+
+// The local calendar day of a stored value, for a date input; unparseable values show as written.
+export function isoToDay(iso: string | null): string {
+  if (!iso) return '';
+  const time = Date.parse(iso);
+  return Number.isNaN(time) ? iso.slice(0, 10) : toIsoDay(new Date(time));
 }
 
 // Time since an analysis started, for the progress card: "45 s", "2 min 05 s".

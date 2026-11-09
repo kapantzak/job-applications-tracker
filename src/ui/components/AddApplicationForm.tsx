@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 import type { Application, ApplicationStatus } from '../../server/domain/types.js';
 import { createApplication } from '../api/client.js';
+import { dayToIso } from '../format.js';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -35,9 +36,9 @@ export function AddApplicationForm({
         role,
         url: url || null,
         status,
-        // Date inputs carry no time zone; pin to midnight UTC for a stable value. Without a date the key
-        // is omitted so the server's default (applied means now) applies.
-        ...(appliedDate ? { applied_at: new Date(`${appliedDate}T00:00:00Z`).toISOString() } : {}),
+        // A typed day is stored as local midnight (SOW-0030). Without a date the key is omitted so the
+        // server's default (applied means now) applies.
+        ...(appliedDate ? { applied_at: dayToIso(appliedDate) } : {}),
         notes,
       });
       onCreated(created);

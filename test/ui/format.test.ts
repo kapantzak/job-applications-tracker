@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { formatTime, formatUsage } from '../../src/ui/format.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { dayToIso, formatTime, formatUsage, isoToDay } from '../../src/ui/format.js';
 
 describe('formatTime', () => {
   it('returns a dash for a missing value', () => {
@@ -45,5 +45,34 @@ describe('formatUsage', () => {
     expect(formatUsage({ ...none, usage_cost_usd: 0.0049 })).toBe('<$0.01 estimated');
     expect(formatUsage({ ...none, usage_cost_usd: 0.012 })).toBe('$0.01 estimated');
     expect(formatUsage({ ...none, usage_cost_usd: 0 })).toBe('$0.00 estimated');
+  });
+});
+
+// Node re-reads TZ when it is assigned, so one file can check a zone on each side of UTC (SOW-0030).
+describe('typed Applied dates', () => {
+  const original = process.env.TZ;
+  afterEach(() => {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  });
+
+  it('stores a typed day as local midnight west of UTC and reads the same day back', () => {
+    process.env.TZ = 'America/Los_Angeles';
+    expect(dayToIso('2026-11-05')).toBe('2026-11-05T08:00:00.000Z');
+    expect(isoToDay(dayToIso('2026-11-05'))).toBe('2026-11-05');
+    // An older row pinned to UTC midnight shows the local day the table shows.
+    expect(isoToDay('2026-11-05T00:00:00.000Z')).toBe('2026-11-04');
+  });
+
+  it('stores a typed day as local midnight east of UTC and reads the same day back', () => {
+    process.env.TZ = 'Asia/Tokyo';
+    expect(dayToIso('2026-11-05')).toBe('2026-11-04T15:00:00.000Z');
+    expect(isoToDay(dayToIso('2026-11-05'))).toBe('2026-11-05');
+    expect(isoToDay('2026-11-05T20:00:00.000Z')).toBe('2026-11-06');
+  });
+
+  it('shows nothing for no date and the first ten characters of an unparseable one', () => {
+    expect(isoToDay(null)).toBe('');
+    expect(isoToDay('2026-13-99 or so')).toBe('2026-13-99');
   });
 });

@@ -94,7 +94,8 @@ describe('ApplicationsPage', () => {
         company: 'Beta',
         role: 'Lead',
         status: 'applied',
-        applied_at: '2026-03-04T00:00:00.000Z',
+        // Local midnight of the typed day, whatever zone the suite runs in (SOW-0030).
+        applied_at: new Date(2026, 2, 4).toISOString(),
       }),
     );
     expect(await screen.findByText('Beta')).toBeInTheDocument();
