@@ -68,6 +68,7 @@ function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
 afterEach(cleanup);
 
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
   vi.mocked(client.getDashboard).mockResolvedValue(summary());
   vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}] as never);
@@ -107,7 +108,8 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
   });
 
-  it('shows the bar, funnel and attention cards', async () => {
+  it('shows the bar, funnel and attention cards in Breakdown', async () => {
+    localStorage.setItem('dashboard-view', 'breakdown');
     renderPage();
     expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
@@ -261,3 +263,88 @@ describe('DashboardPage search buttons', () => {
   });
 });
 
+
+describe('DashboardPage views', () => {
+  const sent = (applied: number) => summary({ funnel: { applied, screening: 0, interview: 0, offer: 0 } });
+  const switcher = () => screen.queryByRole('group', { name: 'Dashboard view' });
+  const viewButton = (name: 'Journey' | 'Breakdown') => within(switcher()!).getByRole('button', { name });
+  const journeyHeading = () => screen.queryByRole('heading', { name: "Your applications' journey" });
+  const barHeading = () => screen.queryByRole('heading', { name: /^Where your/ });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('opens Journey from 10 sent, with the attention card below the graph', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(10));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    expect(barHeading()).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'How far applications get' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'false');
+    // Opening a view stores nothing; only a click does.
+    expect(localStorage.getItem('dashboard-view')).toBeNull();
+  });
+
+  it('opens Breakdown below 10 sent', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('switches view on click and remembers the choice', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('group', { name: 'Dashboard view' });
+    await user.click(viewButton('Journey'));
+    expect(journeyHeading()).toBeInTheDocument();
+    expect(barHeading()).not.toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('dashboard-view')).toBe('journey');
+    await user.click(viewButton('Breakdown'));
+    expect(barHeading()).toBeInTheDocument();
+    expect(localStorage.getItem('dashboard-view')).toBe('breakdown');
+  });
+
+  it('lets a stored choice win over the count', async () => {
+    localStorage.setItem('dashboard-view', 'breakdown');
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+  });
+
+  it('shows only Breakdown, without the switch, on a narrow window', async () => {
+    vi.stubGlobal('innerWidth', 500);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })),
+    );
+    localStorage.setItem('dashboard-view', 'journey');
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+    expect(switcher()).not.toBeInTheDocument();
+  });
+
+  it('hides the switch for a profile without applications', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(
+      summary({
+        total: 0,
+        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(switcher()).not.toBeInTheDocument();
+  });
+});
