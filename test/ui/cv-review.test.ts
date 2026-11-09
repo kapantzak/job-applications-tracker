@@ -12,6 +12,8 @@ const FORM: ProfileInput = {
   keywords: ['Kubernetes', 'Terraform'],
   excluded_companies: ['Initech'],
   notes: 'Typed by hand.',
+  mail_filter_kind: 'label',
+  mail_filter: '',
 };
 
 const DRAFT: CvProfileDraft = {

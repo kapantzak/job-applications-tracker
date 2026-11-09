@@ -141,6 +141,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   const discovery = createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory });
   const sync = createMailSyncHandler({
     applicationsRepo,
+    profilesRepo,
     proposalsRepo,
     settingsRepo,
     mailSourceFactory: (settings) => createAgentMailSource(createAdapter(settings, 'sync_mail')),

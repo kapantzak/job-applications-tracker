@@ -51,6 +51,11 @@ beforeEach(() => {
 });
 
 describe('ApplicationsPage', () => {
+  it('says what Sync from Gmail searches', async () => {
+    renderPage();
+    expect(await screen.findByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
+  });
+
   it('posts the new status and updates the row', async () => {
     const user = userEvent.setup();
     vi.mocked(client.setApplicationStatus).mockResolvedValue({

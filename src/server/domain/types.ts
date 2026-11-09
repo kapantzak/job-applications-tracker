@@ -1,3 +1,5 @@
+import type { MailFilterKind } from './mail-filter.js';
+
 // Enum value lists are exported as const arrays so repositories can validate input.
 export const APPLICATION_STATUSES = [
   'saved',
@@ -32,6 +34,8 @@ export const MAX_EFFORT_CONCURRENCY = 3;
 
 // A Max run that lost workers ends its summary with this note; the UI uses it to tell partial runs apart.
 export const workersFailedNote = (failed: number, total: number): string => `; ${failed} of ${total} workers failed`;
+// A scoped sync whose scope matched no mail ends its summary with this note (SOW-0032).
+export const SCOPE_MATCHED_NOTHING_NOTE = '; the Gmail scope matched no mail';
 export const hasFailedWorkers = (summary: string | null): boolean => /; \d+ of \d+ workers failed$/.test(summary ?? '');
 export const VERIFICATION_STATUSES = ['ok', 'redirected', 'dead', 'unverified'] as const;
 export const PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;
@@ -69,6 +73,9 @@ export interface Profile {
   keywords: string[];
   excluded_companies: string[];
   notes: string;
+  // Where sync looks in Gmail (SOW-0031): a label name or a Gmail search; '' searches by company and ATS sender.
+  mail_filter_kind: MailFilterKind;
+  mail_filter: string;
   // The CV kept with the profile (SOW-0023); null when the profile has none.
   cv: ProfileCv | null;
   created_at: string;

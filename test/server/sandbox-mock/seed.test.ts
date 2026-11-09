@@ -48,14 +48,32 @@ describe('seedMockData', () => {
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
-  it('creates a rich, a sparse and an empty profile', () => {
+  it('creates a rich, a sparse, an empty and a scope-miss profile', () => {
     const list = createProfilesRepo(db).list();
-    expect(list.map((p) => p.name)).toEqual(['Data Analyst Roles', 'Empty Search', 'Frontend Platform']);
+    expect(list.map((p) => p.name)).toEqual(['Data Analyst Roles', 'Empty Search', 'Frontend Platform', 'Scope Miss']);
     const empty = list.find((p) => p.name === 'Empty Search')!;
     expect(empty.counts).toEqual({ jobs: 0, applications: 0, runs: 0 });
     const sparse = list.find((p) => p.name === 'Data Analyst Roles')!;
     expect(sparse.counts.jobs).toBeGreaterThan(0);
     expect(sparse.cv).toBeNull();
+  });
+
+  it('gives Scope Miss open applications, so its sync reaches the agent', () => {
+    const miss = profileByName('Scope Miss');
+    const open = createApplicationsRepo(db).list(miss.id, { open: true });
+    expect(open.map((a) => a.company).sort()).toEqual(['Hooli Devices', 'Massive Dynamic']);
+  });
+
+  it('shows each Gmail scope mode: a label, a custom search and none', () => {
+    const scopes = createProfilesRepo(db)
+      .list()
+      .map((p) => [p.name, p.mail_filter_kind, p.mail_filter]);
+    expect(scopes).toEqual([
+      ['Data Analyst Roles', 'query', 'to:you+data@example.com OR label:jobs-data'],
+      ['Empty Search', 'label', ''],
+      ['Frontend Platform', 'label', 'Jobs/Frontend'],
+      ['Scope Miss', 'label', 'NoMatch'],
+    ]);
   });
 
   it('keeps a CV file with the rich profile', () => {

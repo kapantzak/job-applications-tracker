@@ -63,10 +63,10 @@ describe('mock agent', () => {
   });
 
   // Through the app's own mail source, so a change to how it lists applications in the prompt fails here.
-  async function sync(applications: MailSyncRequest['applications']) {
+  async function sync(applications: MailSyncRequest['applications'], mailScope: string | null = 'label:Jobs-Frontend') {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
-      { applications, reviewed_message_ids: ['msg-001'] },
+      { applications, reviewed_message_ids: ['msg-001'], mail_scope: mailScope },
       { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
     );
     return { findings, logs };
@@ -85,6 +85,22 @@ describe('mock agent', () => {
     ]);
     expect(findings.findings.some((f) => f.evidence.message_id === 'msg-001')).toBe(false);
     expect(logs.some((l) => l.includes('mock agent'))).toBe(true);
+  });
+
+  it('reports a scope count only when the prompt carries a scope', async () => {
+    const app = { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] };
+    expect((await sync([app])).findings.scope_message_count).toBe(1);
+    expect((await sync([app], null)).findings.scope_message_count).toBeNull();
+  });
+
+  it('reports a zero count and no changes when the scope contains nomatch', async () => {
+    const apps = [
+      { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] },
+      { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
+    ];
+    const { findings } = await sync(apps, 'label:NoMatch');
+    expect(findings.scope_message_count).toBe(0);
+    expect(findings.findings.map((f) => f.proposed_status)).toEqual(['no_change', 'no_change']);
   });
 
   it('returns no findings when there are no applications', async () => {

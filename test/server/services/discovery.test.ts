@@ -42,6 +42,8 @@ const PROFILE: ProfileInput = {
   keywords: [],
   excluded_companies: [],
   notes: '',
+  mail_filter_kind: 'label',
+  mail_filter: '',
 };
 
 // Later ctx() calls create runs for the profile saved last.

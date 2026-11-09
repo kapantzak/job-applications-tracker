@@ -37,6 +37,8 @@ const PROFILE_INPUT = {
   keywords: [],
   excluded_companies: [],
   notes: '',
+  mail_filter_kind: 'label' as const,
+  mail_filter: '',
 };
 
 describe('api client', () => {

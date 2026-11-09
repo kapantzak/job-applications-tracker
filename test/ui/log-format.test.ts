@@ -46,6 +46,17 @@ describe('formatLog: app and plain lines', () => {
     expect(formatLog(lines).map((e) => [e.kind, e.tone])).toEqual(lines.map(() => ['app', 'muted']));
   });
 
+  it('recognises the Gmail scope lines, warning when the scope matched no mail', () => {
+    const entries = formatLog([
+      'The Gmail scope matched no mail; check the label or search on the Profile page',
+      '0 proposals created, 0 skipped; the Gmail scope matched no mail',
+    ]);
+    expect(entries.map((e) => [e.kind, e.tone])).toEqual([
+      ['app', 'warning'],
+      ['app', 'muted'],
+    ]);
+  });
+
   it('recognises the max-effort lines, warning on a failed worker', () => {
     const entries = formatLog([
       'Max effort: 5 workers, up to 3 at a time',

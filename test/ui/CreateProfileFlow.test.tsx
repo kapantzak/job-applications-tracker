@@ -168,6 +168,8 @@ describe('CreateProfileFlow: an analysis in progress or done', () => {
         keywords: ['TypeScript'],
         excluded_companies: [],
         notes: 'Eight years of backend work at Acme.',
+        mail_filter_kind: 'label',
+        mail_filter: '',
       },
       'cva1',
     );

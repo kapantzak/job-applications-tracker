@@ -27,6 +27,8 @@ function profile(id: string, name: string, counts = { jobs: 0, applications: 0, 
     keywords: [],
     excluded_companies: [],
     notes: '',
+    mail_filter_kind: 'label',
+    mail_filter: '',
     cv: null,
     created_at: '2026-11-01T00:00:00.000Z',
     counts,
@@ -113,6 +115,8 @@ describe('ProfilesPage', () => {
       keywords: [],
       excluded_companies: [],
       notes: '',
+      mail_filter_kind: 'label',
+      mail_filter: '',
     });
     expect(await screen.findByText('profile dashboard')).toBeInTheDocument();
   });

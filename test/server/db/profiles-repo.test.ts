@@ -17,6 +17,8 @@ const input: ProfileInput = {
   keywords: ['typescript', 'node'],
   excluded_companies: ['Acme'],
   notes: 'prefer small teams',
+  mail_filter_kind: 'label',
+  mail_filter: 'Jobs/Lead',
 };
 
 describe('profiles repo', () => {
@@ -51,6 +53,14 @@ describe('profiles repo', () => {
     const second = repo.update(first.id, { ...input, name: 'Architect roles', remote: 'remote' });
     expect(second).toMatchObject({ id: first.id, created_at: first.created_at, name: 'Architect roles', remote: 'remote' });
     expect(() => repo.update('missing', input)).toThrow('Profile not found: missing');
+  });
+
+  it('stores and updates the Gmail scope', () => {
+    const { repo } = setup();
+    const created = repo.create(input);
+    expect(created).toMatchObject({ mail_filter_kind: 'label', mail_filter: 'Jobs/Lead' });
+    const updated = repo.update(created.id, { ...input, mail_filter_kind: 'query', mail_filter: 'to:you+lead@example.com' });
+    expect(repo.get(updated.id)).toMatchObject({ mail_filter_kind: 'query', mail_filter: 'to:you+lead@example.com' });
   });
 
   it('nameTaken ignores ASCII case and the profile being edited, and the index enforces it', () => {

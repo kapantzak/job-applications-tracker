@@ -257,20 +257,22 @@ const APP_LINES: RegExp[] = [
   /^Dropping finding for unknown application /,
   /^Skipping duplicate finding for /,
   /^Skipping (unparseable|unsupported) url: /,
-  /^\d+ proposals created, \d+ skipped$/,
+  /^\d+ proposals created, \d+ skipped(; the Gmail scope matched no mail)?$/,
   /^\d+ new, \d+ duplicates, \d+ dead, \d+ unverified(; \d+ of \d+ workers failed)?$/,
   /^Max effort: \d+ workers, up to \d+ at a time$/,
   /^Worker \d+ \(.+\) started$/,
 ];
 // A failed Max worker does not fail the run, so it is a warning rather than an error.
 const WORKER_FAILED = /^Worker \d+ \(.+\) failed: /;
+// A scope that matched no mail does not fail the sync either (SOW-0032).
+const SCOPE_MISSED = /^The Gmail scope matched no mail; /;
 // Max workers' own output is written with this prefix (src/server/services/discovery.ts).
 const WORKER_PREFIX = /^\[worker (\d+)\] (.*)$/;
 
 function appLine(line: string): LogEntry | null {
   const finished = /^Run \S+ (succeeded|failed|aborted)(:.*)?$/.exec(line);
   if (finished) return { kind: 'app', tone: finished[1] === 'succeeded' ? 'muted' : 'error', text: clip(line) };
-  if (WORKER_FAILED.test(line)) return { kind: 'app', tone: 'warning', text: clip(line) };
+  if (WORKER_FAILED.test(line) || SCOPE_MISSED.test(line)) return { kind: 'app', tone: 'warning', text: clip(line) };
   if (line === RUN_SAVING_LOG_LINE || APP_LINES.some((re) => re.test(line))) {
     return { kind: 'app', tone: 'muted', text: clip(line) };
   }

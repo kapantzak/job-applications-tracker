@@ -31,6 +31,8 @@ interface ProfileRow {
   keywords: string;
   excluded_companies: string;
   notes: string;
+  mail_filter_kind: Profile['mail_filter_kind'];
+  mail_filter: string;
   cv_file_name: string | null;
   cv_file_type: CvFileType | null;
   cv_added_at: string | null;
@@ -49,6 +51,8 @@ function fromRow(row: ProfileRow): Profile {
     keywords: JSON.parse(row.keywords) as string[],
     excluded_companies: JSON.parse(row.excluded_companies) as string[],
     notes: row.notes,
+    mail_filter_kind: row.mail_filter_kind,
+    mail_filter: row.mail_filter,
     cv: row.cv_file_name && row.cv_added_at ? { file_name: row.cv_file_name, added_at: row.cv_added_at } : null,
     created_at: row.created_at,
   };
@@ -64,6 +68,8 @@ function toParams(input: ProfileInput) {
     keywords: JSON.stringify(input.keywords),
     excluded_companies: JSON.stringify(input.excluded_companies),
     notes: input.notes,
+    mail_filter_kind: input.mail_filter_kind,
+    mail_filter: input.mail_filter,
   };
 }
 
@@ -73,9 +79,11 @@ export function createProfilesRepo(db: Db) {
   const selectAll = db.prepare('SELECT * FROM profiles ORDER BY name COLLATE NOCASE ASC, rowid ASC');
   const insert = db.prepare(
     `INSERT INTO profiles (id, name, slug, target_roles, locations, remote, seniority, keywords,
-       excluded_companies, notes, cv_file_name, cv_file_type, cv_added_at, created_at)
+       excluded_companies, notes, mail_filter_kind, mail_filter, cv_file_name, cv_file_type, cv_added_at,
+       created_at)
      VALUES (@id, @name, @slug, @target_roles, @locations, @remote, @seniority, @keywords,
-       @excluded_companies, @notes, @cv_file_name, @cv_file_type, @cv_added_at, @created_at)`,
+       @excluded_companies, @notes, @mail_filter_kind, @mail_filter, @cv_file_name, @cv_file_type, @cv_added_at,
+       @created_at)`,
   );
   const updateCv = db.prepare(
     'UPDATE profiles SET cv_file_name = @file_name, cv_file_type = @file_type, cv_added_at = @added_at WHERE id = @id',
@@ -83,7 +91,8 @@ export function createProfilesRepo(db: Db) {
   const updateStmt = db.prepare(
     `UPDATE profiles SET name = @name, slug = @slug, target_roles = @target_roles, locations = @locations,
        remote = @remote, seniority = @seniority, keywords = @keywords,
-       excluded_companies = @excluded_companies, notes = @notes
+       excluded_companies = @excluded_companies, notes = @notes, mail_filter_kind = @mail_filter_kind,
+       mail_filter = @mail_filter
      WHERE id = @id`,
   );
   const selectNameOwner = db.prepare('SELECT id FROM profiles WHERE name = ? COLLATE NOCASE');
