@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
+import type { DashboardSummary } from '../../src/server/domain/dashboard.js';
 import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
-  listApplications: vi.fn(),
-  listProposals: vi.fn(),
+  getDashboard: vi.fn(),
   listJobs: vi.fn(),
   listRuns: vi.fn(),
   getSettings: vi.fn(),
@@ -31,13 +31,47 @@ function renderPage() {
   );
 }
 
+const BASE = '/profiles/platform-roles';
+const NO_STOPS = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
+
+function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
+  return {
+    total: 34,
+    status_counts: {
+      saved: 5,
+      applied: 12,
+      screening: 3,
+      interview: 2,
+      offer: 1,
+      rejected: 6,
+      withdrawn: 2,
+      no_response: 3,
+    },
+    funnel: { applied: 24, screening: 8, interview: 3, offer: 1 },
+    rejected_at: { applied: 4, screening: 1, interview: 1, offer: 0 },
+    stopped_at: {
+      applied: { waiting: 9, rejected: 4, no_response: 2, withdrawn: 1 },
+      screening: { waiting: 3, rejected: 1, no_response: 1, withdrawn: 0 },
+      interview: { waiting: 1, rejected: 1, no_response: 0, withdrawn: 0 },
+      offer: { waiting: 1, rejected: 0, no_response: 0, withdrawn: 0 },
+    },
+    pending_proposals: 3,
+    quiet: [
+      { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', since: '2026-10-01T00:00:00Z', days: 20 },
+      { id: 'a2', company: 'Globex', role: 'Analyst', status: 'screening', since: '2026-10-05T00:00:00Z', days: 16 },
+    ],
+    quiet_days: 14,
+    ...over,
+  };
+}
+
 afterEach(cleanup);
 
 beforeEach(() => {
+  localStorage.clear();
   vi.resetAllMocks();
-  vi.mocked(client.listApplications).mockResolvedValue([{}, {}] as never);
-  vi.mocked(client.listProposals).mockResolvedValue([{}, {}, {}] as never);
-  vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}, {}] as never);
+  vi.mocked(client.getDashboard).mockResolvedValue(summary());
+  vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}] as never);
   vi.mocked(client.listRuns).mockResolvedValue([]);
   vi.mocked(client.getSettings).mockResolvedValue({
     adapter_id: 'claude',
@@ -52,24 +86,95 @@ beforeEach(() => {
 describe('DashboardPage', () => {
   it('says what Sync from Gmail searches', async () => {
     renderPage();
-    await screen.findByTestId('count-applications');
+    await screen.findByTestId('count-in-progress');
     expect(screen.getByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
   });
 
-  it('renders the three counts', async () => {
+  it('tiles show counts and link to matching lists', async () => {
     renderPage();
-    expect(await screen.findByTestId('count-applications')).toHaveTextContent('2');
+    const inProgress = await screen.findByTestId('count-in-progress');
+    expect(inProgress).toHaveTextContent('17');
+    expect(inProgress).toHaveAttribute(
+      'href',
+      `${BASE}/applications?status=applied&status=screening&status=interview`,
+    );
+    expect(screen.getByTestId('count-interviews')).toHaveTextContent('2');
+    expect(screen.getByTestId('count-interviews')).toHaveAttribute('href', `${BASE}/applications?status=interview`);
+    expect(screen.getByTestId('count-offers')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-offers')).toHaveAttribute('href', `${BASE}/applications?status=offer`);
+    expect(screen.getByTestId('count-rejected')).toHaveTextContent('6');
+    expect(screen.getByTestId('count-rejected')).toHaveAttribute('href', `${BASE}/applications?status=rejected`);
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('3');
-    expect(screen.getByTestId('count-jobs')).toHaveTextContent('4');
-    expect(screen.getByText(/Last discovery: never/)).toBeInTheDocument();
+    expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
+  });
+
+  it('shows the bar, funnel and attention cards in Breakdown', async () => {
+    localStorage.setItem('dashboard-view', 'breakdown');
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
+  });
+
+  it('discovery line carries the jobs count', async () => {
+    renderPage();
+    expect(await screen.findByText(/Last discovery: .+ · 3 jobs/)).toBeInTheDocument();
     expect(screen.getByText(/Last sync: never/)).toBeInTheDocument();
   });
 
-  it('renders what loaded when one fetch fails', async () => {
+  it('discovery line says one job in the singular', async () => {
+    vi.mocked(client.listJobs).mockResolvedValue([{}] as never);
+    renderPage();
+    expect(await screen.findByText(/Last discovery: .+ · 1 job$/)).toBeInTheDocument();
+  });
+
+  it('drops the jobs suffix and shows an alert when jobs fail to load', async () => {
     vi.mocked(client.listJobs).mockRejectedValue(new Error('jobs down'));
     renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('jobs down');
-    expect(screen.getByTestId('count-applications')).toHaveTextContent('2');
+    expect(screen.getByText(/Last discovery: never$/)).toBeInTheDocument();
+    expect(screen.queryByText(/· \d+ jobs/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('17');
+  });
+
+  it('empty profile shows the empty state', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(
+      summary({
+        total: 0,
+        status_counts: {
+          saved: 0,
+          applied: 0,
+          screening: 0,
+          interview: 0,
+          offer: 0,
+          rejected: 0,
+          withdrawn: 0,
+          no_response: 0,
+        },
+        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
+        pending_proposals: 0,
+        quiet: [],
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', `${BASE}/jobs`);
+    expect(screen.queryByText(/Where your/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('0');
+  });
+
+  it('a failed summary still shows runs and agent', async () => {
+    vi.mocked(client.getDashboard).mockRejectedValue(new Error('Summary failed'));
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Summary failed');
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('–');
+    expect(screen.getByTestId('count-interviews')).toHaveTextContent('–');
+    expect(screen.getByRole('heading', { name: 'Last successful runs' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Agent' })).toBeInTheDocument();
+    expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
   });
 
   it('shows the selected agent with its model and effort per run kind', async () => {
@@ -158,3 +263,100 @@ describe('DashboardPage search buttons', () => {
   });
 });
 
+describe('DashboardPage views', () => {
+  const sent = (applied: number) => summary({ funnel: { applied, screening: 0, interview: 0, offer: 0 } });
+  const switcher = () => screen.queryByRole('group', { name: 'Dashboard view' });
+  const viewButton = (name: 'Journey' | 'Breakdown') => within(switcher()!).getByRole('button', { name });
+  const journeyHeading = () => screen.queryByRole('heading', { name: "Your applications' journey" });
+  const barHeading = () => screen.queryByRole('heading', { name: /^Where your/ });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('opens Journey from 10 sent, with the attention card below the graph', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(10));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    expect(barHeading()).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'How far applications get' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'false');
+    // Opening a view stores nothing; only a click does.
+    expect(localStorage.getItem('dashboard-view')).toBeNull();
+  });
+
+  it('opens Breakdown below 10 sent', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('switches view on click and remembers the choice', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('group', { name: 'Dashboard view' });
+    await user.click(viewButton('Journey'));
+    expect(journeyHeading()).toBeInTheDocument();
+    expect(barHeading()).not.toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('dashboard-view')).toBe('journey');
+    await user.click(viewButton('Breakdown'));
+    expect(barHeading()).toBeInTheDocument();
+    expect(localStorage.getItem('dashboard-view')).toBe('breakdown');
+  });
+
+  it('lets a stored choice win over the count', async () => {
+    localStorage.setItem('dashboard-view', 'breakdown');
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+  });
+
+  // The graph's labels are only readable from 1280 px windows (SOW-0037 Decision 7).
+  const stubWidth = (width: number) => {
+    vi.stubGlobal('innerWidth', width);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: width >= 1280, addEventListener: () => {}, removeEventListener: () => {} })),
+    );
+  };
+
+  it('shows only Breakdown, without the switch, below 1280 px', async () => {
+    stubWidth(1279);
+    localStorage.setItem('dashboard-view', 'journey');
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
+    expect(journeyHeading()).not.toBeInTheDocument();
+    expect(switcher()).not.toBeInTheDocument();
+  });
+
+  it('offers the switch and Journey from 1280 px', async () => {
+    stubWidth(1280);
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
+    renderPage();
+    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('hides the switch for a profile without applications', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(
+      summary({
+        total: 0,
+        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(switcher()).not.toBeInTheDocument();
+  });
+});

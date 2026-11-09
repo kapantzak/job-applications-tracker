@@ -11,6 +11,7 @@ import {
   deleteProfile,
   discardCvAnalysis,
   getCvAnalysis,
+  getDashboard,
   retryCvAnalysis,
   updateProfile,
   uploadCv,
@@ -105,6 +106,14 @@ describe('api client', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ id: 'p1' }));
     await updateProfile('p1', PROFILE_INPUT, 'cva1');
     expect(fetchMock.mock.calls[0]![1]!.body).toBe(JSON.stringify({ ...PROFILE_INPUT, cv_analysis_id: 'cva1' }));
+  });
+
+  it("getDashboard calls GET on the profile's dashboard", async () => {
+    const body = { total: 0 };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(body));
+    await expect(getDashboard('pf1')).resolves.toEqual(body);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/api/profiles/pf1/dashboard');
+    expect(fetchMock.mock.calls[0]![1]!.method).toBe('GET');
   });
 
   it('getModelCatalogs calls GET /api/setup/models', async () => {

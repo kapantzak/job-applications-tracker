@@ -14,6 +14,7 @@ import type {
   Settings,
   StatusHistoryEntry,
 } from '../../server/domain/types.js';
+import type { DashboardSummary } from '../../server/domain/dashboard.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -128,6 +129,9 @@ export const getProfileBySlug = (slug: string): Promise<Profile> =>
 // `cvAnalysisId` saves the profile's applied CV analysis and replaces its CV (SOW-0024).
 export const updateProfile = (profileId: string, profile: ProfileInput, cvAnalysisId?: string): Promise<Profile> =>
   request('PUT', scoped(profileId, ''), cvAnalysisId ? { ...profile, cv_analysis_id: cvAnalysisId } : profile);
+export const getDashboard = (profileId: string): Promise<DashboardSummary> =>
+  request('GET', scoped(profileId, '/dashboard'));
+
 // Removes the profile with its jobs, applications, proposals, runs and run logs.
 export const deleteProfile = (profileId: string): Promise<void> => request('DELETE', scoped(profileId, ''));
 export const removeProfileCv = (profileId: string): Promise<Profile> => request('DELETE', scoped(profileId, '/cv'));
@@ -173,8 +177,8 @@ export const saveJob = (profileId: string, id: string): Promise<Application> =>
 export const markApplied = (profileId: string, id: string): Promise<Application> =>
   request('POST', scoped(profileId, `/jobs/${enc(id)}/applied`));
 
-export const listApplications = (profileId: string, open = false): Promise<Application[]> =>
-  request('GET', scoped(profileId, open ? '/applications?open=1' : '/applications'));
+export const listApplications = (profileId: string): Promise<Application[]> =>
+  request('GET', scoped(profileId, '/applications'));
 export const createApplication = (profileId: string, input: NewApplicationInput): Promise<Application> =>
   request('POST', scoped(profileId, '/applications'), input);
 export const getApplication = (profileId: string, id: string): Promise<ApplicationDetail> =>
