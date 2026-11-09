@@ -183,6 +183,8 @@ describe('AttentionCard', () => {
       'href',
       '/profiles/platform-roles/applications/app-2',
     );
+    // Long unbroken names must wrap instead of widening the page.
+    expect(screen.getByRole('link', { name: 'Acme · Role 1' })).toHaveClass('wrap-anywhere');
     expect(screen.getByText('Applied 21 days ago, no reply')).toBeInTheDocument();
     expect(screen.getByText('Interview, no change in 15 days')).toBeInTheDocument();
   });

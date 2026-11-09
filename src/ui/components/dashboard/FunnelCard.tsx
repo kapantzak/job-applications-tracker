@@ -11,7 +11,7 @@ export function FunnelCard({ funnel }: FunnelCardProps) {
   const top = funnel.applied;
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>
           <h2>How far applications get</h2>

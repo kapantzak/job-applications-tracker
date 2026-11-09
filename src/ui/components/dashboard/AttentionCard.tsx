@@ -26,7 +26,7 @@ export function AttentionCard({ pendingProposals, quiet, href }: AttentionCardPr
   const hidden = quiet.length - shown.length;
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>
           <h2>Needs attention</h2>
@@ -46,7 +46,7 @@ export function AttentionCard({ pendingProposals, quiet, href }: AttentionCardPr
             )}
             {shown.map((q) => (
               <li key={q.id} className="flex flex-col gap-0.5 py-2 first:pt-0">
-                <Link to={href(`/applications/${q.id}`)} className="font-medium hover:underline">
+                <Link to={href(`/applications/${q.id}`)} className="font-medium wrap-anywhere hover:underline">
                   {q.company} · {q.role}
                 </Link>
                 <span className="text-muted-foreground">{quietLine(q)}</span>

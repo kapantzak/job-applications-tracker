@@ -21,7 +21,8 @@ describe('dashboard', () => {
     repo.setStatus(acme.id, 'interview', 'user');
     repo.create({ profile_id: h.profile.id, company: 'Globex', role: 'Engineer', status: 'saved' });
     const other = h.deps.profilesRepo.create(OTHER);
-    repo.create({ profile_id: other.id, company: 'Initech', role: 'Engineer', status: 'offer' });
+    const initech = repo.create({ profile_id: other.id, company: 'Initech', role: 'Engineer', status: 'applied' });
+    repo.setStatus(initech.id, 'offer', 'user');
 
     const run = h.deps.runsRepo.create('sync_mail', h.profile.id, { adapter_id: 'claude', prompt_version: null });
     h.deps.proposalsRepo.createMany(run.id, [
@@ -40,6 +41,24 @@ describe('dashboard', () => {
       },
     ]);
 
+    // The other profile has its own pending proposal; it must not leak into this response.
+    const otherRun = h.deps.runsRepo.create('sync_mail', other.id, { adapter_id: 'claude', prompt_version: null });
+    h.deps.proposalsRepo.createMany(otherRun.id, [
+      {
+        application_id: initech.id,
+        proposed_status: 'rejected',
+        confidence: 0.7,
+        reason: 'invented rejection',
+        evidence: {
+          message_id: 'msg-invented-2',
+          date: '2026-10-02T00:00:00.000Z',
+          from: 'hr@initech.example',
+          subject: 'Update',
+          snippet: 'Unfortunately',
+        },
+      },
+    ]);
+
     const res = await h.app.request(`${h.base}/dashboard`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as DashboardSummary;
@@ -48,6 +67,7 @@ describe('dashboard', () => {
     expect(body.status_counts.saved).toBe(1);
     expect(body.status_counts.offer).toBe(0);
     expect(body.funnel.interview).toBe(1);
+    expect(body.funnel.offer).toBe(0);
     expect(body.pending_proposals).toBe(1);
     expect(body.quiet_days).toBe(14);
   });

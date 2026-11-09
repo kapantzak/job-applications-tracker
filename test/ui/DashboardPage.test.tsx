@@ -110,6 +110,12 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Last sync: never/)).toBeInTheDocument();
   });
 
+  it('discovery line says one job in the singular', async () => {
+    vi.mocked(client.listJobs).mockResolvedValue([{}] as never);
+    renderPage();
+    expect(await screen.findByText(/Last discovery: .+ · 1 job$/)).toBeInTheDocument();
+  });
+
   it('drops the jobs suffix and shows an alert when jobs fail to load', async () => {
     vi.mocked(client.listJobs).mockRejectedValue(new Error('jobs down'));
     renderPage();

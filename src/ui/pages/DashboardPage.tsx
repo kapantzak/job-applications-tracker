@@ -193,10 +193,10 @@ export function DashboardPage() {
             <>
               <StatusBarCard total={summary.total} counts={summary.status_counts} href={href} />
               <div className="grid gap-4 sm:grid-cols-5">
-                <div className="sm:col-span-3">
+                <div className="min-w-0 sm:col-span-3">
                   <FunnelCard funnel={summary.funnel} />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="min-w-0 sm:col-span-2">
                   <AttentionCard pendingProposals={summary.pending_proposals} quiet={summary.quiet} href={href} />
                 </div>
               </div>
@@ -209,8 +209,9 @@ export function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-            <p className="text-muted-foreground">Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}
-              {jobs !== null && ` · ${jobs} jobs`}
+            <p className="text-muted-foreground">
+              Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}
+              {jobs !== null && ` · ${jobs} ${jobs === 1 ? 'job' : 'jobs'}`}
             </p>
             <p className="text-muted-foreground">Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
           </CardContent>
