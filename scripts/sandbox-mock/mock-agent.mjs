@@ -86,9 +86,14 @@ function syncMail() {
     ['interview', 0.92, 'invites you to a technical interview'],
     ['rejected', 0.71, 'says they will not move forward'],
   ];
+  // Rendered by src/server/mail/agent-source.ts. A profile without a Gmail scope asks for a null count;
+  // a scope containing "nomatch" (the seeded Scope Miss profile) matches no mail, so nothing changes.
+  const scopeSection = /^## Mailbox scope\n([\s\S]*?)^## /m.exec(prompt)?.[1] ?? '';
+  const scoped = !scopeSection.includes('No scope is set.');
+  const missed = scoped && /nomatch/i.test(scopeSection);
   const today = new Date().toISOString().slice(0, 10);
   const findings = apps.map((app, i) => {
-    const [status, confidence, what] = plan[i] ?? ['no_change', 0.5, 'has no update'];
+    const [status, confidence, what] = (!missed && plan[i]) || ['no_change', 0.5, 'has no update'];
     return {
       application_id: app.id,
       proposed_status: status,
@@ -104,13 +109,11 @@ function syncMail() {
       },
     };
   });
-  // Rendered by src/server/mail/agent-source.ts: a profile without a Gmail scope asks for null.
-  const scoped = !prompt.includes('No scope is set.');
   return {
     mail_access: true,
     findings,
     notes: 'Mock agent: no mailbox was read.',
-    scope_message_count: scoped ? apps.length : null,
+    scope_message_count: scoped ? (missed ? 0 : apps.length) : null,
   };
 }
 

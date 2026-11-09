@@ -181,7 +181,7 @@ interface AppStep {
 
 interface AppSpec {
   key: string;
-  profile: 'rich' | 'sparse';
+  profile: 'rich' | 'sparse' | 'miss';
   job?: string;
   company?: string;
   role?: string;
@@ -217,6 +217,12 @@ const APPS: AppSpec[] = [
     url: 'https://example.com/?mock-job=oscorp-referral', start: 'applied', daysAgo: 7,
     notes: 'Referred by a former colleague.', domains: ['oscorp.example.com'] },
   { key: 'analyst', profile: 'sparse', job: 'pied', start: 'applied', daysAgo: 8, domains: ['pied-piper.example.com'] },
+  // Scope Miss: open applications under a label the mock agent reports as matching no mail (SOW-0033).
+  { key: 'miss-hooli', profile: 'miss', company: 'Hooli Devices', role: 'QA Engineer',
+    url: 'https://example.com/?mock-job=hooli-qa', start: 'applied', daysAgo: 6, domains: ['hooli.example.com'] },
+  { key: 'miss-massive', profile: 'miss', company: 'Massive Dynamic', role: 'Test Automation Engineer',
+    url: 'https://example.com/?mock-job=massive-qa', start: 'applied', daysAgo: 4, steps: [{ to: 'screening', daysAgo: 2 }],
+    domains: ['massive-dynamic.example.com'] },
 ];
 
 interface ProposalSpec {
@@ -273,7 +279,7 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
   const seed = db.transaction((): SeedSummary => {
     createSettingsRepo(db).set({ adapter_id: 'custom', custom_command: opts.mockAgentCommand, sync_interval: 'off' });
 
-    const profileInputs: Record<'rich' | 'sparse' | 'empty', [ProfileInput, number]> = {
+    const profileInputs: Record<'rich' | 'sparse' | 'empty' | 'miss', [ProfileInput, number]> = {
       rich: [{
         name: 'Frontend Platform',
         target_roles: ['Senior Frontend Engineer', 'Staff Frontend Engineer', 'UI Platform Engineer'],
@@ -310,8 +316,21 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         mail_filter_kind: 'label',
         mail_filter: '',
       }, 1],
+      // The mock agent reports a scope containing "nomatch" as matching no mail (SOW-0033).
+      miss: [{
+        name: 'Scope Miss',
+        target_roles: ['QA Engineer'],
+        locations: ['Lisbon, Portugal'],
+        remote: 'remote',
+        seniority: 'Mid-level',
+        keywords: ['Playwright', 'Cypress'],
+        excluded_companies: [],
+        notes: '',
+        mail_filter_kind: 'label',
+        mail_filter: 'NoMatch',
+      }, 7],
     };
-    const profiles = {} as Record<'rich' | 'sparse' | 'empty', { id: string; name: string; slug: string }>;
+    const profiles = {} as Record<'rich' | 'sparse' | 'empty' | 'miss', { id: string; name: string; slug: string }>;
     for (const [key, [input, daysAgo]] of Object.entries(profileInputs) as [keyof typeof profileInputs, [ProfileInput, number]][]) {
       const cv = key === 'rich' ? { file_name: 'frontend-cv.md', file_type: 'md' as const, added_at: ago(daysAgo) } : undefined;
       const p = profilesRepo.create(input, { cv });
@@ -435,7 +454,9 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
       touch('proposals', proposal!.id, { decided_at: at });
     });
 
-    return { profiles: [profiles.rich, profiles.sparse, profiles.empty].map(({ name, slug }) => ({ name, slug })) };
+    return {
+      profiles: [profiles.rich, profiles.sparse, profiles.empty, profiles.miss].map(({ name, slug }) => ({ name, slug })),
+    };
   });
 
   const summary = seed();

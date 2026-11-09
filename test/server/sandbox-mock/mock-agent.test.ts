@@ -93,6 +93,16 @@ describe('mock agent', () => {
     expect((await sync([app], null)).findings.scope_message_count).toBeNull();
   });
 
+  it('reports a zero count and no changes when the scope contains nomatch', async () => {
+    const apps = [
+      { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] },
+      { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
+    ];
+    const { findings } = await sync(apps, 'label:NoMatch');
+    expect(findings.scope_message_count).toBe(0);
+    expect(findings.findings.map((f) => f.proposed_status)).toEqual(['no_change', 'no_change']);
+  });
+
   it('returns no findings when there are no applications', async () => {
     const { findings } = await sync([]);
     expect(findings.findings).toEqual([]);
