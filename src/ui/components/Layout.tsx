@@ -28,6 +28,7 @@ import {
 import type { Profile } from '../../server/domain/types.js';
 import { ApiError, getProfileBySlug, listProposals } from '../api/client.js';
 import { profilePath, ProfileShellContext, type ProfileShell } from '../profile-route.js';
+import { HelpMenu } from './HelpMenu.js';
 import { LogoMark } from './LogoMark.js';
 import { ThemeMenu } from './ThemeMenu.js';
 
@@ -231,6 +232,9 @@ export function Layout() {
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
+            <SidebarMenuItem>
+              <HelpMenu />
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <ThemeMenu />
             </SidebarMenuItem>

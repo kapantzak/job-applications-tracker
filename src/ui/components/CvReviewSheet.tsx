@@ -2,6 +2,8 @@ import { useId, useState } from 'react';
 import { CircleCheckIcon } from 'lucide-react';
 import type { CvAnalysis } from '../../server/domain/types.js';
 import type { ProfileInput } from '../api/client.js';
+import { FIELD_HELP, type FieldHelpKey } from '../help-text.js';
+import { InfoTip } from './InfoTip.js';
 import {
   applyChoices,
   reviewRows,
@@ -15,6 +17,15 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+
+// The same help as the profile form, so a field means the same thing in both places.
+const FIELD_HELP_KEYS: Record<ReviewField, FieldHelpKey> = {
+  target_roles: 'targetRoles',
+  locations: 'locations',
+  remote: 'remote',
+  seniority: 'seniority',
+  keywords: 'keywords',
+};
 
 const FIELD_LABELS: Record<ReviewField, string> = {
   target_roles: 'Target roles',
@@ -63,9 +74,12 @@ function ReviewRowField({
   const label = FIELD_LABELS[row.field];
   return (
     <section aria-labelledby={`${id}-label`} className="space-y-3 rounded-lg border p-3">
-      <h3 id={`${id}-label`} className="text-sm font-medium">
-        {label}
-      </h3>
+      <div className="flex items-center gap-1">
+        <h3 id={`${id}-label`} className="text-sm font-medium">
+          {label}
+        </h3>
+        <InfoTip topic={label} text={FIELD_HELP[FIELD_HELP_KEYS[row.field]]} />
+      </div>
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div className="space-y-1">
           <dt className="text-xs text-muted-foreground">Current</dt>

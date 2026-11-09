@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ChevronDownIcon, RocketIcon, SearchIcon } from 'lucide-react';
 import type { EffortMode } from '../../server/domain/types.js';
+import { FIELD_HELP } from '../help-text.js';
+import { InfoTip } from './InfoTip.js';
 import { MaxSearchDialog } from './MaxSearchDialog.js';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group';
@@ -38,32 +40,35 @@ export function FindJobsButton({
 
   return (
     <>
-      <ButtonGroup>
-        <Button type="button" disabled={disabled} onClick={() => (max ? setConfirming(true) : onStart('default'))}>
-          {max ? <RocketIcon /> : <SearchIcon />}
-          {max ? 'Find jobs with max effort' : 'Find jobs'}
-        </Button>
-        <ButtonGroupSeparator />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" disabled={disabled} aria-label="Choose search mode">
-              <ChevronDownIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-72">
-            <DropdownMenuRadioGroup value={mode} onValueChange={(v) => setMode(v as EffortMode)}>
-              {MODES.map((m) => (
-                <DropdownMenuRadioItem key={m.value} value={m.value} aria-label={m.title} className="items-start">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">{m.title}</span>
-                    <span className="text-xs text-muted-foreground">{m.description}</span>
-                  </div>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </ButtonGroup>
+      <div className="flex items-center gap-1">
+        <ButtonGroup>
+          <Button type="button" disabled={disabled} onClick={() => (max ? setConfirming(true) : onStart('default'))}>
+            {max ? <RocketIcon /> : <SearchIcon />}
+            {max ? 'Find jobs with max effort' : 'Find jobs'}
+          </Button>
+          <ButtonGroupSeparator />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="icon" disabled={disabled} aria-label="Choose search mode">
+                <ChevronDownIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuRadioGroup value={mode} onValueChange={(v) => setMode(v as EffortMode)}>
+                {MODES.map((m) => (
+                  <DropdownMenuRadioItem key={m.value} value={m.value} aria-label={m.title} className="items-start">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">{m.title}</span>
+                      <span className="text-xs text-muted-foreground">{m.description}</span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ButtonGroup>
+        <InfoTip topic="Find jobs" text={FIELD_HELP.findJobs} />
+      </div>
       <MaxSearchDialog
         profileId={profileId}
         open={confirming}

@@ -120,7 +120,7 @@ describe('SettingsPage model and effort', () => {
       { id: 'codex', installed: true, gmail_guide: true },
     ]);
     renderPage();
-    await user.click(await screen.findByRole('radio', { name: /codex/ }));
+    await user.click(await screen.findByRole('radio', { name: /^Codex/ }));
     await user.type(screen.getByLabelText('Model (discovery)'), 'model-b');
     expect(effortOptions('Effort (discovery)')).toEqual(['', 'high', 'ultra']);
     await user.selectOptions(screen.getByLabelText('Effort (discovery)'), 'ultra');
@@ -189,12 +189,51 @@ describe('SettingsPage model and effort', () => {
       { id: 'codex', installed: true, gmail_guide: true },
     ]);
     renderPage();
-    await user.click(await screen.findByRole('radio', { name: /codex/ }));
-    expect(screen.getByText(/Could not read the codex model list/i)).toBeInTheDocument();
+    await user.click(await screen.findByRole('radio', { name: /^Codex/ }));
+    expect(screen.getByText(/Could not read the Codex model list/)).toBeInTheDocument();
   });
 });
 
 describe('SettingsPage', () => {
+  it('shows readable agent names and sync intervals over the stored ids', async () => {
+    renderPage();
+    expect(await screen.findByRole('radio', { name: /^Claude Code/ })).toBeInTheDocument();
+    const interval = screen.getByLabelText('Sync interval');
+    expect(within(interval).getAllByRole('option').map((o) => [o.textContent, o.getAttribute('value')])).toEqual([
+      ['Off', 'off'],
+      ['Every hour', '1h'],
+      ['Every 6 hours', '6h'],
+      ['Every 24 hours', '24h'],
+    ]);
+  });
+
+  it('explains every setting and the sections that had no description', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByLabelText('Sync interval');
+    for (const topic of [
+      'Agent adapter',
+      'Model and effort',
+      'Model (discovery)',
+      'Effort (mail sync)',
+      'Permission mode (discover)',
+      'Allowed tools (sync)',
+      'Sandbox (discover)',
+      'Run timeout (ms)',
+      'Sync interval',
+      'Claude spend cap',
+      'Port',
+    ]) {
+      expect(screen.getByRole('button', { name: `About ${topic}` })).toBeInTheDocument();
+    }
+    expect(screen.getByText('Time limits, scheduled Gmail sync and the Claude spend cap.')).toBeInTheDocument();
+    expect(screen.getByText('Where the app listens on this computer.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'About Allowed tools (sync)' }));
+    expect(await screen.findByRole('dialog', { name: 'About Allowed tools (sync)' })).toHaveTextContent(
+      /^Claude Code only\. The tools a run may use/,
+    );
+  });
+
   it('saves only the runs section keys', async () => {
     const user = userEvent.setup();
     renderPage();

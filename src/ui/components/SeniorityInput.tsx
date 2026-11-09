@@ -1,6 +1,8 @@
 import { useId, useState } from 'react';
 import { CheckIcon } from 'lucide-react';
 import { joinSeniority, SENIORITY_LEVELS, splitSeniority, type SeniorityLevel } from '../../server/domain/seniority.js';
+import { FIELD_HELP } from '../help-text.js';
+import { InfoTip } from './InfoTip.js';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -27,8 +29,12 @@ export function SeniorityInput({ value, onChange }: SeniorityInputProps) {
   };
 
   return (
-    <FieldSet className="gap-3">
-      <FieldLegend variant="label">Seniority</FieldLegend>
+    // Named by the legend text alone, so the ⓘ button does not join the group's name.
+    <FieldSet className="gap-3" aria-labelledby={`${id}-legend`}>
+      <FieldLegend variant="label" className="flex items-center gap-1">
+        <span id={`${id}-legend`}>Seniority</span>
+        <InfoTip topic="Seniority" text={FIELD_HELP.seniority} />
+      </FieldLegend>
       <div className="flex flex-wrap gap-1.5">
         {SENIORITY_LEVELS.map((level) => {
           const on = selection.levels.includes(level);

@@ -98,6 +98,18 @@ describe('RunPage', () => {
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute('href', '/settings');
   });
 
+  it('says what a run page shows and warns that raw output can hold mail', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
+    vi.mocked(client.getRunLog).mockResolvedValue('line one');
+    renderPage();
+    expect(await screen.findByText(/^One job search or Gmail sync/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'About Show raw output' }));
+    expect(await screen.findByRole('dialog', { name: 'About Show raw output' })).toHaveTextContent(
+      'It can include mail snippets',
+    );
+  });
+
   it('links back to the Runs list with the view it was opened from', async () => {
     vi.mocked(client.getRunLog).mockResolvedValue('');
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });

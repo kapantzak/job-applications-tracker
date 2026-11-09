@@ -21,7 +21,8 @@ describe('SeniorityInput', () => {
   it('offers the ten levels as toggles and saves the chosen ones in ladder order', async () => {
     const user = userEvent.setup();
     render(<Harness initial="" />);
-    expect(screen.getAllByRole('button')).toHaveLength(10);
+    // Toggles only: the group also has an ⓘ help button, which has no pressed state.
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(10);
     await user.click(screen.getByRole('button', { name: 'Staff' }));
     await user.click(screen.getByRole('button', { name: 'Senior' }));
     expect(screen.getByRole('button', { name: 'Senior' })).toHaveAttribute('aria-pressed', 'true');

@@ -78,6 +78,7 @@ describe('CreateProfileFlow: choosing', () => {
     const user = userEvent.setup();
     renderFlow();
     await user.click(await screen.findByRole('button', { name: 'Open the form' }));
+    expect(screen.getByText(/Name and at least one target role are required/)).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toHaveValue('');
     await user.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByRole('heading', { name: 'Start from your CV' })).toBeInTheDocument();

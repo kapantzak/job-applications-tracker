@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeftIcon, PencilLineIcon, SparklesIcon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, createProfile } from '../api/client.js';
+import { SCREEN_INTROS } from '../help-text.js';
 import { useCvAnalysis } from '../hooks/use-cv-analysis.js';
 import { profilePath } from '../profile-route.js';
 import { CvAnalysisCard } from './CvAnalysisCard.js';
@@ -44,6 +45,7 @@ export function CreateProfileFlow() {
     return (
       <div className="flex max-w-2xl flex-col gap-4">
         <BackButton onClick={() => setMode('choose')} />
+        <p className="text-sm text-muted-foreground">{SCREEN_INTROS.manualProfile}</p>
         <ProfileForm
           initial={EMPTY_PROFILE}
           submitLabel="Create profile"

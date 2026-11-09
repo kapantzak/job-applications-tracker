@@ -1,4 +1,18 @@
-import type { ApplicationStatus, RunStatus } from '../server/domain/types.js';
+import type { ApplicationStatus, RunStatus, Settings } from '../server/domain/types.js';
+
+// Display names only; stored settings keep the ids (SOW-0038 decision 5).
+export const ADAPTER_LABELS: Record<Settings['adapter_id'], string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  custom: 'Custom command',
+};
+
+export const SYNC_INTERVAL_LABELS: Record<Settings['sync_interval'], string> = {
+  off: 'Off',
+  '1h': 'Every hour',
+  '6h': 'Every 6 hours',
+  '24h': 'Every 24 hours',
+};
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   saved: 'Saved',

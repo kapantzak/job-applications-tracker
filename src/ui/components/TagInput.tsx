@@ -4,15 +4,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { WithInfo } from './InfoTip.js';
 
 interface TagInputProps {
   label: string;
   value: string[];
   onChange: (next: string[]) => void;
   placeholder?: string;
+  help?: string;
 }
 
-export function TagInput({ label, value, onChange, placeholder }: TagInputProps) {
+export function TagInput({ label, value, onChange, placeholder, help }: TagInputProps) {
   const id = useId();
   const [draft, setDraft] = useState('');
 
@@ -32,7 +34,13 @@ export function TagInput({ label, value, onChange, placeholder }: TagInputProps)
 
   return (
     <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      {help ? (
+        <WithInfo topic={label} text={help}>
+          <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        </WithInfo>
+      ) : (
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      )}
       <Input
         id={id}
         aria-label={label}

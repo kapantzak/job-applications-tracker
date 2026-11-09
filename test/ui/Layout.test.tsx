@@ -11,6 +11,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   listProposals: vi.fn(),
   getProfileBySlug: vi.fn(),
+  getHealth: vi.fn(),
 }));
 
 // Shows what the shell resolved, and lets the test report a change the way pages do.
@@ -49,6 +50,7 @@ beforeEach(() => {
   document.documentElement.className = '';
   vi.mocked(client.listProposals).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never);
   vi.mocked(client.getProfileBySlug).mockResolvedValue(TEST_PROFILE);
+  vi.mocked(client.getHealth).mockResolvedValue({ ok: true, version: '9.9.9', dataDir: '/data' });
 });
 
 afterEach(() => {
@@ -145,5 +147,35 @@ describe('Layout', () => {
     expect(document.documentElement).toHaveClass('dark');
     expect(localStorage.getItem('theme')).toBe('dark');
     expect(screen.getByRole('button', { name: 'Theme: Dark' })).toBeInTheDocument();
+  });
+
+  it('offers the version and project links from the Help & about menu, each opening in a new tab', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await user.click(screen.getByRole('button', { name: 'Help & about' }));
+    const menu = await screen.findByRole('menu');
+    expect(await within(menu).findByText('Version 9.9.9')).toBeInTheDocument();
+    const repo = 'https://github.com/kapantzak/job-applications-tracker';
+    const links = within(menu)
+      .getAllByRole('menuitem')
+      .map((item) => [item.textContent, item.getAttribute('href'), item.getAttribute('target'), item.getAttribute('rel')]);
+    expect(links).toEqual([
+      ['Documentation', `${repo}#readme`, '_blank', 'noopener noreferrer'],
+      ['GitHub repository', repo, '_blank', 'noopener noreferrer'],
+      ['Star on GitHub', repo, '_blank', 'noopener noreferrer'],
+      ['Report an issue', `${repo}/issues/new`, '_blank', 'noopener noreferrer'],
+    ]);
+  });
+
+  it('still opens the Help & about menu when the version cannot be read', async () => {
+    vi.mocked(client.getHealth).mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    renderShell();
+    // Let the failed read settle before checking that no version is shown.
+    await waitFor(() => expect(client.getHealth).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'Help & about' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Documentation' })).toBeInTheDocument();
+    expect(within(menu).queryByText(/^Version/)).not.toBeInTheDocument();
   });
 });

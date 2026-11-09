@@ -81,6 +81,14 @@ describe('JobsPage', () => {
     expect(screen.queryByText('Deadco')).not.toBeInTheDocument();
   });
 
+  it('explains the dead-link and dismissed filters', async () => {
+    renderPage();
+    await screen.findByText('Could not verify');
+    expect(screen.getByRole('checkbox', { name: 'Show dead links' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Show dead links' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Show dismissed' })).toBeInTheDocument();
+  });
+
   it('marks a job applied and replaces its buttons', async () => {
     const user = userEvent.setup();
     vi.mocked(client.markApplied).mockResolvedValue({ status: 'applied' } as never);

@@ -19,11 +19,13 @@ import {
 } from '../../server/domain/types.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
+import { InfoTip } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { VERIFICATION_LABELS, VerificationBadge } from '../components/VerificationBadge.js';
 import { formatTime } from '../format.js';
+import { FIELD_HELP } from '../help-text.js';
 import { useTableView } from '../hooks/use-table-view.js';
 import { STATUS_LABELS } from '../labels.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
@@ -238,6 +240,7 @@ export function JobsPage() {
               onCheckedChange={(v) => setIncludeDead(v === true)}
             />
             <Label htmlFor={`${id}-dead`}>Show dead links</Label>
+            <InfoTip topic="Show dead links" text={FIELD_HELP.showDeadLinks} />
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
@@ -246,6 +249,7 @@ export function JobsPage() {
               onCheckedChange={(v) => setIncludeDismissed(v === true)}
             />
             <Label htmlFor={`${id}-dismissed`}>Show dismissed</Label>
+            <InfoTip topic="Show dismissed" text={FIELD_HELP.showDismissed} />
           </div>
         </div>
         {!jobs ? (

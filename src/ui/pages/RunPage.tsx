@@ -5,10 +5,12 @@ import { getRun, getRunLog, subscribeRunEvents } from '../api/client.js';
 import { RUN_SAVING_LOG_LINE, type Run } from '../../server/domain/types.js';
 import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { InfoTip } from '../components/InfoTip.js';
 import { LogView } from '../components/LogView.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { runAgentLabel, runChoiceLabel } from '../agent-choices.js';
 import { formatTime, formatUsage } from '../format.js';
+import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useListReturnHref } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
@@ -110,6 +112,7 @@ export function RunPage() {
         </Button>
         <PageHeader
           title="Run"
+          description={SCREEN_INTROS.run}
           actions={
             <div className="flex items-start gap-3">
               {!terminal && (
@@ -205,6 +208,7 @@ export function RunPage() {
             <Label htmlFor={rawId} className="text-sm font-normal text-muted-foreground">
               Show raw output
             </Label>
+            <InfoTip topic="Show raw output" text={FIELD_HELP.showRawOutput} />
           </div>
         </div>
         <LogView lines={lines} raw={showRaw} />

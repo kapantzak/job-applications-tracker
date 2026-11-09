@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { FIELD_HELP } from '../help-text.js';
 import { ErrorAlert } from './feedback.js';
+import { WithInfo } from './InfoTip.js';
 import { StatusSelect } from './StatusSelect.js';
 
 export function AddApplicationForm({
@@ -58,15 +60,21 @@ export function AddApplicationForm({
     <form onSubmit={onSubmit} className="flex flex-col gap-6">
       <FieldGroup className="gap-5">
         <Field>
-          <FieldLabel htmlFor={`${id}-company`}>Company</FieldLabel>
+          <WithInfo topic="Company" text={FIELD_HELP.company}>
+            <FieldLabel htmlFor={`${id}-company`}>Company</FieldLabel>
+          </WithInfo>
           <Input id={`${id}-company`} value={company} onChange={(e) => setCompany(e.target.value)} required />
         </Field>
         <Field>
-          <FieldLabel htmlFor={`${id}-role`}>Role</FieldLabel>
+          <WithInfo topic="Role" text={FIELD_HELP.role}>
+            <FieldLabel htmlFor={`${id}-role`}>Role</FieldLabel>
+          </WithInfo>
           <Input id={`${id}-role`} value={role} onChange={(e) => setRole(e.target.value)} required />
         </Field>
         <Field>
-          <FieldLabel htmlFor={`${id}-url`}>URL</FieldLabel>
+          <WithInfo topic="URL" text={FIELD_HELP.url}>
+            <FieldLabel htmlFor={`${id}-url`}>URL</FieldLabel>
+          </WithInfo>
           <Input
             id={`${id}-url`}
             placeholder="https://"
@@ -76,11 +84,15 @@ export function AddApplicationForm({
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field>
-            <FieldLabel htmlFor={`${id}-status`}>Status</FieldLabel>
+            <WithInfo topic="Status" text={FIELD_HELP.status}>
+              <FieldLabel htmlFor={`${id}-status`}>Status</FieldLabel>
+            </WithInfo>
             <StatusSelect id={`${id}-status`} value={status} onChange={setStatus} />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${id}-applied`}>Applied date</FieldLabel>
+            <WithInfo topic="Applied date" text={FIELD_HELP.appliedDate}>
+              <FieldLabel htmlFor={`${id}-applied`}>Applied date</FieldLabel>
+            </WithInfo>
             <Input
               id={`${id}-applied`}
               type="date"
@@ -90,7 +102,9 @@ export function AddApplicationForm({
           </Field>
         </div>
         <Field>
-          <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
+          <WithInfo topic="Notes" text={FIELD_HELP.applicationNotes}>
+            <FieldLabel htmlFor={`${id}-notes`}>Notes</FieldLabel>
+          </WithInfo>
           <Textarea id={`${id}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
       </FieldGroup>

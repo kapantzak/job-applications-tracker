@@ -7,6 +7,7 @@ import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { formatTime } from '../format.js';
+import { SCREEN_INTROS } from '../help-text.js';
 import { useListLinkState, useTableView } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { RUN_STATUS_TONES } from '../labels.js';
@@ -117,7 +118,7 @@ export function RunsPage() {
 
   return (
     <div>
-      <PageHeader title="Runs" description="Discovery and mail sync runs, newest first." />
+      <PageHeader title="Runs" description={SCREEN_INTROS.runs} />
       {error && (
         <div className="mb-4">
           <ErrorAlert>{error}</ErrorAlert>

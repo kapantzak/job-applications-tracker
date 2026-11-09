@@ -36,6 +36,13 @@ beforeEach(() => {
 });
 
 describe('SetupPage', () => {
+  it('names the agents readably and explains the choice', async () => {
+    renderPage();
+    expect(await screen.findByRole('radio', { name: /^Claude Code/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Agent adapter' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Agent adapter' })).toBeInTheDocument();
+  });
+
   it('shows the Gmail access section only for adapters with a gmail guide', async () => {
     const user = userEvent.setup();
     renderPage();

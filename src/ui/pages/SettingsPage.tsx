@@ -13,8 +13,11 @@ import { AdapterChooser } from '../components/AdapterChooser.js';
 import { AgentModelFields } from '../components/AgentModelFields.js';
 import { DataSection } from '../components/DataSection.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { WithInfo } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SettingsSection } from '../components/SettingsSection.js';
+import { FIELD_HELP, SCREEN_INTROS, type FieldHelpKey } from '../help-text.js';
+import { SYNC_INTERVAL_LABELS } from '../labels.js';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -27,14 +30,16 @@ type TextKey =
   | 'sandbox_discover'
   | 'sandbox_sync';
 
-const PERMISSION_FIELDS: Array<[TextKey, string]> = [
-  ['permission_mode_discover', 'Permission mode (discover)'],
-  ['permission_mode_sync', 'Permission mode (sync)'],
-  ['allowed_tools_discover', 'Allowed tools (discover)'],
-  ['allowed_tools_sync', 'Allowed tools (sync)'],
-  ['sandbox_discover', 'Sandbox (discover)'],
-  ['sandbox_sync', 'Sandbox (sync)'],
+const PERMISSION_FIELDS: Array<[TextKey, string, FieldHelpKey]> = [
+  ['permission_mode_discover', 'Permission mode (discover)', 'permissionMode'],
+  ['permission_mode_sync', 'Permission mode (sync)', 'permissionMode'],
+  ['allowed_tools_discover', 'Allowed tools (discover)', 'allowedTools'],
+  ['allowed_tools_sync', 'Allowed tools (sync)', 'allowedTools'],
+  ['sandbox_discover', 'Sandbox (discover)', 'sandbox'],
+  ['sandbox_sync', 'Sandbox (sync)', 'sandbox'],
 ];
+
+const SYNC_INTERVALS: Array<Settings['sync_interval']> = ['off', '1h', '6h', '24h'];
 
 export function SettingsPage() {
   const id = useId();
@@ -74,7 +79,7 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Settings" description="Each section saves on its own." />
+      <PageHeader title="Settings" description={SCREEN_INTROS.settings} />
       <div className="flex flex-col gap-6">
         <SettingsSection
           title="Agent"
@@ -105,9 +110,11 @@ export function SettingsPage() {
           getPatch={() => Object.fromEntries(PERMISSION_FIELDS.map(([key]) => [key, values[key]]))}
         >
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-            {PERMISSION_FIELDS.map(([key, label]) => (
+            {PERMISSION_FIELDS.map(([key, label, help]) => (
               <Field key={key}>
-                <FieldLabel htmlFor={`${id}-${key}`}>{label}</FieldLabel>
+                <WithInfo topic={label} text={FIELD_HELP[help]}>
+                  <FieldLabel htmlFor={`${id}-${key}`}>{label}</FieldLabel>
+                </WithInfo>
                 <Input
                   id={`${id}-${key}`}
                   className="font-mono"
@@ -120,6 +127,7 @@ export function SettingsPage() {
         </SettingsSection>
         <SettingsSection
           title="Runs"
+          description={SCREEN_INTROS.settingsRuns}
           getPatch={() => ({
             run_timeout_ms: values.run_timeout_ms,
             sync_interval: values.sync_interval,
@@ -128,7 +136,9 @@ export function SettingsPage() {
         >
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel htmlFor={`${id}-timeout`}>Run timeout (ms)</FieldLabel>
+              <WithInfo topic="Run timeout (ms)" text={FIELD_HELP.runTimeout}>
+                <FieldLabel htmlFor={`${id}-timeout`}>Run timeout (ms)</FieldLabel>
+              </WithInfo>
               <Input
                 id={`${id}-timeout`}
                 type="number"
@@ -137,21 +147,25 @@ export function SettingsPage() {
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor={`${id}-interval`}>Sync interval</FieldLabel>
+              <WithInfo topic="Sync interval" text={FIELD_HELP.syncInterval}>
+                <FieldLabel htmlFor={`${id}-interval`}>Sync interval</FieldLabel>
+              </WithInfo>
               <NativeSelect
                 id={`${id}-interval`}
                 value={values.sync_interval}
                 onChange={(e) => set('sync_interval', e.target.value as Settings['sync_interval'])}
               >
-                {['off', '1h', '6h', '24h'].map((v) => (
+                {SYNC_INTERVALS.map((v) => (
                   <NativeSelectOption key={v} value={v}>
-                    {v}
+                    {SYNC_INTERVAL_LABELS[v]}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
             </Field>
             <Field className="col-span-2">
-              <FieldLabel htmlFor={`${id}-budget`}>Claude spend cap per discovery agent (USD)</FieldLabel>
+              <WithInfo topic="Claude spend cap" text={FIELD_HELP.spendCap}>
+                <FieldLabel htmlFor={`${id}-budget`}>Claude spend cap per discovery agent (USD)</FieldLabel>
+              </WithInfo>
               <Input
                 id={`${id}-budget`}
                 className="max-w-xs font-mono"
@@ -168,9 +182,15 @@ export function SettingsPage() {
             </Field>
           </div>
         </SettingsSection>
-        <SettingsSection title="Server" getPatch={() => ({ port: values.port })}>
+        <SettingsSection
+          title="Server"
+          description={SCREEN_INTROS.settingsServer}
+          getPatch={() => ({ port: values.port })}
+        >
           <Field className="max-w-xs">
-            <FieldLabel htmlFor={`${id}-port`}>Port</FieldLabel>
+            <WithInfo topic="Port" text={FIELD_HELP.port}>
+              <FieldLabel htmlFor={`${id}-port`}>Port</FieldLabel>
+            </WithInfo>
             <Input
               id={`${id}-port`}
               type="number"

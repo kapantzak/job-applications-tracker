@@ -84,6 +84,13 @@ beforeEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('says what the screen shows and explains Find jobs', async () => {
+    renderPage();
+    await screen.findByTestId('count-in-progress');
+    expect(screen.getByText(/^How this profile's applications are doing\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Find jobs' })).toBeInTheDocument();
+  });
+
   it('says what Sync from Gmail searches', async () => {
     renderPage();
     await screen.findByTestId('count-in-progress');
