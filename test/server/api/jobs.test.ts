@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Application, Job, JobListItem } from '../../../src/server/domain/types.js';
-import { insertJob, makeHarness, type Harness } from './harness.js';
+import { insertJob, makeHarness, SAMPLE_PROFILE, type Harness } from './harness.js';
 
 let h: Harness;
 
@@ -145,7 +145,35 @@ describe('jobs', () => {
     expect(h.deps.jobsRepo.get(job.id)?.dismissed_at).not.toBeNull();
   });
 
-  it.each(['applied', 'save', 'dismiss'])('POST %s on an unknown job is 404', async (action) => {
+  it('POST restore is 204 and shows a dismissed job again', async () => {
+    const job = insertJob(h);
+    h.deps.jobsRepo.dismiss(job.id);
+    const res = await h.app.request(`${h.base}/jobs/${job.id}/restore`, { method: 'POST' });
+    expect(res.status).toBe(204);
+    expect(h.deps.jobsRepo.get(job.id)?.dismissed_at).toBeNull();
+    const list = (await (await h.app.request(`${h.base}/jobs`)).json()) as JobListItem[];
+    expect(list.map((j) => j.id)).toEqual([job.id]);
+  });
+
+  it('POST restore on a job that is not dismissed is 204 and changes nothing', async () => {
+    const job = insertJob(h);
+    const res = await h.app.request(`${h.base}/jobs/${job.id}/restore`, { method: 'POST' });
+    expect(res.status).toBe(204);
+    expect(h.deps.jobsRepo.get(job.id)).toEqual(job);
+  });
+
+  it.each(['dismiss', 'restore'])("POST %s on another profile's job is 404 and leaves it alone", async (action) => {
+    const other = h.deps.profilesRepo.create({ ...SAMPLE_PROFILE, name: 'Data roles' });
+    const job = insertJob(h, {}, other.id);
+    if (action === 'restore') h.deps.jobsRepo.dismiss(job.id);
+    const before = h.deps.jobsRepo.get(job.id);
+    const res = await h.app.request(`${h.base}/jobs/${job.id}/${action}`, { method: 'POST' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Job not found' });
+    expect(h.deps.jobsRepo.get(job.id)).toEqual(before);
+  });
+
+  it.each(['applied', 'save', 'dismiss', 'restore'])('POST %s on an unknown job is 404', async (action) => {
     const res = await h.app.request(`${h.base}/jobs/no-such-job/${action}`, { method: 'POST' });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'Job not found' });

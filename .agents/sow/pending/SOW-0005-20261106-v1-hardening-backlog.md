@@ -19,7 +19,8 @@ Settings and UI:
 - Show `match_reason` and `description_excerpt` on the Jobs screen.
 - Done in SOW-0027: light-mode amber warning text (about 3:1) in `AgentModelFields.tsx` and `LogView.tsx` now uses the text-only `--warning-text` (about 5:1).
 - Done in SOW-0009: Saved/Applied state derived from `application_status` on the jobs list; a saved job can be marked applied.
-- Hide "Dismiss" on already dismissed rows; show the list (not "Loading") when the initial job load fails.
+- Done in SOW-0044: dismissed rows show Restore instead of "Dismiss".
+- Show the list (not "Loading") when the initial job load fails.
 - Detail page heading should refresh after save; add a detail-page test; disable Save buttons while a request is in flight.
 - Done in SOW-0009: the Jobs page shows the real status label (Interview, Offer, …) from `application_status`.
 - Sync-interval options derived from a shared constant.

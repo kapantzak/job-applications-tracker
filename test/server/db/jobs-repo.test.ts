@@ -81,6 +81,18 @@ describe('jobs repo', () => {
     expect(repo.get(a.id)?.dismissed_at).toEqual(expect.any(String));
   });
 
+  it('restores a dismissed job, and restore of an unknown id is a no-op', () => {
+    const { repo, runId, pid } = setup();
+    const [a, b] = repo.insertMany(runId, [newJob(1), newJob(2)]);
+    repo.dismiss(a.id);
+    repo.dismiss(b.id);
+    repo.restore('missing');
+    repo.restore(a.id);
+    expect(repo.get(a.id)?.dismissed_at).toBeNull();
+    expect(repo.get(b.id)?.dismissed_at).toEqual(expect.any(String));
+    expect(repo.list(pid).map((j) => j.id)).toEqual([a.id]);
+  });
+
   it('returns recent distinct canonical urls newest first', () => {
     const { repo, runId, pid } = setup();
     repo.insertMany(runId, [newJob(1), newJob(2), newJob(3, { canonical_url: 'https://example.com/jobs/2' })]);
