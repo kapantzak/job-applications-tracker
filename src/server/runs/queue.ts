@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentRunRecord, RunPatch, RunsRepo, UsageRecord } from '../db/runs-repo.js';
 import { RUN_SAVING_LOG_LINE, type EffortMode, type Run, type RunKind } from '../domain/types.js';
@@ -55,13 +55,17 @@ interface InFlight {
   cancelReason?: string;
 }
 
-// A discovery of the other effort mode is already queued or running for the profile (SOW-0016).
+// A discovery of another mode or with other instructions (SOW-0016, SOW-0042), or any second import
+// (SOW-0043), while one is queued or running for the profile.
 export class ActiveRunConflictError extends Error {
   constructor(readonly active: Run) {
-    super('A discovery run is already active');
+    super(active.kind === 'import_jobs' ? 'An import is already active' : 'A discovery run is already active');
     this.name = 'ActiveRunConflictError';
   }
 }
+
+// What a run is given besides its row, written before it can start; handlers read it from their run folder.
+export const RUN_INPUT_FILE = 'input.json';
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -196,7 +200,7 @@ export function createRunQueue(opts: RunQueueOptions) {
   function enqueue(
     kind: RunKind,
     profileId: string,
-    options: { effortMode?: EffortMode; customPrompt?: string | null } = {},
+    options: { effortMode?: EffortMode; customPrompt?: string | null; input?: unknown } = {},
   ): Run {
     const effortMode = options.effortMode ?? 'default';
     // Empty text means none here too, so the round label, Run page and prompt agree.
@@ -211,6 +215,8 @@ export function createRunQueue(opts: RunQueueOptions) {
     if (active && (active.effort_mode !== effortMode || active.custom_prompt !== customPrompt)) {
       throw new ActiveRunConflictError(active);
     }
+    // Handing back the active import would drop the second one's data.
+    if (active && kind === 'import_jobs') throw new ActiveRunConflictError(active);
     if (active) return active;
     const run = runsRepo.create(kind, profileId, {
       adapter_id: '',
@@ -218,6 +224,26 @@ export function createRunQueue(opts: RunQueueOptions) {
       effort_mode: effortMode,
       custom_prompt: customPrompt,
     });
+    if (options.input !== undefined) {
+      // On disk, so a run still queued at shutdown keeps its data for the next start.
+      try {
+        const runDir = join(runsDir, run.id);
+        mkdirSync(runDir, { recursive: true });
+        writeFileSync(join(runDir, RUN_INPUT_FILE), JSON.stringify(options.input));
+      } catch (err) {
+        // The original error is the one to report, even if recording it fails too.
+        try {
+          runsRepo.update(run.id, {
+            status: 'failed',
+            error: `Could not store the run input: ${messageOf(err)}`,
+            finished_at: now(),
+          });
+        } catch (recordErr) {
+          console.error(`run ${run.id}: failed to record the input error: ${messageOf(recordErr)}`);
+        }
+        throw err;
+      }
+    }
     kick();
     return run;
   }

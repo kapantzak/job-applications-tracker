@@ -149,6 +149,7 @@ export function DashboardPage() {
               profileId={profileId}
               disabled={busy}
               onStart={(...args) => void start(() => startDiscovery(profileId, ...args))}
+              onImported={(run) => navigate(href(`/runs/${run.id}`))}
             />
             <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
               <MailIcon />

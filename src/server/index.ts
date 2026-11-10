@@ -21,6 +21,7 @@ import { createLogStore } from './runs/log-store.js';
 import { createRunQueue } from './runs/queue.js';
 import { createSyncScheduler } from './runs/scheduler.js';
 import { createDiscoveryHandler } from './services/discovery.js';
+import { createImportHandler } from './services/import-jobs.js';
 import { createMailSyncHandler } from './services/mail-sync.js';
 import { createProposalService } from './services/proposals.js';
 
@@ -147,12 +148,14 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     mailSourceFactory: (settings) => createAgentMailSource(createAdapter(settings, 'sync_mail')),
   });
 
+  const imports = createImportHandler({ profilesRepo, jobsRepo });
+
   const logStore = createLogStore(runsDir);
   const queue = createRunQueue({
     runsRepo,
     logStore,
     runsDir,
-    handlers: { discover_jobs: discovery, sync_mail: sync },
+    handlers: { discover_jobs: discovery, sync_mail: sync, import_jobs: imports },
   });
   const cvService = createCvService({
     db,

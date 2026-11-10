@@ -15,6 +15,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listRuns: vi.fn(),
   getSettings: vi.fn(),
   startDiscovery: vi.fn(),
+  importJobs: vi.fn(),
+  getImportPrompt: vi.fn(),
   startSync: vi.fn(),
 }));
 
@@ -233,6 +235,20 @@ describe('DashboardPage search buttons', () => {
     await user.type(within(dialog).getByLabelText('Instructions'), 'Only fintech companies');
     await user.click(within(dialog).getByRole('button', { name: 'Start search' }));
     expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default', 'Only fintech companies');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('an import from the Find jobs menu opens its run', async () => {
+    vi.mocked(client.importJobs).mockResolvedValue({ id: 'run-import' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Import from another agent…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('{"jobs": []}');
+    await user.click(within(dialog).getByRole('button', { name: 'Import jobs' }));
+    expect(client.importJobs).toHaveBeenCalledWith('pf1', '{"jobs": []}', undefined);
     expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 

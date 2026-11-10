@@ -1,4 +1,4 @@
-import type { AgentTaskKind, RunKind, Settings } from '../domain/types.js';
+import type { AgentRunKind, AgentTaskKind, Settings } from '../domain/types.js';
 import type { AgentSelection, CliAdapterConfig, ModelCatalog } from './types.js';
 
 // Model ids and effort levels become argv elements; a leading '-' would be read as a flag, and
@@ -18,7 +18,7 @@ export const CLAUDE_MODEL_CATALOG: ModelCatalog = {
   efforts: CLAUDE_EFFORTS,
 };
 
-function selectionFor(settings: Settings, agent: 'claude' | 'codex', kind: RunKind): AgentSelection {
+function selectionFor(settings: Settings, agent: 'claude' | 'codex', kind: AgentRunKind): AgentSelection {
   const suffix = kind === 'discover_jobs' ? 'discover' : 'sync';
   const model = settings[`${agent}_model_${suffix}`];
   const effort = settings[`${agent}_effort_${suffix}`];

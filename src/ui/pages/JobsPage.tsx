@@ -98,11 +98,12 @@ function fitSummary(checks: FitChecks | null): FitSummary {
 }
 const fitPasses = (checks: FitChecks | null) =>
   checks ? FIT_FIELDS.filter(([field]) => checks[field] === 'pass').length : null;
-// A search round is one discovery run (SOW-0040); the filter names it by start time and mode, and marks a
-// search with custom instructions (SOW-0042).
+// A search round is one discovery run (SOW-0040) or one import (SOW-0043); the filter names it by start time
+// and mode, and marks a search with custom instructions (SOW-0042).
+const roundKind = (j: JobListItem) =>
+  j.run_kind === 'import_jobs' ? 'Imported' : j.run_effort_mode === 'max' ? 'Max effort' : 'Default';
 const searchLabel = (j: JobListItem) =>
-  `${formatTime(j.run_started_at)} · ${j.run_effort_mode === 'max' ? 'Max effort' : 'Default'}` +
-  (j.run_has_custom_prompt ? ' · Custom' : '');
+  `${formatTime(j.run_started_at)} · ${roundKind(j)}${j.run_has_custom_prompt ? ' · Custom' : ''}`;
 // Newest search first; a run without a start time sorts after the dated ones.
 const searchRank = (j: JobListItem) => {
   const time = j.run_started_at ? Date.parse(j.run_started_at) : NaN;
@@ -252,9 +253,13 @@ export function JobsPage() {
     <div>
       <PageHeader
         title="Jobs"
-        description="Openings found by discovery runs, with their links checked."
+        description="Openings found by discovery runs or imported from another agent, with their links checked."
         actions={
-          <FindJobsButton profileId={profileId} onStart={(...args) => void onFind(...args)} />
+          <FindJobsButton
+            profileId={profileId}
+            onStart={(...args) => void onFind(...args)}
+            onImported={(run) => navigate(href(`/runs/${run.id}`))}
+          />
         }
       />
       <div className="flex flex-col gap-4">

@@ -36,9 +36,13 @@ export const FIELD_HELP = {
     'Email domains this company writes from, for example `example.com`. Without a Gmail label or search on the profile, sync looks for mail from these domains and from job-board senders. Add one when replies come from a domain the app did not guess.',
 
   findJobs:
-    'Starts a discovery run: your agent searches the web for jobs that fit this profile, then the app checks every link. Default runs one agent. Max effort runs five, one per source, uses several times the tokens, and asks before it starts.',
+    'Starts a discovery run: your agent searches the web for jobs that fit this profile, then the app checks every link. Default runs one agent. Max effort runs five, one per source, uses several times the tokens, and asks before it starts. The arrow also offers Custom search, to add your own instructions to one search, and Import from another agent, to run the search prompt in any agent and paste its answer.',
   customInstructions:
     'Your own words for this search only, such as a sector, a list of companies or a region. They are sent to your agent with your profile, and the Run page keeps them. The app\'s search rules still come first. For something every search should know, use the profile\'s Notes.',
+  importInstructions:
+    'Optional. Your own words for this search, added to the copied prompt and kept with the import, like a custom search. Leave empty for a normal search.',
+  importReply:
+    "Paste the agent's whole answer. The app reads the last JSON object in it, so text around it is fine. It checks every link before saving, and jobs you already have are not added twice.",
   showDeadLinks:
     'Jobs whose link was dead when the app checked it after the search (the page was gone or the site did not exist) are hidden. Tick to show them.',
   showDismissed: 'Jobs you dismissed are hidden. Tick to show them again.',

@@ -127,6 +127,30 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 - Your instructions are added to the usual search prompt, with your profile. The app's own rules still come first: the agent stays read only, keeps to its time and job budget, and the app checks every link as usual. An agent may still follow your words less closely than you meant.
 - The instructions apply to that search only. The Run page shows them, and on the Jobs screen the "Found in" filter marks that search "Custom". For something every search should know, use the profile's Notes.
 
+## Import from another agent
+
+You can run the search in any agent you like, such as a chat app or your own Claude Code session, and bring its results into the app.
+
+1. Open the arrow next to "Find jobs" and pick "Import from another agent…".
+2. Optionally type instructions for this search, then press "Copy prompt". The prompt is the one the app gives its own agent, with the format the answer must follow. It includes this profile (Notes too) and the links of jobs you already have, so only paste it into a service you are happy to share that with.
+3. Paste the prompt into your agent, then paste its whole answer into "Agent answer" and press "Import jobs". Text around the JSON is fine; the app reads the last JSON object in the answer.
+
+The import runs like a search: the app checks every link, skips jobs you already have (they count as seen again) and opens the Run page. On the Jobs screen the "Found in" filter names it "Imported". An answer can hold up to 100 jobs and 1 MB. Agents sometimes invent links; those show up as dead.
+
+An agent that can run shell commands can send its result straight to the app instead. Use the address the app printed when it started (`http://127.0.0.1:4173` unless that port was taken or you chose another) and the profile's id:
+
+```sh
+# The profile id, from the slug in the profile's address (/profiles/<slug>/...).
+curl -s http://127.0.0.1:4173/api/profiles/by-slug/<slug>
+
+# result.json holds the agent's JSON object: {"jobs": [...], "notes": "..."}
+jq '{result: .}' result.json | curl -s -X POST \
+  -H 'Content-Type: application/json' --data @- \
+  http://127.0.0.1:4173/api/profiles/<profile-id>/runs/import
+```
+
+The body is `{"result": {...}}` for a JSON object or `{"reply": "..."}` for a whole answer as text, plus an optional `"custom_prompt"`. The app answers 202 with the run; a second import while one is waiting or running is refused with 409.
+
 ## Max-effort search
 
 - On the Dashboard and Jobs screens, "Find jobs" is a split button: the arrow picks Default or Max effort, and the button then reads "Find jobs" or "Find jobs with max effort". It starts on Default every time the page loads. Max effort runs five searches by source instead of one: Greenhouse, Lever, Ashby, other ATS and careers pages, and remote and niche job boards. Up to three run at a time, and each gets the full run timeout. The app merges the results, removes duplicates and checks every link as usual.

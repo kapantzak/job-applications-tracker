@@ -7,6 +7,8 @@ import {
   getRunLog,
   listJobs,
   startDiscovery,
+  getImportPrompt,
+  importJobs,
   createProfile,
   deleteProfile,
   discardCvAnalysis,
@@ -161,6 +163,23 @@ describe('api client', () => {
     expect(bodies).toEqual([
       JSON.stringify({ mode: 'max', custom_prompt: 'Only fintech companies' }),
       JSON.stringify({ mode: 'default' }),
+    ]);
+  });
+
+  it('getImportPrompt and importJobs post to the import routes, with instructions only when given', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => jsonResponse({ prompt: 'P', version: '5' }, 200));
+    expect(await getImportPrompt('p1')).toEqual({ prompt: 'P', version: '5' });
+    await getImportPrompt('p1', 'Only fintech');
+    await importJobs('p1', '{"jobs":[]}');
+    await importJobs('p1', '{"jobs":[]}', 'Only fintech');
+    const calls = fetchMock.mock.calls as [string, RequestInit][];
+    expect(calls.map(([url, init]) => [url, init.method, init.body])).toEqual([
+      ['/api/profiles/p1/runs/import/prompt', 'POST', JSON.stringify({})],
+      ['/api/profiles/p1/runs/import/prompt', 'POST', JSON.stringify({ custom_prompt: 'Only fintech' })],
+      ['/api/profiles/p1/runs/import', 'POST', JSON.stringify({ reply: '{"jobs":[]}' })],
+      ['/api/profiles/p1/runs/import', 'POST', JSON.stringify({ reply: '{"jobs":[]}', custom_prompt: 'Only fintech' })],
     ]);
   });
 

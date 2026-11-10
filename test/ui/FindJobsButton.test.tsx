@@ -9,6 +9,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   getSettings: vi.fn(),
   listRuns: vi.fn(),
+  getImportPrompt: vi.fn(),
+  importJobs: vi.fn(),
 }));
 
 afterEach(cleanup);
@@ -21,9 +23,10 @@ beforeEach(() => {
 
 function renderButton(props: { disabled?: boolean } = {}) {
   const onStart = vi.fn();
+  const onImported = vi.fn();
   const user = userEvent.setup();
-  const view = render(<FindJobsButton profileId="pf1" onStart={onStart} {...props} />);
-  return { onStart, user, view };
+  const view = render(<FindJobsButton profileId="pf1" onStart={onStart} onImported={onImported} {...props} />);
+  return { onStart, onImported, user, view };
 }
 
 async function chooseMode(user: ReturnType<typeof userEvent.setup>, name: 'Default' | 'Max effort') {
@@ -34,6 +37,11 @@ async function chooseMode(user: ReturnType<typeof userEvent.setup>, name: 'Defau
 async function openCustom(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Choose search mode' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Custom search…' }));
+}
+
+async function openImport(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Choose search mode' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Import from another agent…' }));
 }
 
 describe('FindJobsButton', () => {
@@ -210,6 +218,107 @@ describe('FindJobsButton', () => {
     await user.click(screen.getByRole('button', { name: 'Find jobs with max effort' }));
     await user.click(await within(await screen.findByRole('alertdialog')).findByRole('button', { name: 'Start Max-effort search' }));
     expect(onStart).toHaveBeenCalledWith('max');
+  });
+
+  it('copies the search prompt, with the optional instructions, and says so', async () => {
+    vi.mocked(client.getImportPrompt).mockResolvedValue({ prompt: 'SEARCH PROMPT', version: '5' });
+    const { user } = renderButton();
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    expect(await within(dialog).findByText('Prompt copied. Paste it into your agent.')).toBeInTheDocument();
+    expect(await navigator.clipboard.readText()).toBe('SEARCH PROMPT');
+    expect(client.getImportPrompt).toHaveBeenLastCalledWith('pf1', undefined);
+    await user.type(within(dialog).getByLabelText('Instructions (optional)'), ' Only fintech ');
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    await vi.waitFor(() => expect(client.getImportPrompt).toHaveBeenLastCalledWith('pf1', 'Only fintech'));
+  });
+
+  it('shows the prompt to copy by hand when the clipboard refuses', async () => {
+    vi.mocked(client.getImportPrompt).mockResolvedValue({ prompt: 'SEARCH PROMPT', version: '5' });
+    const { user } = renderButton();
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    const manual = await within(dialog).findByLabelText(
+      'Copying is not available here. Select the prompt and copy it.',
+    );
+    expect(manual).toHaveValue('SEARCH PROMPT');
+    expect(manual).toHaveAttribute('readonly');
+  });
+
+  it('imports the pasted answer with the instructions and hands back the run', async () => {
+    vi.mocked(client.importJobs).mockResolvedValue({ id: 'run-import' } as never);
+    const { onImported, onStart, user } = renderButton();
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    const importButton = within(dialog).getByRole('button', { name: 'Import jobs' });
+    expect(importButton).toBeDisabled();
+    await user.type(within(dialog).getByLabelText('Instructions (optional)'), 'Only fintech');
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('Here you go: {"jobs": []}');
+    await user.click(importButton);
+    expect(client.importJobs).toHaveBeenCalledWith('pf1', 'Here you go: {"jobs": []}', 'Only fintech');
+    expect(onImported).toHaveBeenCalledWith({ id: 'run-import' });
+    expect(onStart).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Import from another agent' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('records the instructions the copied prompt carried, not ones typed afterwards', async () => {
+    vi.mocked(client.getImportPrompt).mockResolvedValue({ prompt: 'SEARCH PROMPT', version: '5' });
+    vi.mocked(client.importJobs).mockResolvedValue({ id: 'run-import' } as never);
+    const { user } = renderButton();
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    const instructions = within(dialog).getByLabelText('Instructions (optional)');
+    await user.type(instructions, 'Only fintech');
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    await within(dialog).findByText('Prompt copied. Paste it into your agent.');
+    await user.clear(instructions);
+    // The copied state no longer matches what is typed.
+    expect(within(dialog).queryByText('Prompt copied. Paste it into your agent.')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('{"jobs": []}');
+    await user.click(within(dialog).getByRole('button', { name: 'Import jobs' }));
+    expect(client.importJobs).toHaveBeenCalledWith('pf1', '{"jobs": []}', 'Only fintech');
+  });
+
+  it('clears an old error when the dialog opens again', async () => {
+    vi.mocked(client.getImportPrompt).mockRejectedValue(new Error('Profile not found'));
+    const { user } = renderButton();
+    await openImport(user);
+    let dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    await within(dialog).findByRole('alert');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await openImport(user);
+    dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the dialog open with the error when the import is refused', async () => {
+    vi.mocked(client.importJobs).mockRejectedValue(new Error('There are no jobs to import'));
+    const { onImported, user } = renderButton();
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('{"jobs": []}');
+    await user.click(within(dialog).getByRole('button', { name: 'Import jobs' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('There are no jobs to import');
+    expect(onImported).not.toHaveBeenCalled();
+    expect(within(dialog).getByLabelText('Agent answer')).toHaveValue('{"jobs": []}');
+  });
+
+  it('shows why the prompt could not be loaded', async () => {
+    vi.mocked(client.getImportPrompt).mockRejectedValue(new Error('Profile not found'));
+    const { user } = renderButton();
+    await openImport(user);
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByRole('button', { name: 'Copy prompt' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Profile not found');
   });
 
   it('turns both parts off when disabled', () => {

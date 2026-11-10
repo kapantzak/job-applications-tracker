@@ -9,13 +9,13 @@ import {
   MAX_EFFORT_CONCURRENCY,
   MAX_EFFORT_SOURCES,
   type Profile,
-  type RunKind,
+  type AgentRunKind,
   type Settings,
   type VerificationStatus,
   workersFailedNote,
 } from '../domain/types.js';
 import { reportedAgent, requestedAgent, selectionLogLine } from '../runs/agent-record.js';
-import type { RunHandler } from '../runs/queue.js';
+import type { RunContext, RunHandler } from '../runs/queue.js';
 import { outputJsonSchema, DiscoverJobsOutput, type DiscoverJobsResult } from '../tasks/schemas.js';
 import { renderPrompt } from '../tasks/prompts.js';
 import { canonicalUrl, dedupeKey } from '../verify/canonicalize.js';
@@ -25,7 +25,7 @@ export interface DiscoveryDeps {
   profilesRepo: Pick<ProfilesRepo, 'get'>;
   jobsRepo: ReturnType<typeof createJobsRepo>;
   settingsRepo: ReturnType<typeof createSettingsRepo>;
-  adapterFactory: (settings: Settings, kind: RunKind) => AgentAdapter;
+  adapterFactory: (settings: Settings, kind: AgentRunKind) => AgentAdapter;
   verify?: typeof verifyLink;
 }
 
@@ -118,6 +118,131 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return results;
 }
 
+// Shared by discovery and imports (SOW-0043): checks each link, dedupes against the profile's jobs, records
+// found-again jobs and stores new ones in one transaction. Call after ctx.beginSaving().
+export async function saveFoundJobs(
+  ctx: Pick<RunContext, 'run' | 'log'>,
+  profileId: string,
+  found: DiscoverJobsResult['jobs'],
+  deps: { jobsRepo: ReturnType<typeof createJobsRepo>; verify: typeof verifyLink },
+): Promise<SaveCounts> {
+  const { jobsRepo, verify } = deps;
+  let dead = 0;
+  let unverified = 0;
+  let duplicates = 0;
+  const parseable: { job: (typeof found)[number]; canonical: string }[] = [];
+  for (const job of found) {
+    let canonical: string;
+    try {
+      canonical = canonicalUrl(job.url);
+    } catch {
+      ctx.log(`Skipping unparseable url: ${job.url}`);
+      dead++;
+      continue;
+    }
+    // Only web links are fetched and shown; anything else (javascript:, file:, ...) is unusable.
+    const { protocol } = new URL(canonical);
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      ctx.log(`Skipping unsupported url: ${job.url}`);
+      dead++;
+      continue;
+    }
+    parseable.push({ job, canonical });
+  }
+
+  // Max workers overlap and imports may repeat a link, so the same link can come twice; check each once.
+  const distinct = [...new Set(parseable.map((e) => e.canonical))];
+  const verdicts = new Map(
+    await mapLimit(distinct, VERIFY_CONCURRENCY, async (url) => [url, await verify(url)] as const),
+  );
+  const verified = parseable.map((entry) => ({ ...entry, verdict: verdicts.get(entry.canonical)! }));
+
+  const existing = jobsRepo.existingDedupeKeys(profileId);
+  const seen = new Set<string>();
+  // One sighting per known job; Map order keeps the order the agent returned them in.
+  const seenAgain = new Map<string, Sighting>();
+  const newJobs: NewJob[] = [];
+  const statuses: VerificationStatus[] = [];
+  const verifiedAt = new Date().toISOString();
+  for (const { job, canonical, verdict } of verified) {
+    const canonical_url = verdict.status === 'redirected' ? canonicalUrl(verdict.finalUrl) : canonical;
+    const fields = { company: job.company, title: job.title, location: job.location };
+    // A closed posting often redirects to the company's board; the link the agent returned still
+    // names the known job, and the check describes that link (user decision 12, SOW-0040).
+    const returnedKey = dedupeKey({ canonical_url: canonical, ...fields });
+    const key = existing.has(returnedKey) ? returnedKey : dedupeKey({ canonical_url, ...fields });
+    if (existing.has(key) || seen.has(key)) {
+      duplicates++;
+      if (existing.has(key)) {
+        // Only an answer from the site replaces the stored status: a network error also reads as dead,
+        // and one outage must not hide every known job (user decision 10, SOW-0040). When several links
+        // lead to the same job, the first conclusive check wins.
+        const conclusive = verdict.httpStatus !== null && verdict.status !== 'unverified';
+        const verification = conclusive ? { status: verdict.status, verified_at: verifiedAt } : null;
+        const sighting = seenAgain.get(key);
+        if (!sighting) seenAgain.set(key, { dedupe_key: key, verification });
+        else if (!sighting.verification) sighting.verification = verification;
+      }
+      seen.add(key);
+      continue;
+    }
+    seen.add(key);
+    statuses.push(verdict.status);
+    newJobs.push({
+      company: job.company,
+      title: job.title,
+      location: job.location,
+      remote: job.remote,
+      url: job.url,
+      canonical_url,
+      source_site: job.source_site,
+      posted_at: job.posted_at,
+      salary: job.salary,
+      description_excerpt: job.description_excerpt,
+      match_reason: job.match_reason,
+      fit_checks: job.checks,
+      verification_status: verdict.status,
+      verified_at: verifiedAt,
+      dedupe_key: key,
+    });
+  }
+
+  const inserted = jobsRepo.insertMany(ctx.run.id, newJobs, [...seenAgain.values()]);
+  // Count outcomes only for rows actually stored.
+  const storedUrls = new Set(inserted.map((j) => j.dedupe_key));
+  newJobs.forEach((j, i) => {
+    if (!storedUrls.has(j.dedupe_key)) return;
+    if (statuses[i] === 'dead') dead++;
+    else if (statuses[i] === 'unverified') unverified++;
+  });
+  return { inserted: inserted.length, duplicates, dead, unverified };
+}
+
+export interface SaveCounts {
+  inserted: number;
+  duplicates: number;
+  dead: number;
+  unverified: number;
+}
+
+export const savedSummary = (c: SaveCounts): string =>
+  `${c.inserted} new, ${c.duplicates} duplicates, ${c.dead} dead, ${c.unverified} unverified`;
+
+// The variables of the discovery prompt for a profile; imports render the same prompt (SOW-0043).
+export function discoveryPromptVars(
+  profile: Profile,
+  jobsRepo: Pick<ReturnType<typeof createJobsRepo>, 'recentCanonicalUrls'>,
+  customPrompt: string | null,
+): { profile: string; known_urls: string; custom_prompt: string } {
+  const knownUrls = jobsRepo.recentCanonicalUrls(profile.id, KNOWN_URLS_LIMIT);
+  return {
+    profile: renderProfile(profile),
+    known_urls: knownUrls.length ? knownUrls.join('\n') : '(none)',
+    // Every Max worker gets the same instructions (user decision 4, SOW-0042).
+    custom_prompt: customPrompt ?? '(none)',
+  };
+}
+
 export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
   const { profilesRepo, jobsRepo, settingsRepo, adapterFactory } = deps;
   const verify = deps.verify ?? verifyLink;
@@ -127,13 +252,7 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
     if (!profile) throw new Error('Profile not found');
     const settings = settingsRepo.getAll();
 
-    const knownUrls = jobsRepo.recentCanonicalUrls(profile.id, KNOWN_URLS_LIMIT);
-    const promptVars = {
-      profile: renderProfile(profile),
-      known_urls: knownUrls.length ? knownUrls.join('\n') : '(none)',
-      // Every Max worker gets the same instructions (user decision 4, SOW-0042).
-      custom_prompt: ctx.run.custom_prompt ?? '(none)',
-    };
+    const promptVars = discoveryPromptVars(profile, jobsRepo, ctx.run.custom_prompt);
 
     const adapter = adapterFactory(settings, 'discover_jobs');
     ctx.log(`Using adapter ${adapter.id}`);
@@ -201,97 +320,9 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
     // Past this point the run cannot be cancelled; throws if a cancel or shutdown came first.
     ctx.beginSaving();
 
-    let dead = 0;
-    let unverified = 0;
-    let duplicates = 0;
-    const parseable: { job: (typeof found)[number]; canonical: string }[] = [];
-    for (const job of found) {
-      let canonical: string;
-      try {
-        canonical = canonicalUrl(job.url);
-      } catch {
-        ctx.log(`Skipping unparseable url: ${job.url}`);
-        dead++;
-        continue;
-      }
-      // Only web links are fetched and shown; anything else (javascript:, file:, ...) is unusable.
-      const { protocol } = new URL(canonical);
-      if (protocol !== 'http:' && protocol !== 'https:') {
-        ctx.log(`Skipping unsupported url: ${job.url}`);
-        dead++;
-        continue;
-      }
-      parseable.push({ job, canonical });
-    }
-
-    // Max workers overlap, so the same link can come back several times; check each one once.
-    const distinct = [...new Set(parseable.map((e) => e.canonical))];
-    const verdicts = new Map(
-      await mapLimit(distinct, VERIFY_CONCURRENCY, async (url) => [url, await verify(url)] as const),
-    );
-    const verified = parseable.map((entry) => ({ ...entry, verdict: verdicts.get(entry.canonical)! }));
-
-    const existing = jobsRepo.existingDedupeKeys(profile.id);
-    const seen = new Set<string>();
-    // One sighting per known job; Map order keeps the order the agent returned them in.
-    const seenAgain = new Map<string, Sighting>();
-    const newJobs: NewJob[] = [];
-    const statuses: VerificationStatus[] = [];
-    const verifiedAt = new Date().toISOString();
-    for (const { job, canonical, verdict } of verified) {
-      const canonical_url = verdict.status === 'redirected' ? canonicalUrl(verdict.finalUrl) : canonical;
-      const fields = { company: job.company, title: job.title, location: job.location };
-      // A closed posting often redirects to the company's board; the link the agent returned still
-      // names the known job, and the check describes that link (user decision 12, SOW-0040).
-      const returnedKey = dedupeKey({ canonical_url: canonical, ...fields });
-      const key = existing.has(returnedKey) ? returnedKey : dedupeKey({ canonical_url, ...fields });
-      if (existing.has(key) || seen.has(key)) {
-        duplicates++;
-        if (existing.has(key)) {
-          // Only an answer from the site replaces the stored status: a network error also reads as dead,
-          // and one outage must not hide every known job (user decision 10, SOW-0040). When several links
-          // lead to the same job, the first conclusive check wins.
-          const conclusive = verdict.httpStatus !== null && verdict.status !== 'unverified';
-          const verification = conclusive ? { status: verdict.status, verified_at: verifiedAt } : null;
-          const sighting = seenAgain.get(key);
-          if (!sighting) seenAgain.set(key, { dedupe_key: key, verification });
-          else if (!sighting.verification) sighting.verification = verification;
-        }
-        seen.add(key);
-        continue;
-      }
-      seen.add(key);
-      statuses.push(verdict.status);
-      newJobs.push({
-        company: job.company,
-        title: job.title,
-        location: job.location,
-        remote: job.remote,
-        url: job.url,
-        canonical_url,
-        source_site: job.source_site,
-        posted_at: job.posted_at,
-        salary: job.salary,
-        description_excerpt: job.description_excerpt,
-        match_reason: job.match_reason,
-        fit_checks: job.checks,
-        verification_status: verdict.status,
-        verified_at: verifiedAt,
-        dedupe_key: key,
-      });
-    }
-
-    const inserted = jobsRepo.insertMany(ctx.run.id, newJobs, [...seenAgain.values()]);
-    // Count outcomes only for rows actually stored.
-    const storedUrls = new Set(inserted.map((j) => j.dedupe_key));
-    newJobs.forEach((j, i) => {
-      if (!storedUrls.has(j.dedupe_key)) return;
-      if (statuses[i] === 'dead') dead++;
-      else if (statuses[i] === 'unverified') unverified++;
-    });
-
+    const counts = await saveFoundJobs(ctx, profile.id, found, { jobsRepo, verify });
     const failedNote = failed.length ? workersFailedNote(failed.length, outcomes.length) : '';
-    const summary = `${inserted.length} new, ${duplicates} duplicates, ${dead} dead, ${unverified} unverified${failedNote}`;
+    const summary = `${savedSummary(counts)}${failedNote}`;
     ctx.log(summary);
     return { summary, promptVersion: version, adapterId: adapter.id };
   };

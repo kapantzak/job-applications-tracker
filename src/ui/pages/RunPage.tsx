@@ -92,6 +92,7 @@ export function RunPage() {
 
   const terminal = run.status !== 'queued' && run.status !== 'running';
   const succeeded = run.status === 'succeeded';
+  const imported = run.kind === 'import_jobs';
   const followUp = (to: string, label: string) => (
     <Button asChild variant="outline" size="sm">
       <Link to={to}>
@@ -150,25 +151,30 @@ export function RunPage() {
                 <dt className="text-muted-foreground">Finished</dt>
                 <dd>{formatTime(run.finished_at)}</dd>
               </div>
-              <div>
-                <dt className="text-muted-foreground">Agent</dt>
-                <dd className="font-mono">{runAgentLabel(run)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Model</dt>
-                <dd>
-                  {runChoiceLabel(run, 'agent_model')}
-                  {run.agent_model_reported && (
-                    <span className="block font-mono text-xs text-muted-foreground">
-                      ran as {run.agent_model_reported}
-                    </span>
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Effort</dt>
-                <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
-              </div>
+              {/* An import ran no agent of the app's (SOW-0043). */}
+              {!imported && (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground">Agent</dt>
+                    <dd className="font-mono">{runAgentLabel(run)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Model</dt>
+                    <dd>
+                      {runChoiceLabel(run, 'agent_model')}
+                      {run.agent_model_reported && (
+                        <span className="block font-mono text-xs text-muted-foreground">
+                          ran as {run.agent_model_reported}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Effort</dt>
+                    <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
+                  </div>
+                </>
+              )}
               {/* Only discovery records usage (SOW-0016), so sync runs show neither row. */}
               {run.kind === 'discover_jobs' && (
                 <>
@@ -180,13 +186,13 @@ export function RunPage() {
                     <dt className="text-muted-foreground">Usage</dt>
                     <dd>{formatUsage(run) ?? 'Not reported'}</dd>
                   </div>
-                  {run.custom_prompt && (
-                    <div className="col-span-full">
-                      <dt className="text-muted-foreground">Custom instructions</dt>
-                      <dd className="break-words whitespace-pre-wrap">{run.custom_prompt}</dd>
-                    </div>
-                  )}
                 </>
+              )}
+              {run.custom_prompt && (
+                <div className="col-span-full">
+                  <dt className="text-muted-foreground">Custom instructions</dt>
+                  <dd className="break-words whitespace-pre-wrap">{run.custom_prompt}</dd>
+                </div>
               )}
             </dl>
           </CardContent>
@@ -202,7 +208,7 @@ export function RunPage() {
       {terminal && (
         <div className="flex flex-wrap gap-2">
           {/* Only a succeeded search saves jobs; the filter shows the ones it found first (SOW-0040). */}
-          {run.kind === 'discover_jobs' &&
+          {(run.kind === 'discover_jobs' || imported) &&
             followUp(href(succeeded ? `/jobs?run=${encodeURIComponent(run.id)}` : '/jobs'), 'View jobs')}
           {run.kind === 'sync_mail' && followUp(href('/review'), 'Review proposals')}
           {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}

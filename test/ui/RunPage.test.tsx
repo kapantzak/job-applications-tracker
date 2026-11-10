@@ -183,6 +183,30 @@ describe('RunPage', () => {
     expect(value).toHaveClass('whitespace-pre-wrap');
   });
 
+  it('shows an import without agent, model, effort, mode or usage, with its instructions and jobs', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      kind: 'import_jobs',
+      status: 'succeeded',
+      adapter_id: '',
+      agent_model: null,
+      agent_effort: null,
+      summary: '2 new, 0 duplicates, 0 dead, 0 unverified',
+      custom_prompt: 'Only fintech companies',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/import_jobs/);
+    for (const term of ['Agent', 'Model', 'Effort', 'Mode', 'Usage']) {
+      expect(screen.queryByText(term, { selector: 'dt' })).not.toBeInTheDocument();
+    }
+    expect(screen.getByText('Custom instructions').nextElementSibling).toHaveTextContent('Only fintech companies');
+    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute(
+      'href',
+      '/profiles/platform-roles/jobs?run=r1',
+    );
+  });
+
   it('shows no custom instructions row for a discovery without them', async () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
     vi.mocked(client.getRunLog).mockResolvedValue('');

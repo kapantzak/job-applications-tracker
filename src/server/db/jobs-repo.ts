@@ -116,7 +116,7 @@ export function createJobsRepo(db: Db) {
            (SELECT a.status FROM applications a WHERE a.job_id = j.id
             ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status,
            r.started_at AS run_started_at, r.effort_mode AS run_effort_mode,
-           r.custom_prompt IS NOT NULL AS run_has_custom_prompt
+           r.custom_prompt IS NOT NULL AS run_has_custom_prompt, r.kind AS run_kind
          FROM jobs j JOIN runs r ON r.id = j.run_id ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
       )
       .all(profileId)
