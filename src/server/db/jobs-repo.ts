@@ -1,8 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import type { FitChecks, Job, JobListItem } from '../domain/types.js';
+import type { FitChecks, Job, JobListItem, VerificationStatus } from '../domain/types.js';
 import type { Db } from './connection.js';
 
-export type NewJob = Omit<Job, 'id' | 'profile_id' | 'run_id' | 'dismissed_at' | 'created_at'>;
+export type NewJob = Omit<
+  Job,
+  'id' | 'profile_id' | 'run_id' | 'dismissed_at' | 'created_at' | 'last_seen_at' | 'last_seen_run_id'
+>;
+
+// A stored job that a later search returned again (SOW-0040).
+export interface Sighting {
+  dedupe_key: string;
+  // The fresh link check, or null to keep the stored one because the check was inconclusive.
+  verification: { status: VerificationStatus; verified_at: string } | null;
+}
 
 type Row<T> = Omit<T, 'fit_checks'> & { fit_checks: string | null };
 
@@ -30,10 +40,16 @@ export function createJobsRepo(db: Db) {
   const insert = db.prepare(
     `INSERT INTO jobs (id, profile_id, run_id, company, title, location, remote, url, canonical_url, source_site,
        posted_at, salary, description_excerpt, match_reason, fit_checks, verification_status, verified_at,
-       dedupe_key, created_at)
+       dedupe_key, created_at, last_seen_at, last_seen_run_id)
      VALUES (@id, @profile_id, @run_id, @company, @title, @location, @remote, @url, @canonical_url, @source_site,
        @posted_at, @salary, @description_excerpt, @match_reason, @fit_checks, @verification_status, @verified_at,
-       @dedupe_key, @created_at)`,
+       @dedupe_key, @created_at, @created_at, @run_id)`,
+  );
+  const markSeen = db.prepare(
+    `UPDATE jobs SET last_seen_at = @seen_at, last_seen_run_id = @run_id,
+       verification_status = COALESCE(@status, verification_status),
+       verified_at = CASE WHEN @status IS NULL THEN verified_at ELSE @verified_at END
+     WHERE profile_id = @profile_id AND dedupe_key = @dedupe_key`,
   );
   const selectById = db.prepare('SELECT * FROM jobs WHERE id = ?');
   // Dedupe is per profile: the same posting may be stored once in each profile (SOW-0014).
@@ -51,11 +67,23 @@ export function createJobsRepo(db: Db) {
     return row ? fromRow(row) : null;
   }
 
-  // Jobs belong to the profile of the run that found them.
-  function insertMany(runId: string, jobs: NewJob[]): Job[] {
+  // Jobs belong to the profile of the run that found them. Found-again jobs are updated in the same
+  // transaction, so a search's results are saved whole or not at all.
+  function insertMany(runId: string, jobs: NewJob[], seenAgain: Sighting[] = []): Job[] {
     return db.transaction(() => {
       const owner = runProfile.get(runId) as { profile_id: string } | undefined;
       if (!owner) throw new Error(`Run not found: ${runId}`);
+      const seenAt = new Date().toISOString();
+      for (const sighting of seenAgain) {
+        markSeen.run({
+          seen_at: seenAt,
+          run_id: runId,
+          profile_id: owner.profile_id,
+          dedupe_key: sighting.dedupe_key,
+          status: sighting.verification?.status ?? null,
+          verified_at: sighting.verification?.verified_at ?? null,
+        });
+      }
       const inserted: Job[] = [];
       for (const job of jobs) {
         // Explicit check (also covers duplicates inside one batch) instead of catching UNIQUE errors.
@@ -86,8 +114,9 @@ export function createJobsRepo(db: Db) {
       .prepare(
         `SELECT j.*,
            (SELECT a.status FROM applications a WHERE a.job_id = j.id
-            ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status
-         FROM jobs j ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
+            ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status,
+           r.started_at AS run_started_at, r.effort_mode AS run_effort_mode
+         FROM jobs j JOIN runs r ON r.id = j.run_id ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
       )
       .all(profileId)
       .map((row) => fromRow(row as Row<JobListItem>));

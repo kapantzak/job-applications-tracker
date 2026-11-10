@@ -193,6 +193,17 @@ ALTER TABLE profiles ADD COLUMN mail_filter_kind TEXT NOT NULL DEFAULT 'label' C
 ALTER TABLE profiles ADD COLUMN mail_filter TEXT NOT NULL DEFAULT '';
 `,
   },
+  {
+    // Last sighting per job (SOW-0040): a later search that finds a known job records it here. Nullable
+    // because ADD COLUMN cannot default to another column; the backfill and every insert fill it.
+    id: 9,
+    sql: `
+ALTER TABLE jobs ADD COLUMN last_seen_at TEXT;
+ALTER TABLE jobs ADD COLUMN last_seen_run_id TEXT REFERENCES runs(id);
+UPDATE jobs SET last_seen_at = created_at, last_seen_run_id = run_id;
+CREATE INDEX idx_jobs_last_seen_run_id ON jobs (last_seen_run_id);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

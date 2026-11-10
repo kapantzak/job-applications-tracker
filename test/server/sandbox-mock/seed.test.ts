@@ -110,6 +110,17 @@ describe('seedMockData', () => {
     expect(jobs.some((j) => j.application_status !== null)).toBe(true);
   });
 
+  it('gives every job a last sighting, with two first-search jobs seen again by the later search', () => {
+    const rich = profileByName('Frontend Platform');
+    const jobs = createJobsRepo(db).list(rich.id, { includeDead: true, includeDismissed: true });
+    const once = jobs.filter((j) => j.last_seen_run_id === j.run_id);
+    expect(once.every((j) => j.last_seen_at === j.created_at)).toBe(true);
+    const again = jobs.filter((j) => j.last_seen_run_id !== j.run_id);
+    expect(again.map((j) => j.company).sort()).toEqual(['Acme Robotics', 'Globex Analytics']);
+    for (const j of again) expect(j.last_seen_at > j.created_at).toBe(true);
+    expect(new Set(jobs.map((j) => j.run_effort_mode))).toEqual(new Set(['default', 'max']));
+  });
+
   it('has pending, accepted and rejected proposals', () => {
     const rich = profileByName('Frontend Platform');
     expect(createProposalsRepo(db).listPending(rich.id)).toHaveLength(3);

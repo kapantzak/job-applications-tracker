@@ -95,6 +95,8 @@ interface JobSpec {
   reason: string;
   postedDaysAgo?: number;
   dismissed?: boolean;
+  // A later search that returned the job again (SOW-0040); its summary counts it as a duplicate.
+  seenAgainIn?: string;
 }
 
 const pass: FitChecks = { location: 'pass', remote: 'pass', seniority: 'pass' };
@@ -120,11 +122,11 @@ const JOBS: JobSpec[] = [
   { key: 'acme', run: 'r1', company: 'Acme Robotics', title: 'Senior Frontend Engineer', location: 'Berlin, Germany',
     remote: 'hybrid', source: 'greenhouse.io', status: 'ok', checks: pass, salary: 'EUR 85,000 - 100,000',
     excerpt: 'Own the operator dashboard for a fleet of warehouse robots. React, TypeScript, WebSockets.',
-    reason: 'Senior frontend role in Berlin with hybrid work and a React stack.', postedDaysAgo: 38 },
+    reason: 'Senior frontend role in Berlin with hybrid work and a React stack.', postedDaysAgo: 38, seenAgainIn: 'r2' },
   { key: 'globex', run: 'r1', company: 'Globex Analytics', title: 'Staff UI Engineer', location: 'Remote (EU)',
     remote: 'remote', source: 'lever.co', status: 'ok', checks: pass,
     excerpt: 'Lead the charting and table components of an analytics product used by 2,000 companies.',
-    reason: 'Staff level, remote in the EU, design-system work.', postedDaysAgo: 40 },
+    reason: 'Staff level, remote in the EU, design-system work.', postedDaysAgo: 40, seenAgainIn: 'r2' },
   { key: 'initech', run: 'r1', company: 'Initech Cloud', title: 'Frontend Platform Engineer',
     location: 'Amsterdam, Netherlands', remote: 'onsite', source: 'ashbyhq.com', status: 'ok',
     checks: { location: 'fail', remote: 'fail', seniority: 'pass' },
@@ -396,7 +398,13 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
       };
       const [stored] = jobsRepo.insertMany(run.id, [job]);
       if (!stored) throw new Error(`Job ${spec.key} was not inserted`);
-      touch('jobs', stored.id, { created_at: run.finishedAt });
+      const lastSeen = spec.seenAgainIn ? runs[spec.seenAgainIn]! : run;
+      touch('jobs', stored.id, {
+        created_at: run.finishedAt,
+        last_seen_at: lastSeen.finishedAt,
+        last_seen_run_id: lastSeen.id,
+        ...(spec.seenAgainIn && spec.status !== 'unverified' ? { verified_at: lastSeen.finishedAt } : {}),
+      });
       if (spec.dismissed) touch('jobs', stored.id, { dismissed_at: ago(30) });
       jobs[spec.key] = { id: stored.id, url: original, company: spec.company, title: spec.title };
     });

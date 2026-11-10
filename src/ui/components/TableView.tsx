@@ -221,7 +221,8 @@ function ColumnFilter<Row>({ view, column }: { view: TableView<Row>; column: Col
       <PopoverContent
         align="start"
         aria-label={name}
-        className={kind === 'date' ? 'w-auto p-0' : 'w-64 p-2'}
+        // Value lists grow with their labels (search start times, SOW-0040) up to a cap, then truncate.
+        className={kind === 'date' ? 'w-auto p-0' : kind === 'values' ? 'w-auto min-w-64 max-w-sm p-2' : 'w-64 p-2'}
       >
         {kind === 'values' && <ValuesFilter view={view} column={column} />}
         {kind === 'text' && <TextFilter view={view} column={column} />}

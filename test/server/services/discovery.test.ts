@@ -79,6 +79,24 @@ function makeHandler(
   return createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
 }
 
+// Verdicts as [status, httpStatus, finalUrl?] per url; urls not listed answer 200 ok.
+function verdictHandler(
+  result: AgentResult,
+  verdicts: Record<string, [VerificationStatus, number | null, string?]>,
+) {
+  const adapter: AgentAdapter = {
+    id: 'custom',
+    check: async () => ({ id: 'custom', installed: true }),
+    listModels: async () => ({ source: 'unavailable', models: [], efforts: [] }),
+    run: async () => result,
+  };
+  const verify = (async (url: string) => {
+    const [status, httpStatus, finalUrl] = verdicts[url] ?? ['ok', 200];
+    return { status, finalUrl: finalUrl ?? url, httpStatus };
+  }) as typeof verifyLink;
+  return createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory: () => adapter, verify });
+}
+
 function okResult(jobs: unknown[]): AgentResult {
   return { ok: true, output: { jobs }, rawStdout: '', rawStderr: '', exitCode: 0, durationMs: 1 };
 }
@@ -162,6 +180,125 @@ describe('discovery handler', () => {
     const res = await makeHandler(okResult([job(1), job(2), job(2)]))(ctx());
     expect(res.summary).toBe('1 new, 2 duplicates, 0 dead, 0 unverified');
     expect(jobsRepo.list(profileId)).toHaveLength(2);
+  });
+
+  it('records a found-again job as last seen by the later search and keeps its first search', async () => {
+    saveProfile();
+    const first = ctx();
+    await makeHandler(okResult([job(1)]))(first);
+    const before = jobsRepo.list(profileId)[0]!;
+    expect(before).toMatchObject({ run_id: first.run.id, last_seen_run_id: first.run.id });
+    expect(before.last_seen_at).toBe(before.created_at);
+
+    const second = ctx();
+    const res = await makeHandler(okResult([job(1), job(2)]))(second);
+
+    expect(res.summary).toBe('1 new, 1 duplicates, 0 dead, 0 unverified');
+    const seen = jobsRepo.get(before.id)!;
+    expect(seen).toMatchObject({ run_id: first.run.id, created_at: before.created_at, last_seen_run_id: second.run.id });
+    expect(seen.last_seen_at >= before.last_seen_at).toBe(true);
+    const fresh = jobsRepo.list(profileId).find((j) => j.url.endsWith('/2'))!;
+    expect(fresh).toMatchObject({ run_id: second.run.id, last_seen_run_id: second.run.id });
+  });
+
+  it("takes a found-again job's fresh link status when the site answered", async () => {
+    saveProfile();
+    await makeHandler(okResult([job(1)]))(ctx());
+    // An old check time, so the new one differs even within one millisecond.
+    db.prepare("UPDATE jobs SET verified_at = '2026-01-01T00:00:00.000Z'").run();
+    const before = jobsRepo.list(profileId)[0]!;
+
+    await verdictHandler(okResult([job(1)]), { 'https://jobs.example.com/1': ['dead', 404] })(ctx());
+
+    const after = jobsRepo.get(before.id)!;
+    expect(after.verification_status).toBe('dead');
+    expect(after.verified_at! > '2026-01-01T00:00:00.000Z').toBe(true);
+  });
+
+  it("keeps a found-again job's link status when the check was inconclusive", async () => {
+    saveProfile();
+    await makeHandler(okResult([job(1), job(2)]))(ctx());
+    const [one, two] = ['/1', '/2'].map((s) => jobsRepo.list(profileId).find((j) => j.url.endsWith(s))!);
+
+    // A network error reports dead without an answer (ENOTFOUND); a 503 is unverified.
+    const third = ctx();
+    await verdictHandler(okResult([job(1), job(2)]), {
+      'https://jobs.example.com/1': ['dead', null],
+      'https://jobs.example.com/2': ['unverified', 503],
+    })(third);
+
+    for (const before of [one!, two!]) {
+      const after = jobsRepo.get(before.id)!;
+      expect(after).toMatchObject({
+        verification_status: 'ok',
+        verified_at: before.verified_at,
+        last_seen_run_id: third.run.id,
+      });
+    }
+  });
+
+  it('uses the first conclusive check when two links of one search lead to the same known job', async () => {
+    saveProfile();
+    await makeHandler(okResult([job(1)]))(ctx());
+    const before = jobsRepo.list(profileId)[0]!;
+
+    // The known link times out; an alias link redirects to it and answers.
+    const res = await verdictHandler(okResult([job(1), job(7)]), {
+      'https://jobs.example.com/1': ['unverified', null],
+      'https://jobs.example.com/7': ['redirected', 200, 'https://jobs.example.com/1'],
+    })(ctx());
+
+    expect(res.summary).toBe('0 new, 2 duplicates, 0 dead, 0 unverified');
+    expect(jobsRepo.get(before.id)!.verification_status).toBe('redirected');
+  });
+
+  it('matches a known job whose link now redirects elsewhere instead of saving the new page', async () => {
+    saveProfile();
+    await makeHandler(okResult([job(1)]))(ctx());
+    const before = jobsRepo.list(profileId)[0]!;
+
+    // A closed posting that now sends visitors to the company's job board.
+    const second = ctx();
+    const res = await verdictHandler(okResult([job(1)]), {
+      'https://jobs.example.com/1': ['redirected', 200, 'https://jobs.example.com/board'],
+    })(second);
+
+    expect(res.summary).toBe('0 new, 1 duplicates, 0 dead, 0 unverified');
+    expect(jobsRepo.list(profileId)).toHaveLength(1);
+    expect(jobsRepo.get(before.id)).toMatchObject({
+      verification_status: 'redirected',
+      last_seen_run_id: second.run.id,
+      canonical_url: 'https://jobs.example.com/1',
+    });
+  });
+
+  it('prefers the returned link over the page it redirects to when both are known jobs', async () => {
+    saveProfile();
+    // An earlier search saved the board page as a job of its own.
+    await makeHandler(okResult([job(1), job(9, { url: 'https://jobs.example.com/board' })]))(ctx());
+    const [original, board] = ['/1', '/board'].map((s) => jobsRepo.list(profileId).find((j) => j.url.endsWith(s))!);
+
+    const third = ctx();
+    await verdictHandler(okResult([job(1)]), {
+      'https://jobs.example.com/1': ['redirected', 200, 'https://jobs.example.com/board'],
+    })(third);
+
+    expect(jobsRepo.get(original!.id)).toMatchObject({ verification_status: 'redirected', last_seen_run_id: third.run.id });
+    expect(jobsRepo.get(board!.id)).toMatchObject({ verification_status: 'ok', last_seen_run_id: board!.run_id });
+  });
+
+  it('updates a dismissed job that is found again and keeps it dismissed', async () => {
+    saveProfile();
+    await makeHandler(okResult([job(1)]))(ctx());
+    const before = jobsRepo.list(profileId)[0]!;
+    jobsRepo.dismiss(before.id);
+
+    const second = ctx();
+    await makeHandler(okResult([job(1)]))(second);
+
+    const after = jobsRepo.get(before.id)!;
+    expect(after.dismissed_at).not.toBeNull();
+    expect(after.last_seen_run_id).toBe(second.run.id);
   });
 
   it('checks each distinct link once, also when workers return it several times', async () => {

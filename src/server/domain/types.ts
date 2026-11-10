@@ -223,11 +223,17 @@ export interface Job {
   dedupe_key: string;
   dismissed_at: string | null;
   created_at: string;
+  // The latest search that returned this job (SOW-0040); the first search is `run_id`/`created_at`.
+  last_seen_at: string;
+  last_seen_run_id: string;
 }
 
 // Jobs list row: the job plus the latest application's status, so the UI can show persisted state.
 export interface JobListItem extends Job {
   application_status: ApplicationStatus | null;
+  // The first search, for the Jobs page "Found in" filter (SOW-0040).
+  run_started_at: string | null;
+  run_effort_mode: EffortMode;
 }
 
 export interface Application {

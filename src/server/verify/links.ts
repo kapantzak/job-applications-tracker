@@ -68,7 +68,8 @@ export async function verifyLink(
   } catch (err) {
     const code = errorCode(err);
     const status: VerificationStatus = code && DEAD_ERROR_CODES.has(code) ? 'dead' : 'unverified';
-    return { status, finalUrl: current, httpStatus };
+    // The last request got no answer; an earlier hop's status would read as one (SOW-0040).
+    return { status, finalUrl: current, httpStatus: null };
   }
 
   let status: VerificationStatus = 'unverified';

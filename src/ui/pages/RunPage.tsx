@@ -195,7 +195,9 @@ export function RunPage() {
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {terminal && (
         <div className="flex flex-wrap gap-2">
-          {run.kind === 'discover_jobs' && followUp(href('/jobs'), 'View jobs')}
+          {/* Only a succeeded search saves jobs; the filter shows the ones it found first (SOW-0040). */}
+          {run.kind === 'discover_jobs' &&
+            followUp(href(succeeded ? `/jobs?run=${encodeURIComponent(run.id)}` : '/jobs'), 'View jobs')}
           {run.kind === 'sync_mail' && followUp(href('/review'), 'Review proposals')}
           {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}
         </div>

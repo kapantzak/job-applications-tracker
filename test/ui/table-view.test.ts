@@ -187,6 +187,31 @@ describe('facetOptions', () => {
   it('keeps a selected value that no row has, so it can be cleared', () => {
     expect(facetOptions(ROWS, values('company'), ['Umbrella'])).toContainEqual({ value: 'Umbrella', label: 'Umbrella', count: 0 });
   });
+
+  it('labels and orders id values from a row that carries them, falling back for a value no row has', () => {
+    // Options keyed by id, labelled and ordered (newest first) from the row's date.
+    const byId: ColumnDef<Row> = {
+      id: 'batch',
+      label: 'Batch',
+      filter: {
+        kind: 'values',
+        value: (r) => r.id,
+        rowLabel: (r) => `Batch of ${r.at}`,
+        rowRank: (r) => -Date.parse(r.at!),
+        optionLabel: () => 'Unknown batch',
+      },
+    };
+    const rows = [
+      row({ id: 'b1', at: '2026-11-01T10:00:00' }),
+      row({ id: 'b2', at: '2026-11-05T10:00:00' }),
+      row({ id: 'b1', at: '2026-11-01T10:00:00' }),
+    ];
+    expect(facetOptions(rows, byId, ['gone'])).toEqual([
+      { value: 'b2', label: 'Batch of 2026-11-05T10:00:00', count: 1 },
+      { value: 'b1', label: 'Batch of 2026-11-01T10:00:00', count: 2 },
+      { value: 'gone', label: 'Unknown batch', count: 0 },
+    ]);
+  });
 });
 
 describe('helpers', () => {

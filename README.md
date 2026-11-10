@@ -39,7 +39,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Dashboard with status tiles, a status bar, a funnel and a needs-attention list](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
 
-**Jobs.** Openings your agent found, with each link checked by the app and a Fit column for location, remote and seniority.
+**Jobs.** Openings your agent found, with each link checked by the app and a Fit column for location, remote and seniority. The "Found in" filter shows what one search found.
 
 ![Jobs table with verification badges and fit checks](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/jobs.png)
 
@@ -134,6 +134,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
   - **Dead link**: the page is gone, or the link is Greenhouse's "posting closed" page (the company's job board with `error=true`). These jobs are hidden by default.
 - Clicking Save or Mark applied twice on a job never creates a duplicate application.
 - Duplicates are skipped across runs of the same profile: jobs are matched by canonical URL, or by company, title and location when there is no usable URL.
+- Each job belongs to the search that first found it. On the Jobs page, the "Found in" filter lists your searches by start time and mode, and "View jobs" on a successful search opens the Jobs page filtered to it. A job a later search finds again shows "Seen again" and the date under its Found date, and takes that search's link check when the job's site answered; a timeout or network error keeps the earlier result, so a connection problem never hides a job. A job whose link now redirects elsewhere, often a closed posting sent to the company's job board, is matched to the job you already have and shows Redirected.
 
 ## How Gmail sync works
 
@@ -257,7 +258,7 @@ jobtrack config unset data-dir
 - Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository (where you can star the project) and the issue tracker. The links open in a new tab; the app never contacts GitHub by itself.
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
 - Purging run logs, dismissing a job, cancelling a run, cancelling or discarding a CV analysis and removing a CV ask for confirmation first.
-- The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick a date range on a calendar (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; rows without a date drop out). Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back. The Runs table loads the newest 200 runs.
+- The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick a date range on a calendar (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; rows without a date drop out); the Jobs table also filters by the search that found each job. Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back. The Runs table loads the newest 200 runs.
 - The run log shows what the agent is doing in plain words (web searches, pages opened, Gmail reads, errors, a finish summary). Tick "Show raw output" to see everything the agent printed, exactly as saved.
 - Desktop browsers only. The interface needs Chrome or Edge 111+, Safari 16.4+, or Firefox 128+.
 

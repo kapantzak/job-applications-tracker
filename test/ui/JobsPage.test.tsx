@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatTime } from '../../src/ui/format.js';
 import { JobsPage } from '../../src/ui/pages/JobsPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
@@ -40,7 +41,11 @@ function job(over: Partial<JobListItem>): JobListItem {
     dedupe_key: 'k',
     dismissed_at: null,
     created_at: '2026-01-01T00:00:00Z',
+    last_seen_at: over.created_at ?? '2026-01-01T00:00:00Z',
+    last_seen_run_id: over.run_id ?? 'r1',
     application_status: null,
+    run_started_at: '2026-01-01T00:00:00Z',
+    run_effort_mode: 'default',
     ...over,
   } as JobListItem;
 }
@@ -466,7 +471,7 @@ describe('JobsPage sorting, search and filters', () => {
       const user = userEvent.setup();
       renderPage();
       await screen.findByText('Initech');
-      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found/ }));
+      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found($|:)/ }));
       const popover = await screen.findByRole('dialog', { name: 'Filter by found' });
       await user.click(within(popover).getByRole('button', { name: /November 4th, 2026/ }));
       expect(companies()).toEqual(['Globex']);
@@ -492,6 +497,51 @@ describe('JobsPage sorting, search and filters', () => {
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Dismiss job' }));
     await vi.waitFor(() => expect(companies()).toEqual(['Globex']));
     expect(screen.getByTestId('search')).toHaveTextContent('?q=engineer&sort=company');
+  });
+
+  it('filters by the search that first found each job, newest search first, from the URL', async () => {
+    const user = userEvent.setup();
+    const early = '2026-11-01T09:00:00';
+    const late = '2026-11-04T09:00:00';
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j3', company: 'Initech', run_id: 'r2', run_started_at: late, run_effort_mode: 'max' }),
+      job({ id: 'j2', company: 'Globex', run_id: 'r1', run_started_at: early }),
+      job({ id: 'j1', company: 'Acme', run_id: 'r1', run_started_at: early }),
+    ]);
+    renderPage('?run=r1');
+    await screen.findByText('Globex');
+    expect(companies()).toEqual(['Globex', 'Acme']);
+    const earlyLabel = `${formatTime(early)} · Default`;
+    const lateLabel = `${formatTime(late)} · Max effort`;
+    const button = within(toolbar()).getByRole('button', { name: `Filter by found in: ${earlyLabel}` });
+
+    await user.click(button);
+    const popover = await screen.findByRole('dialog', { name: 'Filter by found in' });
+    const options = within(popover).getAllByRole('checkbox');
+    expect(options.map((o) => o.parentElement?.textContent)).toEqual([`${lateLabel}1`, `${earlyLabel}2`]);
+    await user.click(within(popover).getByRole('checkbox', { name: lateLabel }));
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    expect(screen.getByTestId('search')).toHaveTextContent('?run=r1&run=r2');
+  });
+
+  it('labels a search that has no listed jobs so its filter can still be cleared', async () => {
+    renderPage('?run=r9');
+    expect(await screen.findByText('No rows match your filters')).toBeInTheDocument();
+    expect(
+      within(toolbar()).getByRole('button', { name: 'Filter by found in: A search with no jobs listed' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says when a later search found a job again, and nothing for a job seen once', async () => {
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j2', company: 'Globex', run_id: 'r1', last_seen_run_id: 'r2', last_seen_at: '2026-11-08T12:00:00' }),
+      job({ id: 'j1', company: 'Acme', run_id: 'r1' }),
+    ]);
+    renderPage();
+    const seenDay = new Date('2026-11-08T12:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' });
+    expect(await screen.findByText(`Seen again ${seenDay}`)).toBeInTheDocument();
+    const acme = screen.getByText('Acme').closest('tr')!;
+    expect(acme).not.toHaveTextContent('Seen again');
   });
 
   it('says when nothing matches and clears search and filters, keeping the sort', async () => {
