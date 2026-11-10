@@ -57,6 +57,7 @@ export function createJobsRepo(db: Db) {
   const allKeys = db.prepare('SELECT dedupe_key FROM jobs WHERE profile_id = ?');
   const runProfile = db.prepare('SELECT profile_id FROM runs WHERE id = ?');
   const dismissStmt = db.prepare('UPDATE jobs SET dismissed_at = ? WHERE id = ?');
+  const restoreStmt = db.prepare('UPDATE jobs SET dismissed_at = NULL WHERE id = ?');
   const recentUrls = db.prepare(
     `SELECT canonical_url FROM jobs WHERE profile_id = ? AND canonical_url IS NOT NULL
      GROUP BY canonical_url ORDER BY MAX(created_at) DESC, MAX(rowid) DESC LIMIT ?`,
@@ -131,6 +132,10 @@ export function createJobsRepo(db: Db) {
     dismissStmt.run(new Date().toISOString(), id);
   }
 
+  function restore(id: string): void {
+    restoreStmt.run(id);
+  }
+
   function existingDedupeKeys(profileId: string): Set<string> {
     return new Set((allKeys.all(profileId) as { dedupe_key: string }[]).map((r) => r.dedupe_key));
   }
@@ -139,5 +144,5 @@ export function createJobsRepo(db: Db) {
     return (recentUrls.all(profileId, limit) as { canonical_url: string }[]).map((r) => r.canonical_url);
   }
 
-  return { insertMany, list, get, dismiss, existingDedupeKeys, recentCanonicalUrls };
+  return { insertMany, list, get, dismiss, restore, existingDedupeKeys, recentCanonicalUrls };
 }

@@ -172,6 +172,8 @@ export function listJobs(profileId: string, filters: JobFilters = {}): Promise<J
 }
 export const dismissJob = (profileId: string, id: string): Promise<void> =>
   request('POST', scoped(profileId, `/jobs/${enc(id)}/dismiss`));
+export const restoreJob = (profileId: string, id: string): Promise<void> =>
+  request('POST', scoped(profileId, `/jobs/${enc(id)}/restore`));
 export const saveJob = (profileId: string, id: string): Promise<Application> =>
   request('POST', scoped(profileId, `/jobs/${enc(id)}/save`));
 export const markApplied = (profileId: string, id: string): Promise<Application> =>

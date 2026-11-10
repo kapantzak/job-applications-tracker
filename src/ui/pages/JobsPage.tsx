@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { BookmarkIcon, CheckIcon, ExternalLinkIcon, XIcon } from 'lucide-react';
+import { BookmarkIcon, CheckIcon, ExternalLinkIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   dismissJob,
   listJobs,
   markApplied,
+  restoreJob,
   saveJob,
   startDiscovery,
 } from '../api/client.js';
@@ -380,31 +381,48 @@ export function JobsPage() {
                                   Mark applied
                                 </Button>
                               )}
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
-                                    <XIcon />
-                                    Dismiss
+                              {job.dismissed_at ? (
+                                <>
+                                  <Badge variant="secondary">Dismissed</Badge>
+                                  {/* Restoring is reversible, so it needs no confirmation (SOW-0044). */}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-muted-foreground"
+                                    onClick={() => run(() => restoreJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
+                                  >
+                                    <RotateCcwIcon />
+                                    Restore
                                   </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Dismiss this job?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      {job.company}, {job.title} will be hidden from the list. Turn on Show dismissed to
-                                      see it again.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => run(() => dismissJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
-                                    >
-                                      Dismiss job
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                                </>
+                              ) : (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
+                                      <XIcon />
+                                      Dismiss
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Dismiss this job?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        {job.company}, {job.title} will be hidden from the list. Turn on Show dismissed to
+                                        see or restore it.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => run(() => dismissJob(profileId, job.id), () => setReloadTick((t) => t + 1))}
+                                      >
+                                        Dismiss job
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

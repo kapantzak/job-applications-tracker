@@ -45,7 +45,7 @@ export const FIELD_HELP = {
     "Paste the agent's whole answer. The app reads the last JSON object in it, so text around it is fine. It checks every link before saving, and jobs you already have are not added twice.",
   showDeadLinks:
     'Jobs whose link was dead when the app checked it after the search (the page was gone or the site did not exist) are hidden. Tick to show them.',
-  showDismissed: 'Jobs you dismissed are hidden. Tick to show them again.',
+  showDismissed: 'Jobs you dismissed are hidden. Tick to show them again; each one has a Restore button.',
   showRawOutput:
     'Everything the agent printed, exactly as saved, instead of the plain-words log. It can include mail snippets; do not share it.',
 

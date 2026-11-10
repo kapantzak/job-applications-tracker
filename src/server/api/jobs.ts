@@ -67,6 +67,11 @@ export function createJobsRouter(deps: AppDeps): Hono<ProfileEnv> {
     return c.body(null, 204);
   });
 
+  router.post('/:id/restore', (c) => {
+    deps.jobsRepo.restore(requireJob(c, c.req.param('id')).id);
+    return c.body(null, 204);
+  });
+
   router.post('/:id/save', (c) => respond(c, c.req.param('id'), 'saved'));
 
   router.post('/:id/applied', (c) => respond(c, c.req.param('id'), 'applied'));

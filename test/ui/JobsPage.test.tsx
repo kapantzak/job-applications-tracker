@@ -15,6 +15,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   saveJob: vi.fn(),
   markApplied: vi.fn(),
   dismissJob: vi.fn(),
+  restoreJob: vi.fn(),
   startDiscovery: vi.fn(),
   importJobs: vi.fn(),
   getImportPrompt: vi.fn(),
@@ -147,6 +148,56 @@ describe('JobsPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Dismiss job' }));
     expect(client.dismissJob).toHaveBeenCalledWith('pf1', 'j1');
     await vi.waitFor(() => expect(client.listJobs).toHaveBeenCalledTimes(2));
+  });
+
+  it('says in the dismiss confirmation that the job can be restored', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Dismiss this job?' });
+    expect(dialog).toHaveTextContent('Acme, Engineer will be hidden from the list. Turn on Show dismissed to see or restore it.');
+  });
+
+  it('shows a dismissed job with a Dismissed badge and Restore instead of Dismiss', async () => {
+    const user = userEvent.setup();
+    const dismissed = job({ id: 'j3', company: 'Globex', dismissed_at: '2026-01-02T00:00:00Z' });
+    vi.mocked(client.listJobs).mockImplementation(async (_profileId, f) =>
+      f?.includeDismissed ? [unverified, dismissed] : [unverified],
+    );
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Show dismissed' }));
+    const row = (await screen.findByText('Globex')).closest('tr')!;
+    expect(within(row).getByText('Dismissed')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Mark applied' })).toBeInTheDocument();
+    const active = screen.getByText('Acme').closest('tr')!;
+    expect(within(active).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(within(active).queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+    expect(within(active).queryByText('Dismissed')).not.toBeInTheDocument();
+  });
+
+  it('restores a dismissed job without confirmation and reloads the list', async () => {
+    const user = userEvent.setup();
+    const dismissed = job({ id: 'j3', company: 'Globex', dismissed_at: '2026-01-02T00:00:00Z' });
+    vi.mocked(client.restoreJob).mockResolvedValue(undefined);
+    vi.mocked(client.listJobs).mockImplementation(async (_profileId, f) =>
+      f?.includeDismissed ? [unverified, dismissed] : [unverified],
+    );
+    renderPage();
+    await user.click(await screen.findByRole('checkbox', { name: 'Show dismissed' }));
+    const row = (await screen.findByText('Globex')).closest('tr')!;
+    vi.mocked(client.listJobs).mockResolvedValue([unverified, { ...dismissed, dismissed_at: null }]);
+    const calls = vi.mocked(client.listJobs).mock.calls.length;
+    await user.click(within(row).getByRole('button', { name: 'Restore' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(client.restoreJob).toHaveBeenCalledWith('pf1', 'j3');
+    await vi.waitFor(() => expect(client.listJobs).toHaveBeenCalledTimes(calls + 1));
+    expect(client.listJobs).toHaveBeenLastCalledWith('pf1', { includeDead: false, includeDismissed: true });
+    const restored = (await screen.findByText('Globex')).closest('tr')!;
+    await vi.waitFor(() => expect(within(restored).queryByText('Dismissed')).not.toBeInTheDocument());
+    expect(within(restored).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
   });
 
   it('keeps the job when the dismiss confirmation is cancelled', async () => {

@@ -3,6 +3,7 @@ import {
   ApiError,
   cancelRun,
   dismissJob,
+  restoreJob,
   getModelCatalogs,
   getRunLog,
   listJobs,
@@ -190,6 +191,14 @@ describe('api client', () => {
 
     await expect(dismissJob('p1', 'j1')).resolves.toBeUndefined();
     expect(json).not.toHaveBeenCalled();
+  });
+
+  it('restoreJob posts to the restore route and returns undefined on 204', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(restoreJob('p1', 'j1')).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect([url, init.method]).toEqual(['/api/profiles/p1/jobs/j1/restore', 'POST']);
   });
 
   it('throws ApiError when a 2xx body is not JSON', async () => {
