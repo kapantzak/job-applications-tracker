@@ -72,6 +72,25 @@ function discover() {
     match_reason: 'Mock result: shows how dead links are counted.',
     checks: { location: 'pass', remote: 'pass', seniority: 'unknown' },
   });
+  // A real agent sometimes returns a listed known link anyway; repeating the newest one lets a sandbox
+  // search find a known job again (SOW-0041). The app keeps the stored job's own fields.
+  const knownSection = /^## Known urls\n([\s\S]*?)^## /m.exec(prompt)?.[1] ?? '';
+  const known = /^(https?:\/\/\S+)$/m.exec(knownSection)?.[1];
+  if (known) {
+    jobs.push({
+      company: 'Known Posting',
+      title: 'Engineer',
+      location: 'Remote',
+      remote: 'remote',
+      url: known,
+      source_site: 'example.com',
+      posted_at: null,
+      salary: null,
+      description_excerpt: 'Mock posting found again by a later search.',
+      match_reason: 'Mock result: a link the profile already has.',
+      checks: { location: 'unknown', remote: 'unknown', seniority: 'unknown' },
+    });
+  }
   return { jobs, notes: 'Mock agent: canned results, no web search was made.' };
 }
 

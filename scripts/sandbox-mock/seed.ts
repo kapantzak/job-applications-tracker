@@ -20,7 +20,13 @@ import type {
   RunStatus,
   VerificationStatus,
 } from '../../src/server/domain/types.js';
-import { MAX_EFFORT_CONCURRENCY, MAX_EFFORT_SOURCES, RUN_SAVING_LOG_LINE, workersFailedNote } from '../../src/server/domain/types.js';
+import {
+  hasFailedWorkers,
+  MAX_EFFORT_CONCURRENCY,
+  MAX_EFFORT_SOURCES,
+  RUN_SAVING_LOG_LINE,
+  workersFailedNote,
+} from '../../src/server/domain/types.js';
 import { createProposalService } from '../../src/server/services/proposals.js';
 import { canonicalUrl, dedupeKey } from '../../src/server/verify/canonicalize.js';
 
@@ -42,6 +48,8 @@ export function mockAgentCommand(nodePath: string, scriptPath: string, opts: { d
   const delay = opts.delayMs === undefined ? [] : ['--delay-ms', String(opts.delayMs)];
   return [quote(nodePath), quote(scriptPath), ...delay, '{prompt_file}'].join(' ');
 }
+
+type ProfileKey = 'rich' | 'sparse' | 'empty' | 'miss' | 'rounds';
 
 const DAY = 86_400_000;
 const MINUTE = 60_000;
@@ -68,7 +76,7 @@ React, TypeScript, Vite, Testing Library, Playwright, CSS architecture, WCAG 2.2
 
 interface RunSpec {
   key: string;
-  profile: 'rich' | 'sparse';
+  profile: 'rich' | 'sparse' | 'rounds';
   kind: RunKind;
   status: Exclude<RunStatus, 'queued' | 'running'>;
   daysAgo: number;
@@ -97,6 +105,8 @@ interface JobSpec {
   dismissed?: boolean;
   // A later search that returned the job again (SOW-0040); its summary counts it as a duplicate.
   seenAgainIn?: string;
+  // Status when first found, when that later search's check changed it (`status` is the current one).
+  firstStatus?: VerificationStatus;
 }
 
 const pass: FitChecks = { location: 'pass', remote: 'pass', seniority: 'pass' };
@@ -116,6 +126,15 @@ const RUNS: RunSpec[] = [
     summary: '3 proposals created, 0 skipped', cost: 0.26, tokens: [52_300, 2_300] },
   { key: 's1', profile: 'sparse', kind: 'discover_jobs', status: 'succeeded', daysAgo: 9, minutes: 8,
     summary: '2 new, 0 duplicates, 0 dead, 0 unverified', cost: 0.55, tokens: [120_800, 3_900] },
+  // Search rounds (SOW-0041): each later search finds some earlier jobs again; the newest finds nothing new.
+  { key: 'b1', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 28, minutes: 12,
+    summary: '5 new, 0 duplicates, 0 dead, 1 unverified', cost: 0.79, tokens: [171_200, 5_800] },
+  { key: 'b2', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 16, minutes: 26, effort: 'max',
+    summary: '4 new, 3 duplicates, 0 dead, 0 unverified', cost: 3.48, tokens: [758_300, 23_100] },
+  { key: 'b3', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 6, minutes: 10,
+    summary: '2 new, 3 duplicates, 0 dead, 0 unverified', cost: 0.71, tokens: [158_900, 4_700] },
+  { key: 'b4', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 1, minutes: 9,
+    summary: '0 new, 3 duplicates, 0 dead, 0 unverified', cost: 0.62, tokens: [139_400, 3_600] },
 ];
 
 const JOBS: JobSpec[] = [
@@ -174,6 +193,50 @@ const JOBS: JobSpec[] = [
   { key: 'dunder', run: 's1', company: 'Dunder Paper Co', title: 'Junior Data Analyst', location: 'Athens, Greece',
     remote: 'hybrid', source: 'lever.co', status: 'ok', checks: { location: 'pass', remote: 'fail', seniority: 'fail' },
     excerpt: 'Sales dashboards in Python and SQL.', reason: 'Analyst role in Athens; hybrid and junior.' },
+  // Backend Engineering: b2 found aperture, blackmesa and gringotts again; b3 aperture, oceanic and monarch;
+  // b4 aperture, weyland and prestige. Only the latest sighting is stored, as the app does.
+  { key: 'aperture', run: 'b1', company: 'Aperture Systems', title: 'Senior Backend Engineer', location: 'Berlin, Germany',
+    remote: 'hybrid', source: 'greenhouse.io', status: 'ok', checks: pass, salary: 'EUR 88,000 - 105,000',
+    excerpt: 'Event pipeline for a test-automation platform. Go, PostgreSQL, Kafka.',
+    reason: 'Senior backend role in Berlin with hybrid work.', postedDaysAgo: 30, seenAgainIn: 'b4' },
+  { key: 'blackmesa', run: 'b1', company: 'Black Mesa Labs', title: 'Backend Engineer, Platform', location: 'Remote (EU)',
+    remote: 'remote', source: 'lever.co', status: 'redirected', firstStatus: 'ok', checks: pass,
+    excerpt: 'Internal platform APIs for research teams.',
+    reason: 'Platform backend work, remote in the EU.', postedDaysAgo: 31, seenAgainIn: 'b2' },
+  { key: 'nakatomi', run: 'b1', company: 'Nakatomi Trading', title: 'Senior Software Engineer, Go',
+    location: 'Frankfurt, Germany', remote: 'onsite', source: 'ashbyhq.com', status: 'ok',
+    checks: { location: 'fail', remote: 'fail', seniority: 'pass' },
+    excerpt: 'Low-latency order routing services.', reason: 'Senior Go role; Frankfurt and on-site do not fit.' },
+  { key: 'oceanic', run: 'b1', company: 'Oceanic Air', title: 'Backend Engineer, Bookings', location: 'Remote',
+    remote: 'remote', source: 'example.com careers page', status: 'unverified', checks: null,
+    excerpt: 'Booking and seat-map services for a regional airline.', reason: 'Backend role with a booking domain.',
+    seenAgainIn: 'b3' },
+  { key: 'gringotts', run: 'b1', company: 'Gringotts Payments', title: 'Staff Backend Engineer', location: 'London, UK',
+    remote: 'hybrid', source: 'greenhouse.io', status: 'dead', firstStatus: 'ok',
+    checks: { location: 'fail', remote: 'pass', seniority: 'pass' },
+    excerpt: 'Ledger services for card payments.', reason: 'Staff backend role; London is outside the profile.',
+    seenAgainIn: 'b2' },
+  { key: 'weyland', run: 'b2', company: 'Weyland Freight', title: 'Senior Backend Engineer', location: 'Remote (EU)',
+    remote: 'remote', source: 'ashbyhq.com', status: 'ok', checks: pass, salary: 'EUR 92,000',
+    excerpt: 'Route planning APIs for a freight network.', reason: 'Senior, remote in the EU.', postedDaysAgo: 18,
+    seenAgainIn: 'b4' },
+  { key: 'monarch', run: 'b2', company: 'Monarch Data', title: 'Data Platform Engineer', location: 'Amsterdam, Netherlands',
+    remote: 'hybrid', source: 'lever.co', status: 'ok', checks: { location: 'unknown', remote: 'pass', seniority: 'unknown' },
+    excerpt: 'Batch and streaming jobs for an analytics warehouse.', reason: 'Data platform work; no level is named.',
+    seenAgainIn: 'b3' },
+  { key: 'bluth', run: 'b2', company: 'Bluth Homes', title: 'Backend Engineer', location: 'Berlin, Germany',
+    remote: 'hybrid', source: 'greenhouse.io', status: 'ok', checks: { location: 'pass', remote: 'pass', seniority: 'fail' },
+    excerpt: 'Listings and offers services for a property marketplace.', reason: 'Berlin backend role below the target level.' },
+  { key: 'sterling', run: 'b2', company: 'Sterling Cooper Digital', title: 'Senior API Engineer', location: 'Remote',
+    remote: 'remote', source: 'example.com careers page', status: 'redirected', checks: pass,
+    excerpt: 'Public APIs for an advertising platform.', reason: 'Senior API role, remote.' },
+  { key: 'prestige', run: 'b3', company: 'Prestige Worldwide', title: 'Senior Backend Engineer', location: 'Remote (EU)',
+    remote: 'remote', source: 'lever.co', status: 'ok', checks: pass,
+    excerpt: 'Event ticketing services at peak load.', reason: 'Senior backend, remote in the EU.', postedDaysAgo: 7,
+    seenAgainIn: 'b4' },
+  { key: 'krusty', run: 'b3', company: 'Krusty Logistics', title: 'Backend Engineer, Fulfilment', location: 'Hamburg, Germany',
+    remote: 'hybrid', source: 'ashbyhq.com', status: 'ok', checks: { location: 'fail', remote: 'pass', seniority: 'pass' },
+    excerpt: 'Warehouse fulfilment services.', reason: 'Backend role; Hamburg is outside the profile.' },
 ];
 
 interface AppStep {
@@ -281,7 +344,7 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
   const seed = db.transaction((): SeedSummary => {
     createSettingsRepo(db).set({ adapter_id: 'custom', custom_command: opts.mockAgentCommand, sync_interval: 'off' });
 
-    const profileInputs: Record<'rich' | 'sparse' | 'empty' | 'miss', [ProfileInput, number]> = {
+    const profileInputs: Record<ProfileKey, [ProfileInput, number]> = {
       rich: [{
         name: 'Frontend Platform',
         target_roles: ['Senior Frontend Engineer', 'Staff Frontend Engineer', 'UI Platform Engineer'],
@@ -331,8 +394,20 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         mail_filter_kind: 'label',
         mail_filter: 'NoMatch',
       }, 7],
+      rounds: [{
+        name: 'Backend Engineering',
+        target_roles: ['Senior Backend Engineer', 'Staff Backend Engineer'],
+        locations: ['Berlin, Germany', 'Remote (EU)'],
+        remote: 'hybrid',
+        seniority: 'Senior, Staff',
+        keywords: ['Go', 'PostgreSQL', 'Kafka', 'APIs'],
+        excluded_companies: [],
+        notes: '',
+        mail_filter_kind: 'label',
+        mail_filter: 'Jobs/Backend',
+      }, 30],
     };
-    const profiles = {} as Record<'rich' | 'sparse' | 'empty' | 'miss', { id: string; name: string; slug: string }>;
+    const profiles = {} as Record<ProfileKey, { id: string; name: string; slug: string }>;
     for (const [key, [input, daysAgo]] of Object.entries(profileInputs) as [keyof typeof profileInputs, [ProfileInput, number]][]) {
       const cv = key === 'rich' ? { file_name: 'frontend-cv.md', file_type: 'md' as const, added_at: ago(daysAgo) } : undefined;
       const p = profilesRepo.create(input, { cv });
@@ -377,7 +452,9 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
       const run = runs[spec.run]!;
       // example.com answers 200 at its root and 404 elsewhere, so "Open" behaves like the stored status.
       const url = spec.status === 'dead' ? `https://example.com/mock-closed/seed-${n}` : `https://example.com/?mock-job=seed-${n}`;
-      const original = spec.status === 'redirected' ? `https://example.org/?mock-job=seed-${n}` : url;
+      // Only a job saved after a redirect stores another link; one that redirects later keeps its own.
+      const firstStatus = spec.firstStatus ?? spec.status;
+      const original = firstStatus === 'redirected' ? `https://example.org/?mock-job=seed-${n}` : url;
       const canonical = canonicalUrl(url);
       const job: NewJob = {
         company: spec.company,
@@ -393,7 +470,7 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         match_reason: spec.reason,
         fit_checks: spec.checks,
         verification_status: spec.status,
-        verified_at: spec.status === 'unverified' ? null : run.finishedAt,
+        verified_at: firstStatus === 'unverified' ? null : run.finishedAt,
         dedupe_key: dedupeKey({ canonical_url: canonical, company: spec.company, title: spec.title, location: spec.location }),
       };
       const [stored] = jobsRepo.insertMany(run.id, [job]);
@@ -463,7 +540,10 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
     });
 
     return {
-      profiles: [profiles.rich, profiles.sparse, profiles.empty, profiles.miss].map(({ name, slug }) => ({ name, slug })),
+      profiles: [profiles.rich, profiles.sparse, profiles.empty, profiles.miss, profiles.rounds].map(({ name, slug }) => ({
+        name,
+        slug,
+      })),
     };
   });
 
@@ -489,7 +569,7 @@ interface RunRow {
   finished_at: string;
 }
 
-// The Max run's failed worker; matches the "1 of 5 workers failed" note in its summary.
+// The failed worker of a Max run whose summary has the "1 of 5 workers failed" note.
 const FAILED_WORKER = 4;
 
 function runLog(run: RunRow): string[] {
@@ -520,14 +600,17 @@ function runLog(run: RunRow): string[] {
   const cost = run.usage_cost_usd ?? 0;
   if (run.effort_mode === 'max') {
     lines.push(`Max effort: ${MAX_EFFORT_SOURCES.length} workers, up to ${MAX_EFFORT_CONCURRENCY} at a time`);
-    const share = cost / (MAX_EFFORT_SOURCES.length - 1);
+    const failedWorker = hasFailedWorkers(run.summary) ? FAILED_WORKER : null;
+    const share = cost / (MAX_EFFORT_SOURCES.length - (failedWorker ? 1 : 0));
     MAX_EFFORT_SOURCES.forEach((name, i) => {
       const n = i + 1;
       lines.push(`Worker ${n} (${name}) started`, ...agent(`[worker ${n}] `, run.kind));
-      if (succeeded && n !== FAILED_WORKER) lines.push(result(`[worker ${n}] `, share));
+      if (succeeded && n !== failedWorker) lines.push(result(`[worker ${n}] `, share));
     });
-    const failed = MAX_EFFORT_SOURCES[FAILED_WORKER - 1];
-    lines.push(`Worker ${FAILED_WORKER} (${failed}) failed: Agent run failed: Exited with code 1`);
+    if (failedWorker) {
+      const failed = MAX_EFFORT_SOURCES[failedWorker - 1];
+      lines.push(`Worker ${failedWorker} (${failed}) failed: Agent run failed: Exited with code 1`);
+    }
   } else {
     lines.push(...agent('', run.kind));
     if (succeeded) lines.push(result('', cost));
