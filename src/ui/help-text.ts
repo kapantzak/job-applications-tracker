@@ -77,11 +77,11 @@ export type FieldHelpKey = keyof typeof FIELD_HELP;
 export const SCREEN_INTROS = {
   dashboard: "How this profile's applications are doing. Click a number to see the applications behind it.",
   applicationDetail: 'The details sync uses to find replies, and every status change so far.',
-  run: 'One job search or Gmail sync: its progress, what the agent did, and the result.',
+  run: 'One job search, Gmail sync or import: its progress, what happened, and the result.',
   manualProfile:
     'Describe the jobs you want. Name and at least one target role are required; the more you fill in, the better discovery can judge a fit.',
   settingsRuns: 'Time limits, scheduled Gmail sync and the Claude spend cap.',
   settingsServer: 'Where the app listens on this computer.',
-  runs: 'Every job search and Gmail sync, newest first. Open one to see what the agent did.',
+  runs: 'Every job search, Gmail sync and import, newest first. Open one to see what happened.',
   settings: 'Agent and app settings, shared by all profiles. Each section saves on its own.',
 } as const;

@@ -127,21 +127,21 @@ describe('DashboardPage', () => {
 
   it('discovery line carries the jobs count', async () => {
     renderPage();
-    expect(await screen.findByText(/Last discovery: .+ · 3 jobs/)).toBeInTheDocument();
-    expect(screen.getByText(/Last sync: never/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last job search: .+ · 3 jobs/)).toBeInTheDocument();
+    expect(screen.getByText(/Last Gmail sync: never/)).toBeInTheDocument();
   });
 
   it('discovery line says one job in the singular', async () => {
     vi.mocked(client.listJobs).mockResolvedValue([{}] as never);
     renderPage();
-    expect(await screen.findByText(/Last discovery: .+ · 1 job$/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last job search: .+ · 1 job$/)).toBeInTheDocument();
   });
 
   it('drops the jobs suffix and shows an alert when jobs fail to load', async () => {
     vi.mocked(client.listJobs).mockRejectedValue(new Error('jobs down'));
     renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('jobs down');
-    expect(screen.getByText(/Last discovery: never$/)).toBeInTheDocument();
+    expect(screen.getByText(/Last job search: never$/)).toBeInTheDocument();
     expect(screen.queryByText(/· \d+ jobs/)).not.toBeInTheDocument();
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('17');
   });
@@ -189,15 +189,15 @@ describe('DashboardPage', () => {
   it('shows the selected agent with its model and effort per run kind', async () => {
     renderPage();
     const card = await screen.findByRole('region', { name: 'Agent' });
-    expect(card).toHaveTextContent('Discovery: claude · model opus · effort high');
-    expect(card).toHaveTextContent('Mail sync: claude · model Agent default · effort Agent default');
+    expect(card).toHaveTextContent('Job search: Claude Code · model opus · effort high');
+    expect(card).toHaveTextContent('Gmail sync: Claude Code · model Agent default · effort Agent default');
   });
 
   it('points custom commands to their own flags', async () => {
     vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'custom' } as never);
     renderPage();
     const card = await screen.findByRole('region', { name: 'Agent' });
-    expect(card).toHaveTextContent('Discovery: custom · model and effort set in your custom command');
+    expect(card).toHaveTextContent('Job search: Custom command · model and effort set in your custom command');
   });
 });
 

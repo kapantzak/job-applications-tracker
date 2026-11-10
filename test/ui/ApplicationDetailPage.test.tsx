@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,6 +48,32 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('ApplicationDetailPage', () => {
+  it('describes each status change in words, saying who made it', async () => {
+    vi.mocked(client.getApplication).mockResolvedValue({
+      ...detail,
+      status: 'interview',
+      history: [
+        { id: 'h1', application_id: 'a1', from_status: null, to_status: 'applied', changed_at: '2026-03-04T10:00:00', source: 'user', proposal_id: null, created_at: 't' },
+        { id: 'h2', application_id: 'a1', from_status: 'applied', to_status: 'no_response', changed_at: '2026-03-20T10:00:00', source: 'proposal', proposal_id: 'p1', created_at: 't' },
+        { id: 'h3', application_id: 'a1', from_status: 'no_response', to_status: 'interview', changed_at: '2026-03-25T10:00:00', source: 'user', proposal_id: null, created_at: 't' },
+      ],
+    } as client.ApplicationDetail);
+    renderPage();
+    const history = (await screen.findByText('Added as Applied')).closest('ol')!;
+    const entries = within(history).getAllByRole('listitem');
+    expect(entries.map((li) => li.querySelector('p')!.textContent)).toEqual([
+      'Added as Applied',
+      'Applied → No response',
+      'No response → Interview',
+    ]);
+    expect(entries.map((li) => li.querySelectorAll('p')[1]!.textContent!.split(',')[0])).toEqual([
+      'Changed by you',
+      'Accepted from a Gmail sync proposal',
+      'Changed by you',
+    ]);
+    expect(screen.queryByText(/no_response|^(user|proposal),/)).not.toBeInTheDocument();
+  });
+
   it('says what the page is for and explains each detail', async () => {
     const user = userEvent.setup();
     renderPage();

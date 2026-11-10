@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunsPage } from '../../src/ui/pages/RunsPage.js';
 import * as client from '../../src/ui/api/client.js';
@@ -51,6 +51,10 @@ function renderPage() {
       </MemoryRouter>
     </InProfile>,
   );
+}
+
+function Where() {
+  return <p data-testid="where">{useLocation().search}</p>;
 }
 
 // Rows are found through their run link: several rows can share a kind.
@@ -226,12 +230,68 @@ describe('RunsPage sorting and filters', () => {
     renderPage();
     await screen.findByText('4 new jobs');
     await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by kind/ }));
-    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by kind' })).getByRole('checkbox', { name: 'discover_jobs' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by kind' })).getByRole('checkbox', { name: 'Job search' }));
     expect(order()).toEqual(['run-b', 'run-a']);
     await user.keyboard('{Escape}');
     await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by status/ }));
-    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by status' })).getByRole('checkbox', { name: 'failed' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by status' })).getByRole('checkbox', { name: 'Failed' }));
     expect(order()).toEqual(['run-b']);
+  });
+
+  it('names kinds and statuses in words, searchable by those words, while the URL keeps the ids', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listRuns).mockResolvedValue([
+      ...runs,
+      { ...makeRun('run-d', 'aborted', 'import_jobs'), started_at: '2026-11-07T10:00:00', error: 'Cancelled by user' },
+    ]);
+    render(
+      <InProfile>
+        <MemoryRouter initialEntries={['/profiles/platform-roles/runs']}>
+          <Routes>
+            <Route path="/profiles/:profileSlug/runs" element={<><RunsPage /><Where /></>} />
+          </Routes>
+        </MemoryRouter>
+      </InProfile>,
+    );
+    await screen.findByText('4 new jobs');
+    const cells = (id: string) => within(rowOf(id)).getAllByRole('cell').slice(0, 2).map((c) => c.textContent);
+    expect(cells('run-c')).toEqual(['Gmail sync', 'Running']);
+    expect(cells('run-b')).toEqual(['Job search', 'Failed']);
+    expect(cells('run-d')).toEqual(['Import', 'Stopped']);
+    expect(screen.queryByText('discover_jobs')).not.toBeInTheDocument();
+    await user.type(screen.getByRole('searchbox', { name: 'Search runs' }), 'gmail sync');
+    expect(order()).toEqual(['run-c']);
+    await user.clear(screen.getByRole('searchbox', { name: 'Search runs' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search runs' }), 'stopped');
+    expect(order()).toEqual(['run-d']);
+    await user.clear(screen.getByRole('searchbox', { name: 'Search runs' }));
+    await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by kind/ }));
+    const kindDialog = await screen.findByRole('dialog', { name: 'Filter by kind' });
+    const kinds = within(kindDialog);
+    const optionNames = (dialog: HTMLElement) =>
+      within(dialog).getAllByRole('checkbox').map((c) => c.parentElement?.textContent?.replace(/\d+$/, '') ?? '');
+    expect(optionNames(kindDialog).sort()).toEqual(['Gmail sync', 'Import', 'Job search']);
+    await user.click(kinds.getByRole('checkbox', { name: 'Import' }));
+    await vi.waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('kind=import_jobs'));
+    expect(order()).toEqual(['run-d']);
+    await user.keyboard('{Escape}');
+    await user.click(within(screen.getByRole('group', { name: 'Filter runs' })).getByRole('button', { name: /^Filter by status/ }));
+    const statusDialog = await screen.findByRole('dialog', { name: 'Filter by status' });
+    expect(optionNames(statusDialog)).toEqual(['Running', 'Succeeded', 'Failed', 'Stopped']);
+  });
+
+  it('sorts the Kind column by its label', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.listRuns).mockResolvedValue([
+      makeRun('run-s', 'succeeded', 'sync_mail'),
+      makeRun('run-j', 'succeeded', 'discover_jobs'),
+      makeRun('run-i', 'succeeded', 'import_jobs'),
+    ]);
+    renderPage();
+    await screen.findAllByText('Import');
+    await user.click(within(screen.getByRole('columnheader', { name: /^Kind/ })).getByRole('button'));
+    // By label: Gmail sync, Import, Job search (by id it would be discover_jobs, import_jobs, sync_mail).
+    expect(order()).toEqual(['run-s', 'run-i', 'run-j']);
   });
 
   it('filters the Started date', async () => {

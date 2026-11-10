@@ -55,7 +55,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Profile form with the help for Target roles open](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profile-help.png)
 
-**Run.** One job search or Gmail sync: what the agent did, in plain words, and the result.
+**Run.** One job search, Gmail sync or import: what happened, in plain words, and the result.
 
 ![Run page with run details and a readable log](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/run.png)
 
@@ -103,7 +103,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 ## Cancelling a run
 
 - Runs go one at a time, across all profiles. A Max-effort search runs up to three agents and can take up to about twice the run timeout, and other runs, scheduled Gmail syncs included, wait behind it.
-- A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as aborted with "Cancelled by user".
+- A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as Stopped with "Cancelled by user".
 - Once the agent has finished and the app is checking links and saving results, the run can no longer be cancelled: the Run page shows "Saving results…", and a cancel from the Runs list is refused with a message.
 - Stopping the agent can take a few seconds; the Run page shows "Cancelling…" meanwhile.
 

@@ -13,7 +13,7 @@ import { formatTime, formatUsage } from '../format.js';
 import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useListReturnHref } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
-import { RUN_STATUS_TONES } from '../labels.js';
+import { RUN_KIND_LABELS, RUN_STATUS_LABELS, RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -127,7 +127,7 @@ export function RunPage() {
               )}
               <Badge variant={RUN_STATUS_TONES[run.status]} className="text-sm">
                 {!terminal && <LoaderCircleIcon className="animate-spin" />}
-                {run.status}
+                {RUN_STATUS_LABELS[run.status]}
               </Badge>
             </div>
           }
@@ -137,11 +137,11 @@ export function RunPage() {
             <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <div>
                 <dt className="text-muted-foreground">Kind</dt>
-                <dd className="font-mono">{run.kind}</dd>
+                <dd>{RUN_KIND_LABELS[run.kind]}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Status</dt>
-                <dd>{run.status}</dd>
+                <dd>{RUN_STATUS_LABELS[run.status]}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Started</dt>
@@ -156,7 +156,7 @@ export function RunPage() {
                 <>
                   <div>
                     <dt className="text-muted-foreground">Agent</dt>
-                    <dd className="font-mono">{runAgentLabel(run)}</dd>
+                    <dd>{runAgentLabel(run)}</dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">Model</dt>
