@@ -36,7 +36,13 @@ export const FIELD_HELP = {
     'Email domains this company writes from, for example `example.com`. Without a Gmail label or search on the profile, sync looks for mail from these domains and from job-board senders. Add one when replies come from a domain the app did not guess.',
 
   findJobs:
-    'Starts a discovery run: your agent searches the web for jobs that fit this profile, then the app checks every link. Default runs one agent. Max effort runs five, one per source, uses several times the tokens, and asks before it starts.',
+    'Starts a discovery run: your agent searches the web for jobs that fit this profile, then the app checks every link. Default runs one agent. Max effort runs five, one per source, uses several times the tokens, and asks before it starts. The arrow also offers Custom search, to add your own instructions to one search, and Import from another agent, to run the search prompt in any agent and paste its answer.',
+  customInstructions:
+    'Your own words for this search only, such as a sector, a list of companies or a region. They are sent to your agent with your profile, and the Run page keeps them. The app\'s search rules still come first. For something every search should know, use the profile\'s Notes.',
+  importInstructions:
+    'Optional. Your own words for this search, added to the copied prompt and kept with the import, like a custom search. Leave empty for a normal search.',
+  importReply:
+    "Paste the agent's whole answer. The app reads the last JSON object in it, so text around it is fine. It checks every link before saving, and jobs you already have are not added twice.",
   showDeadLinks:
     'Jobs whose link was dead when the app checked it after the search (the page was gone or the site did not exist) are hidden. Tick to show them.',
   showDismissed: 'Jobs you dismissed are hidden. Tick to show them again.',
@@ -71,11 +77,11 @@ export type FieldHelpKey = keyof typeof FIELD_HELP;
 export const SCREEN_INTROS = {
   dashboard: "How this profile's applications are doing. Click a number to see the applications behind it.",
   applicationDetail: 'The details sync uses to find replies, and every status change so far.',
-  run: 'One job search or Gmail sync: its progress, what the agent did, and the result.',
+  run: 'One job search, Gmail sync or import: its progress, what happened, and the result.',
   manualProfile:
     'Describe the jobs you want. Name and at least one target role are required; the more you fill in, the better discovery can judge a fit.',
   settingsRuns: 'Time limits, scheduled Gmail sync and the Claude spend cap.',
   settingsServer: 'Where the app listens on this computer.',
-  runs: 'Every job search and Gmail sync, newest first. Open one to see what the agent did.',
+  runs: 'Every job search, Gmail sync and import, newest first. Open one to see what happened.',
   settings: 'Agent and app settings, shared by all profiles. Each section saves on its own.',
 } as const;

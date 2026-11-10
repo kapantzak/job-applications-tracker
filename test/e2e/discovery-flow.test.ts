@@ -227,4 +227,48 @@ describe('discovery and sync flow over HTTP', () => {
       for (const pid of pids.filter(isAlive)) process.kill(pid, 'SIGKILL');
     }
   }, 30_000);
+
+  it('imports jobs pasted from another agent: checks links, dedupes and lists them under the import', async () => {
+    const base = `http://127.0.0.1:${(target.address() as AddressInfo).port}`;
+    const created = await api('POST', '/api/profiles', {
+      name: 'Import test',
+      target_roles: ['Platform Engineer'],
+      locations: ['Lisbon'],
+      remote: 'remote',
+      seniority: 'senior',
+      keywords: [],
+      excluded_companies: [],
+      notes: '',
+    });
+    expect(created.status).toBe(201);
+    const p = `/api/profiles/${created.body.id}`;
+
+    const prompt = await api('POST', `${p}/runs/import/prompt`, { custom_prompt: 'Only fintech companies' });
+    expect(prompt.status).toBe(200);
+    expect(prompt.body.prompt).toContain('Only fintech companies');
+
+    const jobs = [
+      { company: 'Acme Widgets', title: 'Platform Engineer', url: `${base}/acme/1` },
+      { company: 'Acme Widgets', title: 'Platform Engineer', url: `${base}/acme/1` },
+      { company: 'Globex Labs', title: 'SRE', url: 'javascript:alert(1)' },
+    ];
+    const reply = `Sure, here you go:\n\`\`\`json\n${JSON.stringify({ jobs, notes: '' })}\n\`\`\``;
+    const imported = await api('POST', `${p}/runs/import`, { reply, custom_prompt: 'Only fintech companies' });
+    expect(imported.status).toBe(202);
+    const run = await waitForRun(p, imported.body.id);
+    expect(run).toMatchObject({
+      kind: 'import_jobs',
+      adapter_id: '',
+      prompt_version: null,
+      custom_prompt: 'Only fintech companies',
+      summary: '1 new, 1 duplicates, 1 dead, 0 unverified',
+    });
+
+    const listed = await api('GET', `${p}/jobs`);
+    expect(listed.body.map((j: any) => [j.company, j.verification_status, j.run_id, j.run_kind])).toEqual([
+      ['Acme Widgets', 'ok', run.id, 'import_jobs'],
+    ]);
+    const log = await fetch(`${app.url.replace(/\/$/, '')}${p}/runs/${run.id}/log`).then((r) => r.text());
+    expect(log).toContain('Importing 3 jobs found by another agent');
+  });
 });

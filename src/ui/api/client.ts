@@ -202,8 +202,14 @@ export const listRuns = (profileId: string, limit?: number): Promise<Run[]> =>
   request('GET', scoped(profileId, limit === undefined ? '/runs' : `/runs?limit=${limit}`));
 export const getRun = (profileId: string, id: string): Promise<Run> =>
   request('GET', scoped(profileId, `/runs/${enc(id)}`));
-export const startDiscovery = (profileId: string, mode: EffortMode = 'default'): Promise<Run> =>
-  request('POST', scoped(profileId, '/runs/discover'), { mode });
+// Custom instructions are sent only when given, so a plain search keeps its `{ mode }` body (SOW-0042).
+export const startDiscovery = (profileId: string, mode: EffortMode = 'default', customPrompt?: string): Promise<Run> =>
+  request('POST', scoped(profileId, '/runs/discover'), customPrompt ? { mode, custom_prompt: customPrompt } : { mode });
+// The search prompt to run in another agent client, and saving what it found (SOW-0043).
+export const getImportPrompt = (profileId: string, customPrompt?: string): Promise<{ prompt: string; version: string }> =>
+  request('POST', scoped(profileId, '/runs/import/prompt'), customPrompt ? { custom_prompt: customPrompt } : {});
+export const importJobs = (profileId: string, reply: string, customPrompt?: string): Promise<Run> =>
+  request('POST', scoped(profileId, '/runs/import'), customPrompt ? { reply, custom_prompt: customPrompt } : { reply });
 // 202 with the run: already `aborted` for a queued run, still `running` while the agent is stopped.
 export const cancelRun = (profileId: string, id: string): Promise<Run> =>
   request('POST', scoped(profileId, `/runs/${enc(id)}/cancel`));

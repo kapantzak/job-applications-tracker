@@ -28,6 +28,7 @@ const run: Run = {
   agent_effort: '',
   agent_model_reported: null,
   effort_mode: 'default',
+  custom_prompt: null,
   usage_cost_usd: null,
   usage_input_tokens: null,
   usage_output_tokens: null,
@@ -70,7 +71,7 @@ describe('RunPage', () => {
 
   it('appends streamed lines and shows the summary when done', async () => {
     const { unmount } = renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     await act(async () => onLine('hello'));
     expect(screen.getByText(/hello/)).toBeInTheDocument();
 
@@ -104,7 +105,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
     vi.mocked(client.getRunLog).mockResolvedValue('line one');
     renderPage();
-    expect(await screen.findByText(/^One job search or Gmail sync/)).toBeInTheDocument();
+    expect(await screen.findByText(/^One job search, Gmail sync or import/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'About Show raw output' }));
     expect(await screen.findByRole('dialog', { name: 'About Show raw output' })).toHaveTextContent(
       'It can include mail snippets',
@@ -146,8 +147,8 @@ describe('RunPage', () => {
     });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    await screen.findByText(/discover_jobs/);
-    expect(detail('Agent')).toBe('claude');
+    await screen.findByText('Job search');
+    expect(detail('Agent')).toBe('Claude Code');
     expect(detail('Model')).toBe('Agent defaultran as model-a');
     expect(detail('Effort')).toBe('high');
   });
@@ -163,16 +164,62 @@ describe('RunPage', () => {
     });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     expect(detail('Mode')).toBe('Max effort');
     expect(detail('Usage')).toBe('$2.50 estimated · 120.0k tokens in, 900 out');
+  });
+
+  it('shows the custom instructions of a discovery, keeping their line breaks', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      custom_prompt: 'Only fintech companies\nSkip agencies',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText('Job search');
+    const value = screen.getByText('Custom instructions').nextElementSibling as HTMLElement;
+    expect(value.textContent).toBe('Only fintech companies\nSkip agencies');
+    expect(value).toHaveClass('whitespace-pre-wrap');
+  });
+
+  it('shows an import without agent, model, effort, mode or usage, with its instructions and jobs', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      kind: 'import_jobs',
+      status: 'succeeded',
+      adapter_id: '',
+      agent_model: null,
+      agent_effort: null,
+      summary: '2 new, 0 duplicates, 0 dead, 0 unverified',
+      custom_prompt: 'Only fintech companies',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText('Import');
+    for (const term of ['Agent', 'Model', 'Effort', 'Mode', 'Usage']) {
+      expect(screen.queryByText(term, { selector: 'dt' })).not.toBeInTheDocument();
+    }
+    expect(screen.getByText('Custom instructions').nextElementSibling).toHaveTextContent('Only fintech companies');
+    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute(
+      'href',
+      '/profiles/platform-roles/jobs?run=r1',
+    );
+  });
+
+  it('shows no custom instructions row for a discovery without them', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText('Job search');
+    expect(screen.queryByText('Custom instructions')).not.toBeInTheDocument();
   });
 
   it('says when a discovery reported no usage', async () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     expect(detail('Mode')).toBe('Default');
     expect(detail('Usage')).toBe('Not reported');
   });
@@ -181,7 +228,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, kind: 'sync_mail', status: 'succeeded' });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
-    await screen.findByText(/sync_mail/);
+    await screen.findByText('Gmail sync');
     expect(screen.queryByText('Mode', { selector: 'dt' })).toBeNull();
     expect(screen.queryByText('Usage', { selector: 'dt' })).toBeNull();
   });
@@ -190,7 +237,7 @@ describe('RunPage', () => {
     vi.mocked(client.getRunLog).mockResolvedValue('');
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', agent_model: null, agent_effort: null });
     const { unmount } = renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     expect(detail('Model')).toBe('Not recorded');
     expect(detail('Effort')).toBe('Not recorded');
     unmount();
@@ -203,15 +250,24 @@ describe('RunPage', () => {
       agent_effort: null,
     });
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
+    expect(detail('Agent')).toBe('Custom command');
     expect(detail('Model')).toBe('Set in your custom command');
     expect(detail('Effort')).toBe('Set in your custom command');
+  });
+
+  it('names the Codex agent in words', async () => {
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', adapter_id: 'codex' });
+    renderPage();
+    await screen.findByText('Job search');
+    expect(detail('Agent')).toBe('Codex');
   });
 
   it('shows pending agent details on a live run and refreshes them when the agent starts', async () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued', adapter_id: '', agent_model: null, agent_effort: null });
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     expect(detail('Agent')).toBe('Pending');
     expect(detail('Model')).toBe('Pending');
     expect(detail('Effort')).toBe('Pending');
@@ -230,7 +286,7 @@ describe('RunPage', () => {
     const user = userEvent.setup();
     vi.mocked(client.cancelRun).mockResolvedValue(run);
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     await user.click(screen.getByRole('button', { name: 'Cancel run' }));
     expect(client.cancelRun).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
@@ -246,7 +302,7 @@ describe('RunPage', () => {
 
   it('turns the control into Saving results once the run starts saving', async () => {
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     // Agent output that merely starts with the same words must not lock the control.
     await act(async () => onLine('Saving results to output.json'));
     expect(screen.getByRole('button', { name: 'Cancel run' })).toBeEnabled();
@@ -260,12 +316,17 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'queued' });
     vi.mocked(client.cancelRun).mockResolvedValue({ ...run, status: 'aborted', error: 'Cancelled by user' });
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     await user.click(screen.getByRole('button', { name: 'Cancel run' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'Cancel this run?' });
     await user.click(within(dialog).getByRole('button', { name: 'Cancel run' }));
     expect(await screen.findByText('Cancelled by user')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
+    // The stored status is `aborted`; the page says Stopped in the badge and the details.
+    expect(screen.getAllByText('Stopped')).toHaveLength(2);
+    expect(detail('Status')).toBe('Stopped');
+    expect(detail('Kind')).toBe('Job search');
+    expect(screen.queryByText('aborted')).not.toBeInTheDocument();
   });
 
   it('offers no cancel on a finished run', async () => {
@@ -317,7 +378,7 @@ describe('RunPage', () => {
 
   it('adds readable rows as lines stream in', async () => {
     renderPage();
-    await screen.findByText(/discover_jobs/);
+    await screen.findByText('Job search');
     await act(async () =>
       onLine(JSON.stringify({ type: 'system', subtype: 'init', model: 'model-a' })),
     );

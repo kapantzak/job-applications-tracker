@@ -11,6 +11,7 @@ import { TagInput } from '../components/TagInput.js';
 import { dayToIso, formatTime, isoToDay } from '../format.js';
 import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useListReturnHref } from '../hooks/use-table-view.js';
+import { HISTORY_SOURCE_LABELS, historyChangeLabel } from '../labels.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -185,10 +186,10 @@ export function ApplicationDetailPage() {
                   <li key={h.id} className="text-sm">
                     <span className="absolute -left-[5px] mt-1.5 size-2.5 rounded-full border bg-background" />
                     <p className="font-medium">
-                      {h.from_status ?? 'none'} → {h.to_status}
+                      {historyChangeLabel(h.from_status, h.to_status)}
                     </p>
                     <p className="text-muted-foreground">
-                      {h.source}, {formatTime(h.changed_at)}
+                      {HISTORY_SOURCE_LABELS[h.source]}, {formatTime(h.changed_at)}
                     </p>
                   </li>
                 ))}

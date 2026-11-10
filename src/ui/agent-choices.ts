@@ -1,4 +1,5 @@
 import type { Run, Settings } from '../server/domain/types.js';
+import { ADAPTER_LABELS } from './labels.js';
 
 export type PresetAgent = 'claude' | 'codex';
 export type RunSuffix = 'discover' | 'sync';
@@ -10,9 +11,11 @@ export const AGENT_CHOICE_KEYS: AgentChoiceKey[] = (['claude', 'codex'] as const
   ),
 );
 
+// `title` names the run kind on the Dashboard like RUN_KIND_LABELS does elsewhere (SOW-0039); `label` is the
+// Settings → Agent wording.
 export const RUN_SUFFIXES: Array<{ suffix: RunSuffix; label: string; title: string }> = [
-  { suffix: 'discover', label: 'discovery', title: 'Discovery' },
-  { suffix: 'sync', label: 'mail sync', title: 'Mail sync' },
+  { suffix: 'discover', label: 'discovery', title: 'Job search' },
+  { suffix: 'sync', label: 'mail sync', title: 'Gmail sync' },
 ];
 
 // Used when no catalog could be read: the levels `claude --help` and the codex catalog both listed (2026-11-07).
@@ -33,10 +36,11 @@ export function isPresetAgent(id: string): id is PresetAgent {
 // One line per run kind for the Dashboard, from the saved settings.
 export function selectionSummary(settings: Settings, suffix: RunSuffix): string {
   const agent = settings.adapter_id;
-  if (!isPresetAgent(agent)) return `${agent} · model and effort set in your custom command`;
+  const name = ADAPTER_LABELS[agent] ?? agent;
+  if (!isPresetAgent(agent)) return `${name} · model and effort set in your custom command`;
   const model = settings[`${agent}_model_${suffix}`] || 'Agent default';
   const effort = settings[`${agent}_effort_${suffix}`] || 'Agent default';
-  return `${agent} · model ${model} · effort ${effort}`;
+  return `${name} · model ${model} · effort ${effort}`;
 }
 
 function isLive(run: Run): boolean {
@@ -45,7 +49,7 @@ function isLive(run: Run): boolean {
 
 // A live run records its agent a moment after it starts; until then nothing is "missing".
 export function runAgentLabel(run: Run): string {
-  if (run.adapter_id) return run.adapter_id;
+  if (run.adapter_id) return ADAPTER_LABELS[run.adapter_id as Settings['adapter_id']] ?? run.adapter_id;
   return isLive(run) ? 'Pending' : 'Not recorded';
 }
 

@@ -13,7 +13,7 @@ import { formatTime, formatUsage } from '../format.js';
 import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useListReturnHref } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
-import { RUN_STATUS_TONES } from '../labels.js';
+import { RUN_KIND_LABELS, RUN_STATUS_LABELS, RUN_STATUS_TONES } from '../labels.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -92,6 +92,7 @@ export function RunPage() {
 
   const terminal = run.status !== 'queued' && run.status !== 'running';
   const succeeded = run.status === 'succeeded';
+  const imported = run.kind === 'import_jobs';
   const followUp = (to: string, label: string) => (
     <Button asChild variant="outline" size="sm">
       <Link to={to}>
@@ -126,7 +127,7 @@ export function RunPage() {
               )}
               <Badge variant={RUN_STATUS_TONES[run.status]} className="text-sm">
                 {!terminal && <LoaderCircleIcon className="animate-spin" />}
-                {run.status}
+                {RUN_STATUS_LABELS[run.status]}
               </Badge>
             </div>
           }
@@ -136,11 +137,11 @@ export function RunPage() {
             <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <div>
                 <dt className="text-muted-foreground">Kind</dt>
-                <dd className="font-mono">{run.kind}</dd>
+                <dd>{RUN_KIND_LABELS[run.kind]}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Status</dt>
-                <dd>{run.status}</dd>
+                <dd>{RUN_STATUS_LABELS[run.status]}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Started</dt>
@@ -150,25 +151,30 @@ export function RunPage() {
                 <dt className="text-muted-foreground">Finished</dt>
                 <dd>{formatTime(run.finished_at)}</dd>
               </div>
-              <div>
-                <dt className="text-muted-foreground">Agent</dt>
-                <dd className="font-mono">{runAgentLabel(run)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Model</dt>
-                <dd>
-                  {runChoiceLabel(run, 'agent_model')}
-                  {run.agent_model_reported && (
-                    <span className="block font-mono text-xs text-muted-foreground">
-                      ran as {run.agent_model_reported}
-                    </span>
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Effort</dt>
-                <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
-              </div>
+              {/* An import ran no agent of the app's (SOW-0043). */}
+              {!imported && (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground">Agent</dt>
+                    <dd>{runAgentLabel(run)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Model</dt>
+                    <dd>
+                      {runChoiceLabel(run, 'agent_model')}
+                      {run.agent_model_reported && (
+                        <span className="block font-mono text-xs text-muted-foreground">
+                          ran as {run.agent_model_reported}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Effort</dt>
+                    <dd>{runChoiceLabel(run, 'agent_effort')}</dd>
+                  </div>
+                </>
+              )}
               {/* Only discovery records usage (SOW-0016), so sync runs show neither row. */}
               {run.kind === 'discover_jobs' && (
                 <>
@@ -181,6 +187,12 @@ export function RunPage() {
                     <dd>{formatUsage(run) ?? 'Not reported'}</dd>
                   </div>
                 </>
+              )}
+              {run.custom_prompt && (
+                <div className="col-span-full">
+                  <dt className="text-muted-foreground">Custom instructions</dt>
+                  <dd className="break-words whitespace-pre-wrap">{run.custom_prompt}</dd>
+                </div>
               )}
             </dl>
           </CardContent>
@@ -196,7 +208,7 @@ export function RunPage() {
       {terminal && (
         <div className="flex flex-wrap gap-2">
           {/* Only a succeeded search saves jobs; the filter shows the ones it found first (SOW-0040). */}
-          {run.kind === 'discover_jobs' &&
+          {(run.kind === 'discover_jobs' || imported) &&
             followUp(href(succeeded ? `/jobs?run=${encodeURIComponent(run.id)}` : '/jobs'), 'View jobs')}
           {run.kind === 'sync_mail' && followUp(href('/review'), 'Review proposals')}
           {run.status === 'failed' && run.error?.startsWith(NO_GMAIL) && followUp('/settings', 'Open settings')}

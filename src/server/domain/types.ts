@@ -11,15 +11,23 @@ export const APPLICATION_STATUSES = [
   'withdrawn',
   'no_response',
 ] as const;
-export const RUN_KINDS = ['discover_jobs', 'sync_mail'] as const;
+// `import_jobs` saves jobs another agent client found (SOW-0043); it runs no agent of its own.
+export const RUN_KINDS = ['discover_jobs', 'sync_mail', 'import_jobs'] as const;
+// The run kinds that spawn the user's agent; presets key model and effort by these.
+export type AgentRunKind = Exclude<RunKind, 'import_jobs'>;
 // What the app asks an agent to do: a queued run, or a CV analysis outside the queue (SOW-0023).
-export type AgentTaskKind = RunKind | 'analyse_cv';
+export type AgentTaskKind = AgentRunKind | 'analyse_cv';
 // Logged when a run starts saving its results; the UI matches it exactly to lock the cancel control.
 export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be cancelled';
 
 export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'aborted'] as const;
 // Discovery effort (SOW-0016): `max` runs several partitioned agent processes; sync is always `default`.
 export const EFFORT_MODES = ['default', 'max'] as const;
+// Custom search instructions (SOW-0042): Codex receives the whole prompt as one argv element.
+export const CUSTOM_PROMPT_MAX = 2000;
+// Import limits (SOW-0043): keep the request and the link checks it starts bounded.
+export const IMPORT_MAX_BYTES = 1024 * 1024;
+export const IMPORT_MAX_JOBS = 100;
 export const FIT_VERDICTS = ['pass', 'fail', 'unknown'] as const;
 // Max effort workers by source family, in run order, and how many run at once (user decisions 9 and 10).
 // Shared so the UI warning names exactly what the server runs.
@@ -191,6 +199,8 @@ export interface Run {
   // The model the agent says it ran; only Claude Code reports one.
   agent_model_reported: string | null;
   effort_mode: EffortMode;
+  // The user's instructions for this discovery run (SOW-0042); null when the search had none.
+  custom_prompt: string | null;
   // What the agent reported, summed over Max workers; null when nothing was reported. The cost is
   // Claude Code's list-price estimate, not a bill.
   usage_cost_usd: number | null;
@@ -234,6 +244,10 @@ export interface JobListItem extends Job {
   // The first search, for the Jobs page "Found in" filter (SOW-0040).
   run_started_at: string | null;
   run_effort_mode: EffortMode;
+  // The first search had custom instructions (SOW-0042); the text itself stays on the run.
+  run_has_custom_prompt: boolean;
+  // A discovery, or an import from another agent client (SOW-0043).
+  run_kind: RunKind;
 }
 
 export interface Application {

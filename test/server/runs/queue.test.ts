@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +8,7 @@ import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { insertTestProfile } from '../db/test-profile.js';
 import type { Run, RunKind, RunStatus } from '../../../src/server/domain/types.js';
 import { createLogStore } from '../../../src/server/runs/log-store.js';
-import { ActiveRunConflictError, createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
+import { ActiveRunConflictError, createRunQueue, RUN_INPUT_FILE, type RunHandler } from '../../../src/server/runs/queue.js';
 
 type Queue = ReturnType<typeof createRunQueue>;
 
@@ -34,6 +34,8 @@ async function waitForTerminal(id: string): Promise<Run> {
   return runsRepo.get(id) as Run;
 }
 
+const noop: RunHandler = async () => ({ summary: 'noop' });
+
 function makeQueue(
   handlers: Partial<Record<RunKind, RunHandler>>,
   extra: { stopTimeoutMs?: number } = {},
@@ -46,6 +48,7 @@ function makeQueue(
     handlers: {
       discover_jobs: handlers.discover_jobs ?? fallback,
       sync_mail: handlers.sync_mail ?? fallback,
+      import_jobs: handlers.import_jobs ?? fallback,
     },
     ...extra,
   });
@@ -300,6 +303,63 @@ describe('run queue', () => {
     expect(runsRepo.list(pid)).toHaveLength(1);
   });
 
+  it('stores custom instructions on the run and hands them to the handler', async () => {
+    const seen: (string | null)[] = [];
+    const q = makeQueue({
+      discover_jobs: async (ctx) => {
+        seen.push(ctx.run.custom_prompt);
+        return { summary: 'ok' };
+      },
+    });
+    const run = q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' });
+    expect(run.custom_prompt).toBe('Only fintech companies');
+    q.start();
+    await waitForTerminal(run.id);
+    expect(seen).toEqual(['Only fintech companies']);
+    expect(q.enqueue('sync_mail', pid).custom_prompt).toBeNull();
+  });
+
+  it('writes the run input to the run folder before the handler reads it', async () => {
+    const seen: unknown[] = [];
+    const q = makeQueue({
+      import_jobs: async (ctx) => {
+        seen.push(JSON.parse(readFileSync(join(ctx.runDir, RUN_INPUT_FILE), 'utf8')));
+        return { summary: 'ok' };
+      },
+    });
+    const run = q.enqueue('import_jobs', pid, { input: { jobs: [{ company: 'Acme' }] } });
+    expect(JSON.parse(readFileSync(join(runsDir, run.id, RUN_INPUT_FILE), 'utf8'))).toEqual({
+      jobs: [{ company: 'Acme' }],
+    });
+    q.start();
+    await waitForTerminal(run.id);
+    expect(seen).toEqual([{ jobs: [{ company: 'Acme' }] }]);
+  });
+
+  it('refuses a second import while one is active, and says so', () => {
+    const q = makeQueue({});
+    const first = q.enqueue('import_jobs', pid, { input: { jobs: [] } });
+    expect(() => q.enqueue('import_jobs', pid, { input: { jobs: [] } })).toThrow('An import is already active');
+    expect(runsRepo.list(pid).map((r) => r.id)).toEqual([first.id]);
+    // A discovery is another kind, so it still queues behind the import.
+    expect(q.enqueue('discover_jobs', pid).kind).toBe('discover_jobs');
+  });
+
+  it('treats empty custom instructions as none', () => {
+    const q = makeQueue({});
+    expect(q.enqueue('discover_jobs', pid, { customPrompt: '' }).custom_prompt).toBeNull();
+  });
+
+  it('returns the active run for the same instructions and refuses different ones', () => {
+    const q = makeQueue({});
+    const first = q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' });
+    expect(q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' }).id).toBe(first.id);
+    for (const customPrompt of ['Only healthcare companies', null, undefined]) {
+      expect(() => q.enqueue('discover_jobs', pid, { customPrompt })).toThrow(ActiveRunConflictError);
+    }
+    expect(runsRepo.list(pid)).toHaveLength(1);
+  });
+
   it('keeps one active run per profile and kind, and runs every profile through the same queue', async () => {
     const other = insertTestProfile(db, 'Other profile');
     const seen: string[] = [];
@@ -505,6 +565,47 @@ describe('run queue', () => {
     rejectFirst();
     expect((await waitForTerminal(first.id)).error).toBe('Cancelled by user');
     expect((await waitForTerminal(second.id)).summary).toBe('second');
+  });
+
+  it('queues a second import behind one that is being cancelled, then refuses a third', async () => {
+    let entered = 0;
+    let rejectFirst: () => void = () => {};
+    const q = makeQueue({
+      import_jobs: ({ signal }) => {
+        entered++;
+        if (entered > 1) return Promise.resolve({ summary: 'second' });
+        return new Promise((_, rej) => {
+          signal.addEventListener('abort', () => (rejectFirst = () => rej(new Error('Aborted'))));
+        });
+      },
+    });
+    q.start();
+    const first = q.enqueue('import_jobs', pid, { input: { jobs: [] } });
+    await waitFor(() => entered === 1);
+    expect(q.cancel(first.id)).toBe('cancelling');
+    const second = q.enqueue('import_jobs', pid, { input: { jobs: [] } });
+    expect(second.id).not.toBe(first.id);
+    expect(() => q.enqueue('import_jobs', pid, { input: { jobs: [] } })).toThrow('An import is already active');
+    rejectFirst();
+    expect((await waitForTerminal(first.id)).error).toBe('Cancelled by user');
+    expect((await waitForTerminal(second.id)).summary).toBe('second');
+  });
+
+  it('fails the run and rethrows when its input cannot be stored', () => {
+    // A file where the runs folder should be makes every write under it fail.
+    const blocked = join(mkdtempSync(join(tmpdir(), 'queue-blocked-')), 'runs');
+    writeFileSync(blocked, '');
+    const q = createRunQueue({
+      runsRepo,
+      logStore,
+      runsDir: blocked,
+      handlers: { discover_jobs: noop, sync_mail: noop, import_jobs: noop },
+    });
+    expect(() => q.enqueue('import_jobs', pid, { input: { jobs: [] } })).toThrow();
+    const [run] = runsRepo.list(pid);
+    expect(run).toMatchObject({ kind: 'import_jobs', status: 'failed' });
+    expect(run!.error).toMatch(/^Could not store the run input: /);
+    expect(run!.finished_at).not.toBeNull();
   });
 
   it('reports finished and unknown runs', async () => {

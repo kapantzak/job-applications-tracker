@@ -56,7 +56,7 @@ describe('ReviewPage', () => {
   it('shows the proposal details and the Gmail link', async () => {
     renderPage();
     expect(await screen.findByText(/Acme/)).toBeInTheDocument();
-    expect(screen.getByText(/applied → interview/)).toBeInTheDocument();
+    expect(screen.getByText('Applied → Interview (85%)')).toBeInTheDocument();
     expect(screen.getByText(/85%/)).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /gmail/i });
     expect(link).toHaveAttribute('href', 'https://mail.google.com/mail/#all/m1');

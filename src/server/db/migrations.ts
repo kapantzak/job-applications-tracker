@@ -22,6 +22,12 @@ export interface Migration {
   foreignKeysOff?: boolean;
 }
 
+// Every runs column after migration 10, frozen for the migration 11 rebuild.
+const RUN_COLUMNS_V10 =
+  'id, profile_id, kind, status, started_at, finished_at, adapter_id, prompt_version, summary, error, created_at, ' +
+  'agent_model, agent_effort, agent_model_reported, effort_mode, usage_cost_usd, usage_input_tokens, ' +
+  'usage_output_tokens, custom_prompt';
+
 // SQL lives in TS (not .sql files) so the bundle needs no asset copying.
 export const migrations: Migration[] = [
   {
@@ -202,6 +208,48 @@ ALTER TABLE jobs ADD COLUMN last_seen_at TEXT;
 ALTER TABLE jobs ADD COLUMN last_seen_run_id TEXT REFERENCES runs(id);
 UPDATE jobs SET last_seen_at = created_at, last_seen_run_id = run_id;
 CREATE INDEX idx_jobs_last_seen_run_id ON jobs (last_seen_run_id);
+`,
+  },
+  {
+    // The user's own instructions for one discovery run (SOW-0042); NULL when the search had none.
+    id: 10,
+    sql: `
+ALTER TABLE runs ADD COLUMN custom_prompt TEXT;
+`,
+  },
+  {
+    // Imports from another agent client (SOW-0043): SQLite cannot alter a CHECK, so the table is rebuilt
+    // in the documented order. jobs and proposals keep referring to `runs` by name.
+    id: 11,
+    foreignKeysOff: true,
+    sql: `
+CREATE TABLE runs_new (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES profiles (id),
+  kind TEXT NOT NULL CHECK (kind IN ('discover_jobs','sync_mail','import_jobs')),
+  status TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed','aborted')),
+  started_at TEXT,
+  finished_at TEXT,
+  adapter_id TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT,
+  summary TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  agent_model TEXT,
+  agent_effort TEXT,
+  agent_model_reported TEXT,
+  effort_mode TEXT NOT NULL DEFAULT 'default' CHECK (effort_mode IN ('default','max')),
+  usage_cost_usd REAL,
+  usage_input_tokens INTEGER,
+  usage_output_tokens INTEGER,
+  custom_prompt TEXT
+);
+INSERT INTO runs_new (${RUN_COLUMNS_V10})
+  SELECT ${RUN_COLUMNS_V10} FROM runs ORDER BY rowid;
+DROP TABLE runs;
+ALTER TABLE runs_new RENAME TO runs;
+CREATE INDEX idx_runs_status ON runs (status);
+CREATE INDEX idx_runs_profile_id ON runs (profile_id);
 `,
   },
 ];

@@ -16,6 +16,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   markApplied: vi.fn(),
   dismissJob: vi.fn(),
   startDiscovery: vi.fn(),
+  importJobs: vi.fn(),
+  getImportPrompt: vi.fn(),
   getSettings: vi.fn(),
   listRuns: vi.fn(),
 }));
@@ -46,6 +48,8 @@ function job(over: Partial<JobListItem>): JobListItem {
     application_status: null,
     run_started_at: '2026-01-01T00:00:00Z',
     run_effort_mode: 'default',
+    run_has_custom_prompt: false,
+    run_kind: 'discover_jobs',
     ...over,
   } as JobListItem;
 }
@@ -172,6 +176,33 @@ describe('JobsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(await screen.findByText('Run page')).toBeInTheDocument();
     expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default');
+  });
+
+  it('starts a custom search from the Find jobs menu with the trimmed instructions', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-9' } as never);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Custom search…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Custom search' });
+    await user.type(within(dialog).getByLabelText('Instructions'), '  Only fintech companies  ');
+    await user.click(within(dialog).getByRole('button', { name: 'Start search' }));
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default', 'Only fintech companies');
+  });
+
+  it('an import from the Find jobs menu opens its run', async () => {
+    vi.mocked(client.importJobs).mockResolvedValue({ id: 'run-import' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Import from another agent…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('{"jobs": []}');
+    await user.click(within(dialog).getByRole('button', { name: 'Import jobs' }));
+    expect(client.importJobs).toHaveBeenCalledWith('pf1', '{"jobs": []}', undefined);
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 
   it('shows 422 errors from discovery as they are', async () => {
@@ -522,6 +553,43 @@ describe('JobsPage sorting, search and filters', () => {
     await user.click(within(popover).getByRole('checkbox', { name: lateLabel }));
     expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
     expect(screen.getByTestId('search')).toHaveTextContent('?run=r1&run=r2');
+  });
+
+  it('marks a search with custom instructions in its found-in label', async () => {
+    const user = userEvent.setup();
+    const started = '2026-11-04T09:00:00';
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j1', company: 'Acme', run_id: 'r1', run_started_at: started, run_has_custom_prompt: true }),
+    ]);
+    renderPage();
+    await screen.findByText('Acme');
+    await user.click(within(toolbar()).getByRole('button', { name: 'Filter by found in' }));
+    const popover = await screen.findByRole('dialog', { name: 'Filter by found in' });
+    expect(within(popover).getByRole('checkbox', { name: `${formatTime(started)} · Default · Custom` })).toBeInTheDocument();
+  });
+
+  it('labels an import, with its custom instructions, in the found-in filter', async () => {
+    const user = userEvent.setup();
+    const started = '2026-11-04T09:00:00';
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j1', company: 'Acme', run_id: 'r1', run_started_at: started, run_kind: 'import_jobs' }),
+      job({
+        id: 'j2',
+        company: 'Globex',
+        run_id: 'r2',
+        run_started_at: started,
+        run_kind: 'import_jobs',
+        run_has_custom_prompt: true,
+      }),
+    ]);
+    renderPage();
+    await screen.findByText('Acme');
+    await user.click(within(toolbar()).getByRole('button', { name: 'Filter by found in' }));
+    const popover = await screen.findByRole('dialog', { name: 'Filter by found in' });
+    expect(within(popover).getByRole('checkbox', { name: `${formatTime(started)} · Imported` })).toBeInTheDocument();
+    expect(
+      within(popover).getByRole('checkbox', { name: `${formatTime(started)} · Imported · Custom` }),
+    ).toBeInTheDocument();
   });
 
   it('labels a search that has no listed jobs so its filter can still be cleared', async () => {

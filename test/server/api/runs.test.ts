@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Run } from '../../../src/server/domain/types.js';
@@ -103,9 +103,62 @@ describe('runs: enqueue', () => {
     expect(h.deps.runsRepo.get(run.id)!.effort_mode).toBe('max');
   });
 
+  it('POST discover stores trimmed custom instructions, with either mode', async () => {
+    const res = await h.app.request(
+      `${h.base}/runs/discover`,
+      json('POST', { mode: 'max', custom_prompt: '  Only fintech companies\nSkip agencies  ' }),
+    );
+    expect(res.status).toBe(202);
+    const run = (await res.json()) as Run;
+    expect(run.effort_mode).toBe('max');
+    expect(run.custom_prompt).toBe('Only fintech companies\nSkip agencies');
+    expect(h.deps.runsRepo.get(run.id)!.custom_prompt).toBe('Only fintech companies\nSkip agencies');
+  });
+
+  it.each([
+    ['no custom_prompt key', { mode: 'default' }],
+    ['custom_prompt null', { custom_prompt: null }],
+    ['blank custom_prompt', { custom_prompt: ' \n\t ' }],
+  ])('POST discover with %s stores no instructions', async (_name, body) => {
+    const res = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
+    expect(res.status).toBe(202);
+    expect(h.deps.runsRepo.get(((await res.json()) as Run).id)!.custom_prompt).toBeNull();
+  });
+
+  it('POST discover accepts custom instructions of exactly 2000 characters after trimming', async () => {
+    const res = await h.app.request(
+      `${h.base}/runs/discover`,
+      json('POST', { custom_prompt: ` ${'a'.repeat(2000)} ` }),
+    );
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as Run).custom_prompt).toHaveLength(2000);
+    const tooLong = await h.app.request(
+      `/api/profiles/${h.deps.profilesRepo.create(OTHER_PROFILE).id}/runs/discover`,
+      json('POST', { custom_prompt: 'a'.repeat(2001) }),
+    );
+    expect(await tooLong.json()).toEqual({
+      error: 'custom_prompt: Custom instructions can be at most 2000 characters',
+    });
+  });
+
+  it('POST discover with different instructions while a discovery is active is 409', async () => {
+    const first = await h.app.request(`${h.base}/runs/discover`, json('POST', { custom_prompt: 'Only fintech' }));
+    const firstRun = (await first.json()) as Run;
+    const same = await h.app.request(`${h.base}/runs/discover`, json('POST', { custom_prompt: ' Only fintech ' }));
+    expect(((await same.json()) as Run).id).toBe(firstRun.id);
+    for (const body of [{ custom_prompt: 'Only healthcare' }, {}]) {
+      const conflict = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toEqual({ error: 'A discovery run is already active' });
+    }
+    expect(h.deps.runsRepo.list(h.profile.id).map((r) => r.id)).toEqual([firstRun.id]);
+  });
+
   it.each([
     ['an unknown mode', { mode: 'turbo' }],
     ['an unknown key', { mode: 'max', workers: 9 }],
+    ['custom instructions over 2000 characters', { custom_prompt: 'a'.repeat(2001) }],
+    ['custom instructions that are not text', { custom_prompt: 42 }],
   ])('POST discover with %s is 400 and enqueues nothing', async (_name, body) => {
     const res = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
     expect(res.status).toBe(400);
@@ -151,6 +204,121 @@ describe('runs: enqueue', () => {
     const res = await h.app.request(`${h.base}/runs/sync`, { method: 'POST' });
     expect(res.status).toBe(202);
     expect(((await res.json()) as Run).kind).toBe('sync_mail');
+  });
+
+  const reply = (jobs: unknown[]) =>
+    `Here are the jobs:\n\`\`\`json\n${JSON.stringify({ jobs, notes: '' })}\n\`\`\``;
+  const acme = { company: 'Acme', title: 'SRE', url: 'https://jobs.example.com/1' };
+
+  it('POST import/prompt returns the discovery prompt for the profile with the schema, without an agent', async () => {
+    h.healthFor.claude = { id: 'claude', installed: false, message: 'Not found on PATH' };
+    const plain = await h.app.request(`${h.base}/runs/import/prompt`, { method: 'POST' });
+    expect(plain.status).toBe(200);
+    const body = (await plain.json()) as { prompt: string; version: string };
+    expect(body.version).toBe('5');
+    expect(body.prompt).toContain('Target roles: Platform Engineer');
+    expect(body.prompt).toContain('<<<INSTRUCTIONS\n(none)\nINSTRUCTIONS>>>');
+    expect(body.prompt).toContain('## Required schema');
+    const custom = await h.app.request(
+      `${h.base}/runs/import/prompt`,
+      json('POST', { custom_prompt: '  Only fintech companies  ' }),
+    );
+    expect(((await custom.json()) as { prompt: string }).prompt).toContain(
+      '<<<INSTRUCTIONS\nOnly fintech companies\nINSTRUCTIONS>>>',
+    );
+    expect(h.factoryCalls).toEqual([]);
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it.each([
+    ['custom instructions over 2000 characters', { custom_prompt: 'a'.repeat(2001) }],
+    ['an unknown key', { mode: 'max' }],
+  ])('POST import/prompt with %s is 400', async (_name, body) => {
+    const res = await h.app.request(`${h.base}/runs/import/prompt`, json('POST', body));
+    expect(res.status).toBe(400);
+  });
+
+  it('POST import queues an import run with the jobs and instructions, without an agent', async () => {
+    h.healthFor.claude = { id: 'claude', installed: false, message: 'Not found on PATH' };
+    const res = await h.app.request(
+      `${h.base}/runs/import`,
+      json('POST', { reply: reply([acme]), custom_prompt: ' Only fintech ' }),
+    );
+    expect(res.status).toBe(202);
+    const run = (await res.json()) as Run;
+    expect(run).toMatchObject({ kind: 'import_jobs', status: 'queued', custom_prompt: 'Only fintech' });
+    const input = JSON.parse(readFileSync(join(h.deps.runsDir, run.id, 'input.json'), 'utf8')) as {
+      jobs: { company: string }[];
+    };
+    expect(input.jobs.map((j) => j.company)).toEqual(['Acme']);
+    expect(h.factoryCalls).toEqual([]);
+  });
+
+  it('POST import accepts a result object as an agent would send it', async () => {
+    const res = await h.app.request(`${h.base}/runs/import`, json('POST', { result: { jobs: [acme] } }));
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as Run).custom_prompt).toBeNull();
+  });
+
+  it.each([
+    ['neither reply nor result', {}, 'Send either reply or result'],
+    ['both reply and result', { reply: reply([acme]), result: { jobs: [acme] } }, 'Send either reply or result'],
+    ['a reply without JSON', { reply: 'Nothing found.' }, 'No JSON object found in the reply'],
+    ['a reply without jobs', { reply: reply([]) }, 'There are no jobs to import'],
+    ['an unknown key', { reply: reply([acme]), mode: 'max' }, null],
+  ])('POST import with %s is 400 and enqueues nothing', async (_name, body, message) => {
+    const res = await h.app.request(`${h.base}/runs/import`, json('POST', body));
+    expect(res.status).toBe(400);
+    if (message) expect(((await res.json()) as { error: string }).error).toContain(message);
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it('POST import over 1 MB is 413 and enqueues nothing', async () => {
+    const res = await h.app.request(
+      `${h.base}/runs/import`,
+      json('POST', { reply: `${reply([acme])}${' '.repeat(1024 * 1024)}` }),
+    );
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'The import is larger than 1 MB' });
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it('POST import that declares more than 1 MB is 413 before the body is read', async () => {
+    const body = JSON.stringify({ reply: `${reply([acme])}${' '.repeat(1024 * 1024)}` });
+    const res = await h.app.request(`${h.base}/runs/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) },
+      body,
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'The import is larger than 1 MB' });
+    expect(h.deps.runsRepo.list(h.profile.id)).toEqual([]);
+  });
+
+  it('POST import that is not JSON is 415', async () => {
+    const res = await h.app.request(`${h.base}/runs/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: reply([acme]),
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it('POST import while an import is active is 409; a discovery still queues', async () => {
+    const first = await h.app.request(`${h.base}/runs/import`, json('POST', { reply: reply([acme]) }));
+    const firstRun = (await first.json()) as Run;
+    const again = await h.app.request(`${h.base}/runs/import`, json('POST', { reply: reply([acme]) }));
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: 'An import is already active' });
+    expect((await h.app.request(`${h.base}/runs/discover`, { method: 'POST' })).status).toBe(202);
+    expect(h.deps.runsRepo.list(h.profile.id).filter((r) => r.kind === 'import_jobs').map((r) => r.id)).toEqual([
+      firstRun.id,
+    ]);
+  });
+
+  it('POST import for an unknown profile is 404', async () => {
+    const res = await h.app.request('/api/profiles/missing/runs/import', json('POST', { reply: reply([acme]) }));
+    expect(res.status).toBe(404);
   });
 
   it('checks the adapter for the run kind before enqueueing', async () => {

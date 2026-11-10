@@ -73,6 +73,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const handlers: Record<RunKind, RunHandler> = {
     discover_jobs: async () => ({ summary: 'ok' }),
     sync_mail: async () => ({ summary: 'ok' }),
+    import_jobs: async () => ({ summary: 'ok' }),
   };
   const queue = createRunQueue({
     runsRepo,
@@ -82,6 +83,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     handlers: {
       discover_jobs: (ctx) => handlers.discover_jobs(ctx),
       sync_mail: (ctx) => handlers.sync_mail(ctx),
+      import_jobs: (ctx) => handlers.import_jobs(ctx),
     },
     stopTimeoutMs: 50,
   });

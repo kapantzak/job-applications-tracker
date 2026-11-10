@@ -1,9 +1,18 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { EFFORT_MODES, type Run, type RunKind, type RunStatus } from '../domain/types.js';
+import {
+  CUSTOM_PROMPT_MAX,
+  EFFORT_MODES,
+  IMPORT_MAX_BYTES,
+  type AgentRunKind,
+  type Run,
+  type RunStatus,
+} from '../domain/types.js';
 import { ActiveRunConflictError } from '../runs/queue.js';
+import { ImportInputError, parseImport, renderImportPrompt } from '../services/import-jobs.js';
 import { requireUsableAgent } from './agent-check.js';
 import { HttpError, parseWith, readJson } from './errors.js';
 import { requireProfileStill, type ProfileEnv } from './profiles.js';
@@ -12,13 +21,34 @@ const DEFAULT_SSE_POLL_MS = 1000;
 
 const LimitQuery = z.coerce.number().int().min(1).max(200);
 
-const DiscoverBody = z.object({ mode: z.enum(EFFORT_MODES) }).partial().strict();
+// Blank instructions mean none; the cap applies to the trimmed text (SOW-0042).
+const CustomPrompt = z
+  .string()
+  .trim()
+  .max(CUSTOM_PROMPT_MAX, `Custom instructions can be at most ${CUSTOM_PROMPT_MAX} characters`)
+  .nullable();
+
+const DiscoverBody = z.object({ mode: z.enum(EFFORT_MODES), custom_prompt: CustomPrompt }).partial().strict();
+
+const ImportPromptBody = z.object({ custom_prompt: CustomPrompt }).partial().strict();
+
+// The UI sends the pasted reply; an agent with a shell may send its result object instead (SOW-0043).
+const ImportBody = z
+  .object({ reply: z.string().optional(), result: z.unknown().optional(), custom_prompt: CustomPrompt.optional() })
+  .strict()
+  .refine((b) => (b.reply === undefined) !== (b.result === undefined), {
+    message: 'Send either reply or result',
+  });
+
+const importTooLarge = () => {
+  throw new HttpError(413, `The import is larger than ${IMPORT_MAX_BYTES / (1024 * 1024)} MB`);
+};
 
 // The UI always sends `{mode}`; other API callers may send no body for a default run. Any body must be JSON,
 // so the 415 check still applies.
-async function readDiscoverBody(c: Context): Promise<z.infer<typeof DiscoverBody>> {
+async function readOptionalBody<T extends z.ZodType>(c: Context, schema: T): Promise<Partial<z.infer<T>>> {
   if (c.req.header('content-type') === undefined && (await c.req.text()) === '') return {};
-  return readJson(c, DiscoverBody);
+  return readJson(c, schema);
 }
 
 function splitLines(text: string): string[] {
@@ -58,7 +88,7 @@ export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
     return status ?? 'unknown';
   }
 
-  const requireUsableAdapter = (kind: RunKind) => requireUsableAgent(deps, kind);
+  const requireUsableAdapter = (kind: AgentRunKind) => requireUsableAgent(deps, kind);
 
   router.get('/', (c) => {
     const raw = c.req.query('limit');
@@ -67,11 +97,43 @@ export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
   });
 
   router.post('/discover', async (c) => {
-    const body = await readDiscoverBody(c);
+    const body = await readOptionalBody(c, DiscoverBody);
     await requireUsableAdapter('discover_jobs');
     requireProfileStill(deps, c.get('profile').id);
     try {
-      return c.json(deps.queue.enqueue('discover_jobs', c.get('profile').id, { effortMode: body.mode }), 202);
+      const customPrompt = body.custom_prompt || null;
+      return c.json(
+        deps.queue.enqueue('discover_jobs', c.get('profile').id, { effortMode: body.mode, customPrompt }),
+        202,
+      );
+    } catch (err) {
+      if (err instanceof ActiveRunConflictError) throw new HttpError(409, err.message);
+      throw err;
+    }
+  });
+
+  // The prompt to run in another agent client; no agent of the app's is involved (SOW-0043).
+  router.post('/import/prompt', async (c) => {
+    const body = await readOptionalBody(c, ImportPromptBody);
+    return c.json(renderImportPrompt(c.get('profile'), deps.jobsRepo, body.custom_prompt || null));
+  });
+
+  router.post('/import', bodyLimit({ maxSize: IMPORT_MAX_BYTES, onError: importTooLarge }), async (c) => {
+    const body = await readJson(c, ImportBody);
+    let result;
+    try {
+      result = parseImport(body.reply !== undefined ? { reply: body.reply } : { result: body.result });
+    } catch (err) {
+      if (err instanceof ImportInputError) throw new HttpError(400, err.message);
+      throw err;
+    }
+    requireProfileStill(deps, c.get('profile').id);
+    try {
+      const run = deps.queue.enqueue('import_jobs', c.get('profile').id, {
+        customPrompt: body.custom_prompt || null,
+        input: result,
+      });
+      return c.json(run, 202);
     } catch (err) {
       if (err instanceof ActiveRunConflictError) throw new HttpError(409, err.message);
       throw err;

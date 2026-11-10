@@ -55,7 +55,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Profile form with the help for Target roles open](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profile-help.png)
 
-**Run.** One job search or Gmail sync: what the agent did, in plain words, and the result.
+**Run.** One job search, Gmail sync or import: what happened, in plain words, and the result.
 
 ![Run page with run details and a readable log](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/run.png)
 
@@ -103,7 +103,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 ## Cancelling a run
 
 - Runs go one at a time, across all profiles. A Max-effort search runs up to three agents and can take up to about twice the run timeout, and other runs, scheduled Gmail syncs included, wait behind it.
-- A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as aborted with "Cancelled by user".
+- A queued or running run can be cancelled from its Run page or from the Runs list ("Cancel run", then confirm). The agent is stopped and nothing from that run is saved; the run shows as Stopped with "Cancelled by user".
 - Once the agent has finished and the app is checking links and saving results, the run can no longer be cancelled: the Run page shows "Saving results…", and a cancel from the Runs list is refused with a message.
 - Stopping the agent can take a few seconds; the Run page shows "Cancelling…" meanwhile.
 
@@ -120,6 +120,36 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 - The agent searches the web for postings that match your profile and returns structured results. It is told to spend about 10 minutes, prefer employer and ATS (applicant tracking system) pages, read a company's public Greenhouse or Lever job list instead of opening single postings when it can, confirm each posting at most once, and return up to 30 jobs, stopping at about 10 strong matches. Fewer is fine; it is told not to pad the list. A run that exceeds the run timeout in Settings (default 20 minutes) is stopped and saves nothing.
 - For each job the agent also says whether it matches your locations, remote preference and seniority. The Jobs screen shows this in the Fit column (✓ matches, ✗ does not match, ? not stated). It never hides a job.
 - On Claude Code, discovery runs load only the tools allowed for discovery and skip your MCP servers unless one of those tools is an MCP tool. Loading every MCP server can add hundreds of thousands of tokens to each run. They also stop when Claude Code's own cost estimate reaches the spend cap in Settings → Runs (default $5 per agent; empty means no cap). A stopped agent returns no jobs, so treat the cap as a safety net. On Codex, discovery uses live web search.
+
+## Custom search
+
+- To steer one search, open the arrow next to "Find jobs" and pick "Custom search…". Type what this search should look for, such as a sector, a list of companies or a region (up to 2,000 characters), choose Default or Max effort, and start it. Max effort still asks first.
+- Your instructions are added to the usual search prompt, with your profile. The app's own rules still come first: the agent stays read only, keeps to its time and job budget, and the app checks every link as usual. An agent may still follow your words less closely than you meant.
+- The instructions apply to that search only. The Run page shows them, and on the Jobs screen the "Found in" filter marks that search "Custom". For something every search should know, use the profile's Notes.
+
+## Import from another agent
+
+You can run the search in any agent you like, such as a chat app or your own Claude Code session, and bring its results into the app.
+
+1. Open the arrow next to "Find jobs" and pick "Import from another agent…".
+2. Optionally type instructions for this search, then press "Copy prompt". The prompt is the one the app gives its own agent, with the format the answer must follow. It includes this profile (Notes too) and the links of jobs you already have, so only paste it into a service you are happy to share that with.
+3. Paste the prompt into your agent, then paste its whole answer into "Agent answer" and press "Import jobs". Text around the JSON is fine; the app reads the last JSON object in the answer.
+
+The import runs like a search: the app checks every link, skips jobs you already have (they count as seen again) and opens the Run page. On the Jobs screen the "Found in" filter names it "Imported". An answer can hold up to 100 jobs and 1 MB. Agents sometimes invent links; those show up as dead.
+
+An agent that can run shell commands can send its result straight to the app instead. Use the address the app printed when it started (`http://127.0.0.1:4173` unless that port was taken or you chose another) and the profile's id:
+
+```sh
+# The profile id, from the slug in the profile's address (/profiles/<slug>/...).
+curl -s http://127.0.0.1:4173/api/profiles/by-slug/<slug>
+
+# result.json holds the agent's JSON object: {"jobs": [...], "notes": "..."}
+jq '{result: .}' result.json | curl -s -X POST \
+  -H 'Content-Type: application/json' --data @- \
+  http://127.0.0.1:4173/api/profiles/<profile-id>/runs/import
+```
+
+The body is `{"result": {...}}` for a JSON object or `{"reply": "..."}` for a whole answer as text, plus an optional `"custom_prompt"`. The app answers 202 with the run; a second import while one is waiting or running is refused with 409.
 
 ## Max-effort search
 
@@ -278,7 +308,7 @@ Every pull request and every push to `main` runs `npm run typecheck` and `npm te
 
 `npm run sandbox` never touches your real data in `~/.job-applications-tracker`. Delete `.tmp/sandbox` to start fresh. Extra flags go after `--`, for example `npm run sandbox -- --no-open --port 5000`.
 
-`npm run sandbox:mock` is for trying the UI. It deletes `.tmp/sandbox-mock` and fills it again on every start, so changes made in the UI last until the next start. The data is invented: a profile with a CV, jobs, applications in every status, proposals and past runs, and the Gmail label `Jobs/Frontend`; a sparse profile with a custom Gmail search; an empty one; "Backend Engineering", whose four past searches show search rounds (jobs seen again, one now redirected and one now dead, and a latest search with no new jobs); and "Scope Miss", whose label `NoMatch` the mock agent reports as matching no mail, so its Sync shows "the Gmail scope matched no mail". The mock does the same for any label or search containing `nomatch`. The agent is set to a mock command (`scripts/sandbox-mock/mock-agent.mjs`) that returns canned results after a few seconds (Find jobs also returns the profile's newest known link, so a search shows a job seen again), so Find jobs, Sync mail and CV analysis never search the web, read your Gmail or start Claude Code or Codex. The app still checks job links over the network: the mock links point at `example.com`, so without a connection new jobs show up as dead or unverified. Changing the agent in Settings switches the sandbox to your real agent. Do not pass `--data-dir` after `--`: the mock data is always written to `.tmp/sandbox-mock`, and another folder would run the app on that folder's own data and agent instead.
+`npm run sandbox:mock` is for trying the UI. It deletes `.tmp/sandbox-mock` and fills it again on every start, so changes made in the UI last until the next start. The data is invented: a profile with a CV, jobs, applications in every status, proposals and past runs, and the Gmail label `Jobs/Frontend`; a sparse profile with a custom Gmail search; an empty one; "Backend Engineering", whose four past searches show search rounds (jobs seen again, one now redirected and one now dead, a custom search, and a latest search with no new jobs); and "Scope Miss", whose label `NoMatch` the mock agent reports as matching no mail, so its Sync shows "the Gmail scope matched no mail". The mock does the same for any label or search containing `nomatch`. The agent is set to a mock command (`scripts/sandbox-mock/mock-agent.mjs`) that returns canned results after a few seconds (Find jobs also returns the profile's newest known link, so a search shows a job seen again), so Find jobs, Sync mail and CV analysis never search the web, read your Gmail or start Claude Code or Codex. The app still checks job links over the network: the mock links point at `example.com`, so without a connection new jobs show up as dead or unverified. Changing the agent in Settings switches the sandbox to your real agent. Do not pass `--data-dir` after `--`: the mock data is always written to `.tmp/sandbox-mock`, and another folder would run the app on that folder's own data and agent instead.
 
 The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
 

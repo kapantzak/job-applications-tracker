@@ -9,6 +9,7 @@ import {
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { formatTime } from '../format.js';
+import { STATUS_LABELS } from '../labels.js';
 import { useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,7 +72,8 @@ export function ReviewPage() {
                   <h2>{p.application ? `${p.application.company} - ${p.application.role}` : 'Unknown application'}</h2>
                 </CardTitle>
                 <CardDescription>
-                  {p.application?.status ?? 'unknown'} → {p.proposed_status} ({Math.round(p.confidence * 100)}%)
+                  {`${p.application ? STATUS_LABELS[p.application.status] : 'Unknown'} → ` +
+                    `${STATUS_LABELS[p.proposed_status]} (${Math.round(p.confidence * 100)}%)`}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">

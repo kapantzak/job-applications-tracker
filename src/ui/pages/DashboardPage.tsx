@@ -148,7 +148,8 @@ export function DashboardPage() {
             <FindJobsButton
               profileId={profileId}
               disabled={busy}
-              onStart={(mode) => void start(() => startDiscovery(profileId, mode))}
+              onStart={(...args) => void start(() => startDiscovery(profileId, ...args))}
+              onImported={(run) => navigate(href(`/runs/${run.id}`))}
             />
             <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
               <MailIcon />
@@ -265,10 +266,10 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
             <p className="text-muted-foreground">
-              Last discovery: {lastSuccess(stats.runs, 'discover_jobs')}
+              Last job search: {lastSuccess(stats.runs, 'discover_jobs')}
               {jobs !== null && ` · ${jobs} ${jobs === 1 ? 'job' : 'jobs'}`}
             </p>
-            <p className="text-muted-foreground">Last sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
+            <p className="text-muted-foreground">Last Gmail sync: {lastSuccess(stats.runs, 'sync_mail')}</p>
           </CardContent>
         </Card>
         {settings && (

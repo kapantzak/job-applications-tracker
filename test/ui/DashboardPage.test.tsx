@@ -15,6 +15,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listRuns: vi.fn(),
   getSettings: vi.fn(),
   startDiscovery: vi.fn(),
+  importJobs: vi.fn(),
+  getImportPrompt: vi.fn(),
   startSync: vi.fn(),
 }));
 
@@ -125,21 +127,21 @@ describe('DashboardPage', () => {
 
   it('discovery line carries the jobs count', async () => {
     renderPage();
-    expect(await screen.findByText(/Last discovery: .+ · 3 jobs/)).toBeInTheDocument();
-    expect(screen.getByText(/Last sync: never/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last job search: .+ · 3 jobs/)).toBeInTheDocument();
+    expect(screen.getByText(/Last Gmail sync: never/)).toBeInTheDocument();
   });
 
   it('discovery line says one job in the singular', async () => {
     vi.mocked(client.listJobs).mockResolvedValue([{}] as never);
     renderPage();
-    expect(await screen.findByText(/Last discovery: .+ · 1 job$/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last job search: .+ · 1 job$/)).toBeInTheDocument();
   });
 
   it('drops the jobs suffix and shows an alert when jobs fail to load', async () => {
     vi.mocked(client.listJobs).mockRejectedValue(new Error('jobs down'));
     renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('jobs down');
-    expect(screen.getByText(/Last discovery: never$/)).toBeInTheDocument();
+    expect(screen.getByText(/Last job search: never$/)).toBeInTheDocument();
     expect(screen.queryByText(/· \d+ jobs/)).not.toBeInTheDocument();
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('17');
   });
@@ -187,15 +189,15 @@ describe('DashboardPage', () => {
   it('shows the selected agent with its model and effort per run kind', async () => {
     renderPage();
     const card = await screen.findByRole('region', { name: 'Agent' });
-    expect(card).toHaveTextContent('Discovery: claude · model opus · effort high');
-    expect(card).toHaveTextContent('Mail sync: claude · model Agent default · effort Agent default');
+    expect(card).toHaveTextContent('Job search: Claude Code · model opus · effort high');
+    expect(card).toHaveTextContent('Gmail sync: Claude Code · model Agent default · effort Agent default');
   });
 
   it('points custom commands to their own flags', async () => {
     vi.mocked(client.getSettings).mockResolvedValue({ adapter_id: 'custom' } as never);
     renderPage();
     const card = await screen.findByRole('region', { name: 'Agent' });
-    expect(card).toHaveTextContent('Discovery: custom · model and effort set in your custom command');
+    expect(card).toHaveTextContent('Job search: Custom command · model and effort set in your custom command');
   });
 });
 
@@ -220,6 +222,33 @@ describe('DashboardPage search buttons', () => {
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('a custom search from the Find jobs menu sends its instructions', async () => {
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-custom' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Custom search…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Custom search' });
+    await user.type(within(dialog).getByLabelText('Instructions'), 'Only fintech companies');
+    await user.click(within(dialog).getByRole('button', { name: 'Start search' }));
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default', 'Only fintech companies');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
+  it('an import from the Find jobs menu opens its run', async () => {
+    vi.mocked(client.importJobs).mockResolvedValue({ id: 'run-import' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Import from another agent…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import from another agent' });
+    await user.click(within(dialog).getByLabelText('Agent answer'));
+    await user.paste('{"jobs": []}');
+    await user.click(within(dialog).getByRole('button', { name: 'Import jobs' }));
+    expect(client.importJobs).toHaveBeenCalledWith('pf1', '{"jobs": []}', undefined);
     expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 

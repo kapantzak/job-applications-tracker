@@ -149,6 +149,34 @@ describe('jobs repo', () => {
     ]);
   });
 
+  it('tells which jobs were first found by a search with custom instructions', () => {
+    const { repo, runId, db, pid } = setup();
+    db.prepare(
+      "INSERT INTO runs (id, profile_id, kind, status, custom_prompt, created_at) VALUES ('run-custom', ?, 'discover_jobs', 'succeeded', 'Only fintech companies', 't')",
+    ).run(pid);
+    repo.insertMany(runId, [newJob(1)]);
+    repo.insertMany('run-custom', [newJob(2)]);
+
+    expect(repo.list(pid).map((j) => [j.company, j.run_has_custom_prompt])).toEqual([
+      ['Co 2', true],
+      ['Co 1', false],
+    ]);
+  });
+
+  it('tells which jobs came from an import', () => {
+    const { repo, runId, db, pid } = setup();
+    db.prepare(
+      "INSERT INTO runs (id, profile_id, kind, status, created_at) VALUES ('run-import', ?, 'import_jobs', 'succeeded', 't')",
+    ).run(pid);
+    repo.insertMany(runId, [newJob(1)]);
+    repo.insertMany('run-import', [newJob(2)]);
+
+    expect(repo.list(pid).map((j) => [j.company, j.run_kind])).toEqual([
+      ['Co 2', 'import_jobs'],
+      ['Co 1', 'discover_jobs'],
+    ]);
+  });
+
   it('records a sighting on the matching job of the run profile only, in the same call as new jobs', () => {
     const { repo, runId, db, pid } = setup();
     const other = insertTestProfile(db, 'Other roles');

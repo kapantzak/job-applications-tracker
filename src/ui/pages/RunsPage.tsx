@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listRuns } from '../api/client.js';
-import { RUN_STATUSES, type Run } from '../../server/domain/types.js';
+import { RUN_STATUSES, type Run, type RunKind, type RunStatus } from '../../server/domain/types.js';
 import { CancelRunButton } from '../components/CancelRunButton.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -10,7 +10,7 @@ import { formatTime } from '../format.js';
 import { SCREEN_INTROS } from '../help-text.js';
 import { useListLinkState, useTableView } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
-import { RUN_STATUS_TONES } from '../labels.js';
+import { RUN_KIND_LABELS, RUN_STATUS_LABELS, RUN_STATUS_TONES } from '../labels.js';
 import { type ColumnDef, orderIndex } from '../table-view.js';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -29,15 +29,21 @@ const COLUMNS: ColumnDef<Run>[] = [
   {
     id: 'kind',
     label: 'Kind',
-    sortValue: (r) => r.kind,
-    searchText: (r) => r.kind,
-    filter: { kind: 'values', value: (r) => r.kind },
+    sortValue: (r) => RUN_KIND_LABELS[r.kind],
+    searchText: (r) => RUN_KIND_LABELS[r.kind],
+    filter: { kind: 'values', value: (r) => r.kind, optionLabel: (v) => RUN_KIND_LABELS[v as RunKind] ?? v },
   },
   {
     id: 'status',
     label: 'Status',
     sortValue: (r) => orderIndex(RUN_STATUSES, r.status),
-    filter: { kind: 'values', value: (r) => r.status, order: RUN_STATUSES },
+    searchText: (r) => RUN_STATUS_LABELS[r.status],
+    filter: {
+      kind: 'values',
+      value: (r) => r.status,
+      order: RUN_STATUSES,
+      optionLabel: (v) => RUN_STATUS_LABELS[v as RunStatus] ?? v,
+    },
   },
   { id: 'started', label: 'Started', sortValue: (r) => r.started_at, filter: { kind: 'date', value: (r) => r.started_at } },
   {
@@ -169,12 +175,12 @@ export function RunsPage() {
                   {view.visible.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="pl-4">
-                        <Link to={href(`/runs/${r.id}`)} state={linkState} className="font-mono text-sm font-medium hover:underline">
-                          {r.kind}
+                        <Link to={href(`/runs/${r.id}`)} state={linkState} className="text-sm font-medium hover:underline">
+                          {RUN_KIND_LABELS[r.kind]}
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={RUN_STATUS_TONES[r.status]}>{r.status}</Badge>
+                        <Badge variant={RUN_STATUS_TONES[r.status]}>{RUN_STATUS_LABELS[r.status]}</Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{formatTime(r.started_at)}</TableCell>
                       <TableCell className="text-muted-foreground">{formatTime(r.finished_at)}</TableCell>
