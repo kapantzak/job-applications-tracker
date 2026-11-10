@@ -82,6 +82,8 @@ interface RunSpec {
   daysAgo: number;
   minutes: number;
   effort?: EffortMode;
+  // The user's own instructions for the search (SOW-0042); such a run used the v5 prompt.
+  customPrompt?: string;
   summary?: string;
   error?: string;
   cost?: number;
@@ -132,6 +134,7 @@ const RUNS: RunSpec[] = [
   { key: 'b2', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 16, minutes: 26, effort: 'max',
     summary: '4 new, 3 duplicates, 0 dead, 0 unverified', cost: 3.48, tokens: [758_300, 23_100] },
   { key: 'b3', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 6, minutes: 10,
+    customPrompt: 'Only payments and fintech companies.\nSkip recruiting agencies.',
     summary: '2 new, 3 duplicates, 0 dead, 0 unverified', cost: 0.71, tokens: [158_900, 4_700] },
   { key: 'b4', profile: 'rounds', kind: 'discover_jobs', status: 'succeeded', daysAgo: 1, minutes: 9,
     summary: '0 new, 3 duplicates, 0 dead, 0 unverified', cost: 0.62, tokens: [139_400, 3_600] },
@@ -424,8 +427,9 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
     for (const spec of RUNS) {
       const run = runsRepo.create(spec.kind, profiles[spec.profile].id, {
         adapter_id: 'claude',
-        prompt_version: spec.kind === 'discover_jobs' ? '4' : '2',
+        prompt_version: spec.kind === 'discover_jobs' ? (spec.customPrompt ? '5' : '4') : '2',
         effort_mode: spec.effort ?? 'default',
+        custom_prompt: spec.customPrompt ?? null,
       });
       const createdAt = ago(spec.daysAgo);
       const finishedAt = ago(spec.daysAgo, spec.minutes * MINUTE + 1000);

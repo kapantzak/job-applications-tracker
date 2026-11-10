@@ -148,7 +148,7 @@ export function DashboardPage() {
             <FindJobsButton
               profileId={profileId}
               disabled={busy}
-              onStart={(mode) => void start(() => startDiscovery(profileId, mode))}
+              onStart={(...args) => void start(() => startDiscovery(profileId, ...args))}
             />
             <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
               <MailIcon />

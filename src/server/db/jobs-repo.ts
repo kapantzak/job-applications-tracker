@@ -115,11 +115,16 @@ export function createJobsRepo(db: Db) {
         `SELECT j.*,
            (SELECT a.status FROM applications a WHERE a.job_id = j.id
             ORDER BY a.created_at DESC, a.rowid DESC LIMIT 1) AS application_status,
-           r.started_at AS run_started_at, r.effort_mode AS run_effort_mode
+           r.started_at AS run_started_at, r.effort_mode AS run_effort_mode,
+           r.custom_prompt IS NOT NULL AS run_has_custom_prompt
          FROM jobs j JOIN runs r ON r.id = j.run_id ${clause} ORDER BY j.created_at DESC, j.rowid DESC`,
       )
       .all(profileId)
-      .map((row) => fromRow(row as Row<JobListItem>));
+      .map((row) => {
+        // SQLite returns the IS NOT NULL test as 0 or 1.
+        const item = row as Row<JobListItem> & { run_has_custom_prompt: number | boolean };
+        return { ...fromRow(item), run_has_custom_prompt: Boolean(item.run_has_custom_prompt) };
+      });
   }
 
   function dismiss(id: string): void {

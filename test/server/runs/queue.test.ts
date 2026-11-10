@@ -300,6 +300,37 @@ describe('run queue', () => {
     expect(runsRepo.list(pid)).toHaveLength(1);
   });
 
+  it('stores custom instructions on the run and hands them to the handler', async () => {
+    const seen: (string | null)[] = [];
+    const q = makeQueue({
+      discover_jobs: async (ctx) => {
+        seen.push(ctx.run.custom_prompt);
+        return { summary: 'ok' };
+      },
+    });
+    const run = q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' });
+    expect(run.custom_prompt).toBe('Only fintech companies');
+    q.start();
+    await waitForTerminal(run.id);
+    expect(seen).toEqual(['Only fintech companies']);
+    expect(q.enqueue('sync_mail', pid).custom_prompt).toBeNull();
+  });
+
+  it('treats empty custom instructions as none', () => {
+    const q = makeQueue({});
+    expect(q.enqueue('discover_jobs', pid, { customPrompt: '' }).custom_prompt).toBeNull();
+  });
+
+  it('returns the active run for the same instructions and refuses different ones', () => {
+    const q = makeQueue({});
+    const first = q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' });
+    expect(q.enqueue('discover_jobs', pid, { customPrompt: 'Only fintech companies' }).id).toBe(first.id);
+    for (const customPrompt of ['Only healthcare companies', null, undefined]) {
+      expect(() => q.enqueue('discover_jobs', pid, { customPrompt })).toThrow(ActiveRunConflictError);
+    }
+    expect(runsRepo.list(pid)).toHaveLength(1);
+  });
+
   it('keeps one active run per profile and kind, and runs every profile through the same queue', async () => {
     const other = insertTestProfile(db, 'Other profile');
     const seen: string[] = [];

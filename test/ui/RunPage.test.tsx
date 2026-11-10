@@ -28,6 +28,7 @@ const run: Run = {
   agent_effort: '',
   agent_model_reported: null,
   effort_mode: 'default',
+  custom_prompt: null,
   usage_cost_usd: null,
   usage_input_tokens: null,
   usage_output_tokens: null,
@@ -166,6 +167,28 @@ describe('RunPage', () => {
     await screen.findByText(/discover_jobs/);
     expect(detail('Mode')).toBe('Max effort');
     expect(detail('Usage')).toBe('$2.50 estimated · 120.0k tokens in, 900 out');
+  });
+
+  it('shows the custom instructions of a discovery, keeping their line breaks', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      status: 'succeeded',
+      custom_prompt: 'Only fintech companies\nSkip agencies',
+    });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    const value = screen.getByText('Custom instructions').nextElementSibling as HTMLElement;
+    expect(value.textContent).toBe('Only fintech companies\nSkip agencies');
+    expect(value).toHaveClass('whitespace-pre-wrap');
+  });
+
+  it('shows no custom instructions row for a discovery without them', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded' });
+    vi.mocked(client.getRunLog).mockResolvedValue('');
+    renderPage();
+    await screen.findByText(/discover_jobs/);
+    expect(screen.queryByText('Custom instructions')).not.toBeInTheDocument();
   });
 
   it('says when a discovery reported no usage', async () => {

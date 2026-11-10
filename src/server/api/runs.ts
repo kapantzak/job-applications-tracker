@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { EFFORT_MODES, type Run, type RunKind, type RunStatus } from '../domain/types.js';
+import { CUSTOM_PROMPT_MAX, EFFORT_MODES, type Run, type RunKind, type RunStatus } from '../domain/types.js';
 import { ActiveRunConflictError } from '../runs/queue.js';
 import { requireUsableAgent } from './agent-check.js';
 import { HttpError, parseWith, readJson } from './errors.js';
@@ -12,7 +12,18 @@ const DEFAULT_SSE_POLL_MS = 1000;
 
 const LimitQuery = z.coerce.number().int().min(1).max(200);
 
-const DiscoverBody = z.object({ mode: z.enum(EFFORT_MODES) }).partial().strict();
+// Blank instructions mean none; the cap applies to the trimmed text (SOW-0042).
+const DiscoverBody = z
+  .object({
+    mode: z.enum(EFFORT_MODES),
+    custom_prompt: z
+      .string()
+      .trim()
+      .max(CUSTOM_PROMPT_MAX, `Custom instructions can be at most ${CUSTOM_PROMPT_MAX} characters`)
+      .nullable(),
+  })
+  .partial()
+  .strict();
 
 // The UI always sends `{mode}`; other API callers may send no body for a default run. Any body must be JSON,
 // so the 415 check still applies.
@@ -71,7 +82,11 @@ export function createProfileRunsRouter(deps: AppDeps): Hono<ProfileEnv> {
     await requireUsableAdapter('discover_jobs');
     requireProfileStill(deps, c.get('profile').id);
     try {
-      return c.json(deps.queue.enqueue('discover_jobs', c.get('profile').id, { effortMode: body.mode }), 202);
+      const customPrompt = body.custom_prompt || null;
+      return c.json(
+        deps.queue.enqueue('discover_jobs', c.get('profile').id, { effortMode: body.mode, customPrompt }),
+        202,
+      );
     } catch (err) {
       if (err instanceof ActiveRunConflictError) throw new HttpError(409, err.message);
       throw err;

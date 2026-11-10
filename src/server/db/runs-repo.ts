@@ -46,9 +46,9 @@ const PATCHABLE = new Set<string>([
 export function createRunsRepo(db: Db) {
   const insert = db.prepare(
     `INSERT INTO runs (id, profile_id, kind, status, started_at, finished_at, adapter_id, prompt_version,
-       summary, error, created_at, effort_mode)
+       summary, error, created_at, effort_mode, custom_prompt)
      VALUES (@id, @profile_id, @kind, 'queued', NULL, NULL, @adapter_id, @prompt_version, NULL, NULL, @created_at,
-       @effort_mode)`,
+       @effort_mode, @custom_prompt)`,
   );
   const selectById = db.prepare('SELECT * FROM runs WHERE id = ?');
   const selectRecent = db.prepare(
@@ -80,7 +80,12 @@ export function createRunsRepo(db: Db) {
   function create(
     kind: RunKind,
     profileId: string,
-    meta: { adapter_id: string; prompt_version: string | null; effort_mode?: EffortMode },
+    meta: {
+      adapter_id: string;
+      prompt_version: string | null;
+      effort_mode?: EffortMode;
+      custom_prompt?: string | null;
+    },
   ): Run {
     const id = randomUUID();
     insert.run({
@@ -91,6 +96,7 @@ export function createRunsRepo(db: Db) {
       prompt_version: meta.prompt_version,
       created_at: new Date().toISOString(),
       effort_mode: meta.effort_mode ?? 'default',
+      custom_prompt: meta.custom_prompt ?? null,
     });
     return get(id) as Run;
   }

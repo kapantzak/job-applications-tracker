@@ -1,4 +1,14 @@
-import type { ApplicationStatus, RunStatus, Settings } from '../server/domain/types.js';
+import type { ApplicationStatus, EffortMode, RunStatus, Settings } from '../server/domain/types.js';
+
+// The search modes as the Find jobs menu and the Custom search dialog offer them.
+export const EFFORT_MODE_OPTIONS: Array<{ value: EffortMode; title: string; description: string }> = [
+  { value: 'default', title: 'Default', description: 'One agent. Balances results and tokens.' },
+  {
+    value: 'max',
+    title: 'Max effort',
+    description: 'Five agents, one per source. Several times the tokens; asks before it starts.',
+  },
+];
 
 // Display names only; stored settings keep the ids (SOW-0038 decision 5).
 export const ADAPTER_LABELS: Record<Settings['adapter_id'], string> = {

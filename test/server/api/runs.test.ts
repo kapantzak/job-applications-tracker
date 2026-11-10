@@ -103,9 +103,62 @@ describe('runs: enqueue', () => {
     expect(h.deps.runsRepo.get(run.id)!.effort_mode).toBe('max');
   });
 
+  it('POST discover stores trimmed custom instructions, with either mode', async () => {
+    const res = await h.app.request(
+      `${h.base}/runs/discover`,
+      json('POST', { mode: 'max', custom_prompt: '  Only fintech companies\nSkip agencies  ' }),
+    );
+    expect(res.status).toBe(202);
+    const run = (await res.json()) as Run;
+    expect(run.effort_mode).toBe('max');
+    expect(run.custom_prompt).toBe('Only fintech companies\nSkip agencies');
+    expect(h.deps.runsRepo.get(run.id)!.custom_prompt).toBe('Only fintech companies\nSkip agencies');
+  });
+
+  it.each([
+    ['no custom_prompt key', { mode: 'default' }],
+    ['custom_prompt null', { custom_prompt: null }],
+    ['blank custom_prompt', { custom_prompt: ' \n\t ' }],
+  ])('POST discover with %s stores no instructions', async (_name, body) => {
+    const res = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
+    expect(res.status).toBe(202);
+    expect(h.deps.runsRepo.get(((await res.json()) as Run).id)!.custom_prompt).toBeNull();
+  });
+
+  it('POST discover accepts custom instructions of exactly 2000 characters after trimming', async () => {
+    const res = await h.app.request(
+      `${h.base}/runs/discover`,
+      json('POST', { custom_prompt: ` ${'a'.repeat(2000)} ` }),
+    );
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as Run).custom_prompt).toHaveLength(2000);
+    const tooLong = await h.app.request(
+      `/api/profiles/${h.deps.profilesRepo.create(OTHER_PROFILE).id}/runs/discover`,
+      json('POST', { custom_prompt: 'a'.repeat(2001) }),
+    );
+    expect(await tooLong.json()).toEqual({
+      error: 'custom_prompt: Custom instructions can be at most 2000 characters',
+    });
+  });
+
+  it('POST discover with different instructions while a discovery is active is 409', async () => {
+    const first = await h.app.request(`${h.base}/runs/discover`, json('POST', { custom_prompt: 'Only fintech' }));
+    const firstRun = (await first.json()) as Run;
+    const same = await h.app.request(`${h.base}/runs/discover`, json('POST', { custom_prompt: ' Only fintech ' }));
+    expect(((await same.json()) as Run).id).toBe(firstRun.id);
+    for (const body of [{ custom_prompt: 'Only healthcare' }, {}]) {
+      const conflict = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toEqual({ error: 'A discovery run is already active' });
+    }
+    expect(h.deps.runsRepo.list(h.profile.id).map((r) => r.id)).toEqual([firstRun.id]);
+  });
+
   it.each([
     ['an unknown mode', { mode: 'turbo' }],
     ['an unknown key', { mode: 'max', workers: 9 }],
+    ['custom instructions over 2000 characters', { custom_prompt: 'a'.repeat(2001) }],
+    ['custom instructions that are not text', { custom_prompt: 42 }],
   ])('POST discover with %s is 400 and enqueues nothing', async (_name, body) => {
     const res = await h.app.request(`${h.base}/runs/discover`, json('POST', body));
     expect(res.status).toBe(400);

@@ -223,6 +223,19 @@ describe('DashboardPage search buttons', () => {
     expect(await screen.findByText('Run page')).toBeInTheDocument();
   });
 
+  it('a custom search from the Find jobs menu sends its instructions', async () => {
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-custom' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Custom search…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Custom search' });
+    await user.type(within(dialog).getByLabelText('Instructions'), 'Only fintech companies');
+    await user.click(within(dialog).getByRole('button', { name: 'Start search' }));
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default', 'Only fintech companies');
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+  });
+
   it('Sync from Gmail starts a sync run', async () => {
     vi.mocked(client.startSync).mockResolvedValue({ id: 'run-sync' } as never);
     const user = userEvent.setup();

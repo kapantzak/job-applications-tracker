@@ -204,6 +204,13 @@ UPDATE jobs SET last_seen_at = created_at, last_seen_run_id = run_id;
 CREATE INDEX idx_jobs_last_seen_run_id ON jobs (last_seen_run_id);
 `,
   },
+  {
+    // The user's own instructions for one discovery run (SOW-0042); NULL when the search had none.
+    id: 10,
+    sql: `
+ALTER TABLE runs ADD COLUMN custom_prompt TEXT;
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

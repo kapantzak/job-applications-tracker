@@ -180,6 +180,12 @@ export function RunPage() {
                     <dt className="text-muted-foreground">Usage</dt>
                     <dd>{formatUsage(run) ?? 'Not reported'}</dd>
                   </div>
+                  {run.custom_prompt && (
+                    <div className="col-span-full">
+                      <dt className="text-muted-foreground">Custom instructions</dt>
+                      <dd className="break-words whitespace-pre-wrap">{run.custom_prompt}</dd>
+                    </div>
+                  )}
                 </>
               )}
             </dl>

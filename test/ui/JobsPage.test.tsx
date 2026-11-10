@@ -46,6 +46,7 @@ function job(over: Partial<JobListItem>): JobListItem {
     application_status: null,
     run_started_at: '2026-01-01T00:00:00Z',
     run_effort_mode: 'default',
+    run_has_custom_prompt: false,
     ...over,
   } as JobListItem;
 }
@@ -172,6 +173,19 @@ describe('JobsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Find jobs' }));
     expect(await screen.findByText('Run page')).toBeInTheDocument();
     expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default');
+  });
+
+  it('starts a custom search from the Find jobs menu with the trimmed instructions', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.startDiscovery).mockResolvedValue({ id: 'run-9' } as never);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Choose search mode' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Custom search…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Custom search' });
+    await user.type(within(dialog).getByLabelText('Instructions'), '  Only fintech companies  ');
+    await user.click(within(dialog).getByRole('button', { name: 'Start search' }));
+    expect(await screen.findByText('Run page')).toBeInTheDocument();
+    expect(client.startDiscovery).toHaveBeenCalledWith('pf1', 'default', 'Only fintech companies');
   });
 
   it('shows 422 errors from discovery as they are', async () => {
@@ -522,6 +536,19 @@ describe('JobsPage sorting, search and filters', () => {
     await user.click(within(popover).getByRole('checkbox', { name: lateLabel }));
     expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
     expect(screen.getByTestId('search')).toHaveTextContent('?run=r1&run=r2');
+  });
+
+  it('marks a search with custom instructions in its found-in label', async () => {
+    const user = userEvent.setup();
+    const started = '2026-11-04T09:00:00';
+    vi.mocked(client.listJobs).mockResolvedValue([
+      job({ id: 'j1', company: 'Acme', run_id: 'r1', run_started_at: started, run_has_custom_prompt: true }),
+    ]);
+    renderPage();
+    await screen.findByText('Acme');
+    await user.click(within(toolbar()).getByRole('button', { name: 'Filter by found in' }));
+    const popover = await screen.findByRole('dialog', { name: 'Filter by found in' });
+    expect(within(popover).getByRole('checkbox', { name: `${formatTime(started)} · Default · Custom` })).toBeInTheDocument();
   });
 
   it('labels a search that has no listed jobs so its filter can still be cleared', async () => {

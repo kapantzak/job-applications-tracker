@@ -131,6 +131,8 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
     const promptVars = {
       profile: renderProfile(profile),
       known_urls: knownUrls.length ? knownUrls.join('\n') : '(none)',
+      // Every Max worker gets the same instructions (user decision 4, SOW-0042).
+      custom_prompt: ctx.run.custom_prompt ?? '(none)',
     };
 
     const adapter = adapterFactory(settings, 'discover_jobs');

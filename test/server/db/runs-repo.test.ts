@@ -37,4 +37,18 @@ describe('runs repo', () => {
     repo.update(run.id, { effort_mode: 'max' } as never);
     expect(repo.get(run.id)!.effort_mode).toBe('default');
   });
+
+  it('stores custom instructions only when given, and a patch cannot change them', () => {
+    const { pid, repo } = setup();
+    const plain = repo.create('discover_jobs', pid, { adapter_id: '', prompt_version: null });
+    const custom = repo.create('discover_jobs', pid, {
+      adapter_id: '',
+      prompt_version: null,
+      custom_prompt: 'Only fintech companies',
+    });
+    expect(plain.custom_prompt).toBeNull();
+    expect(custom.custom_prompt).toBe('Only fintech companies');
+    repo.update(custom.id, { custom_prompt: 'Something else' } as never);
+    expect(repo.get(custom.id)!.custom_prompt).toBe('Only fintech companies');
+  });
 });

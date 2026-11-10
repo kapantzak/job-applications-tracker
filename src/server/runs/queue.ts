@@ -193,18 +193,31 @@ export function createRunQueue(opts: RunQueueOptions) {
 
   // One queue for every profile: one run at a time, though a Max discovery run starts up to three agents.
   // Other runs, scheduled syncs included, wait behind it. "Already active" is per profile and kind.
-  function enqueue(kind: RunKind, profileId: string, options: { effortMode?: EffortMode } = {}): Run {
+  function enqueue(
+    kind: RunKind,
+    profileId: string,
+    options: { effortMode?: EffortMode; customPrompt?: string | null } = {},
+  ): Run {
     const effortMode = options.effortMode ?? 'default';
+    // Empty text means none here too, so the round label, Run page and prompt agree.
+    const customPrompt = options.customPrompt || null;
     let active = runsRepo.findActive(kind, profileId);
     // A run being cancelled no longer counts: the new request queues behind it (user decision, SOW-0012).
     if (active && current?.id === active.id && current.cancelReason) {
       active = runsRepo.findActiveExcept(kind, profileId, active.id);
     }
-    // Handing back a run of the other mode would hide that the click did not start what was asked
-    // (user decision 19, SOW-0016).
-    if (active && active.effort_mode !== effortMode) throw new ActiveRunConflictError(active);
+    // Handing back a run of the other mode, or with other instructions, would hide that the click did not
+    // start what was asked (user decision 19, SOW-0016; SOW-0042).
+    if (active && (active.effort_mode !== effortMode || active.custom_prompt !== customPrompt)) {
+      throw new ActiveRunConflictError(active);
+    }
     if (active) return active;
-    const run = runsRepo.create(kind, profileId, { adapter_id: '', prompt_version: null, effort_mode: effortMode });
+    const run = runsRepo.create(kind, profileId, {
+      adapter_id: '',
+      prompt_version: null,
+      effort_mode: effortMode,
+      custom_prompt: customPrompt,
+    });
     kick();
     return run;
   }

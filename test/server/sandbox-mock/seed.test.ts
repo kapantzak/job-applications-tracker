@@ -135,6 +135,10 @@ describe('seedMockData', () => {
       .all(rounds.id) as { id: string; effort_mode: string; summary: string }[];
     expect(runs.map((r) => r.effort_mode)).toEqual(['default', 'max', 'default', 'default']);
     const jobs = createJobsRepo(db).list(rounds.id, { includeDead: true, includeDismissed: true });
+    // The third search had custom instructions (SOW-0042), so its round label says so.
+    const custom = jobs.filter((j) => j.run_has_custom_prompt);
+    expect(custom.length).toBeGreaterThan(0);
+    expect(new Set(custom.map((j) => j.run_id))).toEqual(new Set([runs[2]!.id]));
     for (const run of runs) {
       const found = jobs.filter((j) => j.run_id === run.id);
       expect(run.summary).toMatch(new RegExp(`^${found.length} new, \\d+ duplicates, `));

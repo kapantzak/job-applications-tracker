@@ -27,6 +27,7 @@ function makeRun(id: string, status: Run['status'], kind: Run['kind'] = 'discove
     agent_effort: '',
     agent_model_reported: null,
     effort_mode: 'default',
+    custom_prompt: null,
     usage_cost_usd: null,
     usage_input_tokens: null,
     usage_output_tokens: null,

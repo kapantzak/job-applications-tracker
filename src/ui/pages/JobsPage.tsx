@@ -98,9 +98,11 @@ function fitSummary(checks: FitChecks | null): FitSummary {
 }
 const fitPasses = (checks: FitChecks | null) =>
   checks ? FIT_FIELDS.filter(([field]) => checks[field] === 'pass').length : null;
-// A search round is one discovery run (SOW-0040); the filter names it by start time and mode.
+// A search round is one discovery run (SOW-0040); the filter names it by start time and mode, and marks a
+// search with custom instructions (SOW-0042).
 const searchLabel = (j: JobListItem) =>
-  `${formatTime(j.run_started_at)} · ${j.run_effort_mode === 'max' ? 'Max effort' : 'Default'}`;
+  `${formatTime(j.run_started_at)} · ${j.run_effort_mode === 'max' ? 'Max effort' : 'Default'}` +
+  (j.run_has_custom_prompt ? ' · Custom' : '');
 // Newest search first; a run without a start time sorts after the dated ones.
 const searchRank = (j: JobListItem) => {
   const time = j.run_started_at ? Date.parse(j.run_started_at) : NaN;
@@ -235,10 +237,11 @@ export function JobsPage() {
   const setStatus = (jobId: string, status: ApplicationStatus) =>
     setJobs((list) => list && list.map((j) => (j.id === jobId ? { ...j, application_status: status } : j)));
 
-  const onFind = async (mode: EffortMode) => {
+  // Forwards exactly what the button sent, so a plain search keeps its `(profile, mode)` call.
+  const onFind = async (...args: [mode: EffortMode, customPrompt?: string]) => {
     setError(null);
     try {
-      const started = await startDiscovery(profileId, mode);
+      const started = await startDiscovery(profileId, ...args);
       navigate(href(`/runs/${started.id}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -250,7 +253,9 @@ export function JobsPage() {
       <PageHeader
         title="Jobs"
         description="Openings found by discovery runs, with their links checked."
-        actions={<FindJobsButton profileId={profileId} onStart={(mode) => void onFind(mode)} />}
+        actions={
+          <FindJobsButton profileId={profileId} onStart={(...args) => void onFind(...args)} />
+        }
       />
       <div className="flex flex-col gap-4">
         {error && <ErrorAlert>{error}</ErrorAlert>}

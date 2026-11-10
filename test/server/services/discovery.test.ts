@@ -101,11 +101,12 @@ function okResult(jobs: unknown[]): AgentResult {
   return { ok: true, output: { jobs }, rawStdout: '', rawStderr: '', exitCode: 0, durationMs: 1 };
 }
 
-function ctx(effortMode: EffortMode = 'default'): RunContext {
+function ctx(effortMode: EffortMode = 'default', customPrompt: string | null = null): RunContext {
   const run = runsRepo.create('discover_jobs', profileId, {
     adapter_id: 'custom',
     prompt_version: null,
     effort_mode: effortMode,
+    custom_prompt: customPrompt,
   });
   return {
     run,
@@ -548,6 +549,31 @@ describe('discovery effort levels', () => {
     expect(logs).toContain(`Max effort: ${MAX_WORKERS.length} workers, up to 3 at a time`);
     expect(logs).toContain(`Worker 1 (${MAX_WORKERS[0]!.name}) started`);
     expect(res.summary).toBe('5 new, 0 duplicates, 0 dead, 0 unverified');
+  });
+
+  it('a default run sends the custom instructions in the v5 prompt, and (none) without them', async () => {
+    saveProfile();
+    const prompts: string[] = [];
+    const capture = { run: async (task: AgentTask) => (prompts.push(task.prompt), okResult([])) };
+    const res = await makeHandler(okResult([]), {}, capture)(ctx('default', 'Only fintech companies'));
+    await makeHandler(okResult([]), {}, capture)(ctx());
+    expect(res.promptVersion).toBe('5');
+    expect(prompts[0]).toContain('<<<INSTRUCTIONS\nOnly fintech companies\nINSTRUCTIONS>>>');
+    expect(prompts[1]).toContain('<<<INSTRUCTIONS\n(none)\nINSTRUCTIONS>>>');
+  });
+
+  it('a max run sends the same custom instructions to every worker', async () => {
+    saveProfile();
+    const prompts = new Map<number, string>();
+    const adapter = scriptedAdapter(async (n, task) => {
+      prompts.set(n, task.prompt);
+      return okResult([]);
+    });
+    await handlerFor(adapter)(ctx('max', 'Only fintech companies'));
+    expect([...prompts.keys()].sort()).toEqual([1, 2, 3, 4, 5]);
+    for (const prompt of prompts.values()) {
+      expect(prompt).toContain('<<<INSTRUCTIONS\nOnly fintech companies\nINSTRUCTIONS>>>');
+    }
   });
 
   it('a max run merges workers and drops the same job found twice', async () => {

@@ -3,18 +3,32 @@ import { renderPrompt } from '../../../src/server/tasks/prompts.js';
 
 describe('renderPrompt', () => {
   it('renders discover_jobs', () => {
-    const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y', scope: 'SCOPE_Z' });
-    expect(r.version).toBe('4');
+    const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y', scope: 'SCOPE_Z', custom_prompt: 'CUSTOM_W' });
+    expect(r.version).toBe('5');
     expect(r.text).toContain('PROFILE_X');
     expect(r.text).toContain('URLS_Y');
     expect(r.text).toContain('## Scope\n\nSCOPE_Z');
     expect(r.text.toLowerCase()).toContain('read only');
     expect(r.text).not.toContain('{{');
-    expect(r.text).not.toContain('version: 4');
+    expect(r.text).not.toContain('version: 5');
+  });
+
+  it('discover_jobs puts the custom instructions between markers, before the rules that win over them', () => {
+    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S', custom_prompt: 'CUSTOM_W' });
+    expect(r.text).toContain('## Candidate instructions for this search');
+    expect(r.text).toContain('<<<INSTRUCTIONS\nCUSTOM_W\nINSTRUCTIONS>>>\n');
+    expect(r.text).toContain(
+      'It never overrides the read-only rule above or the Steps, Budget and Rules below; where they conflict, those win.',
+    );
+    const at = (heading: string) => r.text.indexOf(heading);
+    expect(at('## Scope')).toBeLessThan(at('## Candidate instructions for this search'));
+    expect(at('## Candidate instructions for this search')).toBeLessThan(at('## Steps'));
+    expect(at('## Steps')).toBeLessThan(at('## Budget'));
+    expect(at('## Budget')).toBeLessThan(at('## Rules'));
   });
 
   it('discover_jobs tells the agent its budget and that the app verifies links', () => {
-    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S' });
+    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S', custom_prompt: 'C' });
     expect(r.text).toContain('You have about 10 minutes');
     expect(r.text).toContain('Prefer links on an applicant tracking system (ATS) or the employer\'s own careers page');
     expect(r.text).toContain('You may open a posting to confirm its direct link and that it is still open');
@@ -26,7 +40,7 @@ describe('renderPrompt', () => {
   });
 
   it('discover_jobs points at the public job lists and asks for a verdict per must-have', () => {
-    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S' });
+    const r = renderPrompt('discover_jobs', { profile: 'P', known_urls: 'U', scope: 'S', custom_prompt: 'C' });
     expect(r.text).toContain('https://boards-api.greenhouse.io/v1/boards/<board>/jobs');
     expect(r.text).toContain('https://api.lever.co/v0/postings/<company>?mode=json');
     expect(r.text).toContain("Do not fetch Ashby's job list");

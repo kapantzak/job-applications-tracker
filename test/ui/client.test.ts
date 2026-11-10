@@ -151,6 +151,19 @@ describe('api client', () => {
     expect(calls[0]![1].headers).toEqual({ 'Content-Type': 'application/json' });
   });
 
+  it('startDiscovery adds custom instructions only when given', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => jsonResponse({ id: 'r1' }, 202));
+    await startDiscovery('p1', 'max', 'Only fintech companies');
+    await startDiscovery('p1', 'default', '');
+    const bodies = (fetchMock.mock.calls as [string, RequestInit][]).map(([, init]) => init.body);
+    expect(bodies).toEqual([
+      JSON.stringify({ mode: 'max', custom_prompt: 'Only fintech companies' }),
+      JSON.stringify({ mode: 'default' }),
+    ]);
+  });
+
   it('dismissJob returns undefined on 204 without parsing a body', async () => {
     const res = new Response(null, { status: 204 });
     const json = vi.spyOn(res, 'json');

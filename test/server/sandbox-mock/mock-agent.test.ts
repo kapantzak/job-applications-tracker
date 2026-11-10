@@ -52,7 +52,7 @@ describe('mock agent', () => {
   });
 
   it('returns discovery jobs with one live and one closed link shape, unique per call', async () => {
-    const vars = { profile: 'Target roles: Frontend Engineer', known_urls: '(none)', scope: DEFAULT_SCOPE };
+    const vars = { profile: 'Target roles: Frontend Engineer', known_urls: '(none)', scope: DEFAULT_SCOPE, custom_prompt: '(none)' };
     const first = DiscoverJobsOutput.parse((await run('discover_jobs', vars)).output);
     const second = DiscoverJobsOutput.parse((await run('discover_jobs', vars)).output);
     expect(first.jobs.length).toBeGreaterThanOrEqual(4);
@@ -65,7 +65,7 @@ describe('mock agent', () => {
   // A real agent sometimes ignores the list, which lets a live sandbox search find a known job again (SOW-0041).
   it('repeats the newest known url once and nothing else from the list', async () => {
     const known = ['https://example.com/?mock-job=seed-20', 'https://example.com/?mock-job=seed-19'];
-    const vars = { profile: 'Target roles: Backend Engineer', known_urls: known.join('\n'), scope: DEFAULT_SCOPE };
+    const vars = { profile: 'Target roles: Backend Engineer', known_urls: known.join('\n'), scope: DEFAULT_SCOPE, custom_prompt: '(none)' };
     const { jobs } = DiscoverJobsOutput.parse((await run('discover_jobs', vars)).output);
     expect(jobs.filter((j) => j.url === known[0])).toHaveLength(1);
     expect(jobs.some((j) => j.url === known[1])).toBe(false);
@@ -118,7 +118,7 @@ describe('mock agent', () => {
   });
 
   it('prints its result as one log line, so the Run page summarises it', async () => {
-    const { logs } = await run('discover_jobs', { profile: '(none)', known_urls: '(none)', scope: DEFAULT_SCOPE });
+    const { logs } = await run('discover_jobs', { profile: '(none)', known_urls: '(none)', scope: DEFAULT_SCOPE, custom_prompt: '(none)' });
     const json = logs.filter((l) => l.trim().startsWith('{'));
     expect(json).toHaveLength(1);
     expect(DiscoverJobsOutput.parse(JSON.parse(json[0]!)).jobs.length).toBeGreaterThan(0);

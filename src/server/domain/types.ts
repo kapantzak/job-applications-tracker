@@ -20,6 +20,8 @@ export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be can
 export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'aborted'] as const;
 // Discovery effort (SOW-0016): `max` runs several partitioned agent processes; sync is always `default`.
 export const EFFORT_MODES = ['default', 'max'] as const;
+// Custom search instructions (SOW-0042): Codex receives the whole prompt as one argv element.
+export const CUSTOM_PROMPT_MAX = 2000;
 export const FIT_VERDICTS = ['pass', 'fail', 'unknown'] as const;
 // Max effort workers by source family, in run order, and how many run at once (user decisions 9 and 10).
 // Shared so the UI warning names exactly what the server runs.
@@ -191,6 +193,8 @@ export interface Run {
   // The model the agent says it ran; only Claude Code reports one.
   agent_model_reported: string | null;
   effort_mode: EffortMode;
+  // The user's instructions for this discovery run (SOW-0042); null when the search had none.
+  custom_prompt: string | null;
   // What the agent reported, summed over Max workers; null when nothing was reported. The cost is
   // Claude Code's list-price estimate, not a bill.
   usage_cost_usd: number | null;
@@ -234,6 +238,8 @@ export interface JobListItem extends Job {
   // The first search, for the Jobs page "Found in" filter (SOW-0040).
   run_started_at: string | null;
   run_effort_mode: EffortMode;
+  // The first search had custom instructions (SOW-0042); the text itself stays on the run.
+  run_has_custom_prompt: boolean;
 }
 
 export interface Application {
