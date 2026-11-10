@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Application, Job } from '../../../src/server/domain/types.js';
+import type { Application, Job, JobListItem } from '../../../src/server/domain/types.js';
 import { insertJob, makeHarness, type Harness } from './harness.js';
 
 let h: Harness;
@@ -26,6 +26,22 @@ describe('jobs', () => {
     expect(await ids(`${h.base}/jobs?includeDead=1`)).toEqual([live.id, dead.id].sort());
     expect(await ids(`${h.base}/jobs?includeDismissed=true`)).toEqual([live.id, dismissed.id].sort());
     expect(await ids(`${h.base}/jobs?includeDead=0&includeDismissed=false`)).toEqual([live.id]);
+  });
+
+  it('GET reports when each job was last seen and the search that first found it', async () => {
+    const job = insertJob(h);
+    const run = h.deps.runsRepo.get(job.run_id)!;
+
+    const [item] = (await (await h.app.request(`${h.base}/jobs`)).json()) as JobListItem[];
+
+    expect(item).toMatchObject({
+      id: job.id,
+      run_id: run.id,
+      last_seen_run_id: run.id,
+      last_seen_at: job.created_at,
+      run_started_at: run.started_at,
+      run_effort_mode: 'default',
+    });
   });
 
   it('GET reports the latest application status per job', async () => {

@@ -48,9 +48,15 @@ describe('seedMockData', () => {
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
-  it('creates a rich, a sparse, an empty and a scope-miss profile', () => {
+  it('creates a rich, a sparse, an empty, a scope-miss and a search-rounds profile', () => {
     const list = createProfilesRepo(db).list();
-    expect(list.map((p) => p.name)).toEqual(['Data Analyst Roles', 'Empty Search', 'Frontend Platform', 'Scope Miss']);
+    expect(list.map((p) => p.name)).toEqual([
+      'Backend Engineering',
+      'Data Analyst Roles',
+      'Empty Search',
+      'Frontend Platform',
+      'Scope Miss',
+    ]);
     const empty = list.find((p) => p.name === 'Empty Search')!;
     expect(empty.counts).toEqual({ jobs: 0, applications: 0, runs: 0 });
     const sparse = list.find((p) => p.name === 'Data Analyst Roles')!;
@@ -69,6 +75,7 @@ describe('seedMockData', () => {
       .list()
       .map((p) => [p.name, p.mail_filter_kind, p.mail_filter]);
     expect(scopes).toEqual([
+      ['Backend Engineering', 'label', 'Jobs/Backend'],
       ['Data Analyst Roles', 'query', 'to:you+data@example.com OR label:jobs-data'],
       ['Empty Search', 'label', ''],
       ['Frontend Platform', 'label', 'Jobs/Frontend'],
@@ -110,6 +117,53 @@ describe('seedMockData', () => {
     expect(jobs.some((j) => j.application_status !== null)).toBe(true);
   });
 
+  it('gives every job a last sighting, with two first-search jobs seen again by the later search', () => {
+    const rich = profileByName('Frontend Platform');
+    const jobs = createJobsRepo(db).list(rich.id, { includeDead: true, includeDismissed: true });
+    const once = jobs.filter((j) => j.last_seen_run_id === j.run_id);
+    expect(once.every((j) => j.last_seen_at === j.created_at)).toBe(true);
+    const again = jobs.filter((j) => j.last_seen_run_id !== j.run_id);
+    expect(again.map((j) => j.company).sort()).toEqual(['Acme Robotics', 'Globex Analytics']);
+    for (const j of again) expect(j.last_seen_at > j.created_at).toBe(true);
+    expect(new Set(jobs.map((j) => j.run_effort_mode))).toEqual(new Set(['default', 'max']));
+  });
+
+  it('gives Backend Engineering four searches whose summaries match the jobs they first found', () => {
+    const rounds = profileByName('Backend Engineering');
+    const runs = db
+      .prepare("SELECT id, effort_mode, summary FROM runs WHERE profile_id = ? AND kind = 'discover_jobs' ORDER BY started_at")
+      .all(rounds.id) as { id: string; effort_mode: string; summary: string }[];
+    expect(runs.map((r) => r.effort_mode)).toEqual(['default', 'max', 'default', 'default']);
+    const jobs = createJobsRepo(db).list(rounds.id, { includeDead: true, includeDismissed: true });
+    for (const run of runs) {
+      const found = jobs.filter((j) => j.run_id === run.id);
+      expect(run.summary).toMatch(new RegExp(`^${found.length} new, \\d+ duplicates, `));
+      expect(run.summary).toContain(`${found.filter((j) => j.verification_status === 'unverified').length} unverified`);
+    }
+    // The newest search only found jobs again; each of them was last seen there.
+    const newest = runs.at(-1)!;
+    expect(newest.summary).toBe('0 new, 3 duplicates, 0 dead, 0 unverified');
+    expect(jobs.filter((j) => j.last_seen_run_id === newest.id)).toHaveLength(3);
+  });
+
+  it('shows Backend Engineering jobs whose status changed when a later search found them again', () => {
+    const rounds = profileByName('Backend Engineering');
+    const jobs = createJobsRepo(db).list(rounds.id, { includeDead: true, includeDismissed: true });
+    const again = jobs.filter((j) => j.last_seen_run_id !== j.run_id);
+    expect(again.length).toBeGreaterThanOrEqual(6);
+    for (const j of again) expect(j.last_seen_at > j.created_at).toBe(true);
+    const company = (name: string) => jobs.find((j) => j.company === name)!;
+    // A closed posting now redirecting to the board: matched by its own link (SOW-0040 decision 12).
+    const moved = company('Black Mesa Labs');
+    expect(moved).toMatchObject({ verification_status: 'redirected', verified_at: moved.last_seen_at });
+    expect(moved.url).toBe(moved.canonical_url);
+    expect(company('Gringotts Payments')).toMatchObject({ verification_status: 'dead' });
+    expect(company('Gringotts Payments').last_seen_run_id).not.toBe(company('Gringotts Payments').run_id);
+    // An inconclusive check keeps the earlier result.
+    expect(company('Oceanic Air')).toMatchObject({ verification_status: 'unverified', verified_at: null });
+    expect(company('Oceanic Air').last_seen_run_id).not.toBe(company('Oceanic Air').run_id);
+  });
+
   it('has pending, accepted and rejected proposals', () => {
     const rich = profileByName('Frontend Platform');
     expect(createProposalsRepo(db).listPending(rich.id)).toHaveLength(3);
@@ -130,12 +184,23 @@ describe('seedMockData', () => {
     expect(early).toEqual([]);
   });
 
-  it('logs one result per surviving worker of the Max run', () => {
-    const max = db.prepare("SELECT id FROM runs WHERE effort_mode = 'max'").get() as { id: string };
-    const lines = readFileSync(join(dataDir, 'runs', `${max.id}.log`), 'utf8').split('\n');
-    const results = lines.filter((l) => /^\[worker \d\] \{"type":"result"/.test(l)).map((l) => l.slice(1, 9));
-    expect(results).toEqual(['worker 1', 'worker 2', 'worker 3', 'worker 5']);
-    expect(lines.some((l) => l.startsWith('{"type":"result"'))).toBe(false);
+  it('logs one result per surviving worker of each Max run, as its summary says', () => {
+    const maxRuns = db.prepare("SELECT id, summary FROM runs WHERE effort_mode = 'max'").all() as {
+      id: string;
+      summary: string;
+    }[];
+    expect(maxRuns.map((r) => hasFailedWorkers(r.summary)).sort()).toEqual([false, true]);
+    for (const max of maxRuns) {
+      const lines = readFileSync(join(dataDir, 'runs', `${max.id}.log`), 'utf8').split('\n');
+      const results = lines.filter((l) => /^\[worker \d\] \{"type":"result"/.test(l)).map((l) => l.slice(1, 9));
+      expect(results).toEqual(
+        hasFailedWorkers(max.summary)
+          ? ['worker 1', 'worker 2', 'worker 3', 'worker 5']
+          : ['worker 1', 'worker 2', 'worker 3', 'worker 4', 'worker 5'],
+      );
+      expect(lines.some((l) => /^Worker \d \(.*\) failed/.test(l))).toBe(hasFailedWorkers(max.summary));
+      expect(lines.some((l) => l.startsWith('{"type":"result"'))).toBe(false);
+    }
   });
 
   it('only leaves finished runs, each with a log file', () => {

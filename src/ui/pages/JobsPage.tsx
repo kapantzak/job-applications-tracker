@@ -98,6 +98,16 @@ function fitSummary(checks: FitChecks | null): FitSummary {
 }
 const fitPasses = (checks: FitChecks | null) =>
   checks ? FIT_FIELDS.filter(([field]) => checks[field] === 'pass').length : null;
+// A search round is one discovery run (SOW-0040); the filter names it by start time and mode.
+const searchLabel = (j: JobListItem) =>
+  `${formatTime(j.run_started_at)} · ${j.run_effort_mode === 'max' ? 'Max effort' : 'Default'}`;
+// Newest search first; a run without a start time sorts after the dated ones.
+const searchRank = (j: JobListItem) => {
+  const time = j.run_started_at ? Date.parse(j.run_started_at) : NaN;
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER - 2 : -time;
+};
+const seenAgainDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+
 // "Not tracked" is a real choice in the Application filter, so it is not the empty option.
 const NOT_TRACKED = 'none';
 const APPLICATION_ORDER = [...APPLICATION_STATUSES, NOT_TRACKED];
@@ -158,6 +168,18 @@ const COLUMNS: ColumnDef<JobListItem>[] = [
     label: 'Found',
     sortValue: (j) => j.created_at,
     filter: { kind: 'date', value: (j) => j.created_at },
+  },
+  // The search that first found the job; filter-only, so "View jobs" on a run page can open it.
+  {
+    id: 'run',
+    label: 'Found in',
+    filter: {
+      kind: 'values',
+      value: (j) => j.run_id,
+      rowLabel: searchLabel,
+      rowRank: searchRank,
+      optionLabel: () => 'A search with no jobs listed',
+    },
   },
   // Shown as a badge in the Actions column, so it filters but has no header to sort by.
   {
@@ -310,7 +332,12 @@ export function JobsPage() {
                           <TableCell>
                             <VerificationBadge status={job.verification_status} />
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-muted-foreground">{formatTime(job.created_at)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {formatTime(job.created_at)}
+                            {job.last_seen_run_id !== job.run_id && job.last_seen_at && (
+                              <div className="text-xs">Seen again {seenAgainDay(job.last_seen_at)}</div>
+                            )}
+                          </TableCell>
                           <TableCell className="pr-4">
                             <div className="flex items-center justify-end gap-1.5">
                               {isHttpUrl(href) && (

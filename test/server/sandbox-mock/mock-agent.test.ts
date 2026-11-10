@@ -62,6 +62,15 @@ describe('mock agent', () => {
     expect(second.jobs.some((j) => firstUrls.has(j.url))).toBe(false);
   });
 
+  // A real agent sometimes ignores the list, which lets a live sandbox search find a known job again (SOW-0041).
+  it('repeats the newest known url once and nothing else from the list', async () => {
+    const known = ['https://example.com/?mock-job=seed-20', 'https://example.com/?mock-job=seed-19'];
+    const vars = { profile: 'Target roles: Backend Engineer', known_urls: known.join('\n'), scope: DEFAULT_SCOPE };
+    const { jobs } = DiscoverJobsOutput.parse((await run('discover_jobs', vars)).output);
+    expect(jobs.filter((j) => j.url === known[0])).toHaveLength(1);
+    expect(jobs.some((j) => j.url === known[1])).toBe(false);
+  });
+
   // Through the app's own mail source, so a change to how it lists applications in the prompt fails here.
   async function sync(applications: MailSyncRequest['applications'], mailScope: string | null = 'label:Jobs-Frontend') {
     const logs: string[] = [];

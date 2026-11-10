@@ -12,6 +12,10 @@ export type FilterSpec<Row> =
       // Options follow this order when given (statuses), else they sort by label.
       order?: readonly string[];
       emptyLabel?: string;
+      // For values that are ids (the Jobs "Found in" search, SOW-0040): label and order each option
+      // from a row that carries it, lowest rank first. A value no row has uses `optionLabel` and goes last.
+      rowLabel?: (row: Row) => string;
+      rowRank?: (row: Row) => number;
     }
   | { kind: 'text'; value: (row: Row) => string | null }
   | { kind: 'date'; value: (row: Row) => string | null };
@@ -188,15 +192,26 @@ export function facetOptions<Row>(rows: Row[], column: ColumnDef<Row>, selected:
   const filter = column.filter;
   if (filter?.kind !== 'values') return [];
   const counts = new Map<string, number>();
+  const sample = new Map<string, Row>();
   for (const row of rows) {
     const v = filter.value(row) ?? '';
     counts.set(v, (counts.get(v) ?? 0) + 1);
+    if (!sample.has(v)) sample.set(v, row);
   }
   for (const v of selected) if (!counts.has(v)) counts.set(v, 0);
-  const label = (v: string) => (v === '' ? (filter.emptyLabel ?? 'None') : (filter.optionLabel?.(v) ?? v));
+  const label = (v: string) => {
+    if (v === '') return filter.emptyLabel ?? 'None';
+    const row = sample.get(v);
+    if (row && filter.rowLabel) return filter.rowLabel(row);
+    return filter.optionLabel?.(v) ?? v;
+  };
   const options = [...counts].map(([value, count]) => ({ value, label: label(value), count }));
   const rank = (o: FacetOption) => {
     if (o.value === '') return Number.MAX_SAFE_INTEGER;
+    if (filter.rowRank) {
+      const row = sample.get(o.value);
+      return row ? filter.rowRank(row) : Number.MAX_SAFE_INTEGER - 1;
+    }
     const i = filter.order ? filter.order.indexOf(o.value) : -1;
     return i === -1 ? Number.MAX_SAFE_INTEGER - 1 : i;
   };

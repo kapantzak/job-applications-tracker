@@ -80,6 +80,22 @@ describe('verifyLink', () => {
     await new Promise((r) => tmp.close(r));
     expect((await verifyLink(`http://127.0.0.1:${port}/x`)).status).toBe('dead');
   });
+
+  // Discovery trusts a verdict on a known job only when the site answered (SOW-0040), so a hop that
+  // fails must not carry the status of the hop before it.
+  it('reports no HTTP status when a redirect hop fails without an answer', async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      if (String(input) === 'http://jobs.acme.example/1') {
+        return new Response(null, { status: 301, headers: { location: 'https://careers.acme.example/1' } });
+      }
+      throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'EAI_AGAIN' } });
+    }) as typeof fetch;
+    expect(await verifyLink('http://jobs.acme.example/1', { fetchImpl })).toEqual({
+      status: 'dead',
+      finalUrl: 'https://careers.acme.example/1',
+      httpStatus: null,
+    });
+  });
 });
 
 // Greenhouse answers a closed or unknown job id with a redirect to `/<board>?error=true`, which then

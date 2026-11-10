@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentAdapter, AgentResult } from '../agents/types.js';
 import { sumUsage } from '../agents/usage.js';
-import type { createJobsRepo, NewJob } from '../db/jobs-repo.js';
+import type { createJobsRepo, NewJob, Sighting } from '../db/jobs-repo.js';
 import type { ProfilesRepo } from '../db/profiles-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import {
@@ -231,14 +231,31 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
 
     const existing = jobsRepo.existingDedupeKeys(profile.id);
     const seen = new Set<string>();
+    // One sighting per known job; Map order keeps the order the agent returned them in.
+    const seenAgain = new Map<string, Sighting>();
     const newJobs: NewJob[] = [];
     const statuses: VerificationStatus[] = [];
     const verifiedAt = new Date().toISOString();
     for (const { job, canonical, verdict } of verified) {
       const canonical_url = verdict.status === 'redirected' ? canonicalUrl(verdict.finalUrl) : canonical;
-      const key = dedupeKey({ canonical_url, company: job.company, title: job.title, location: job.location });
+      const fields = { company: job.company, title: job.title, location: job.location };
+      // A closed posting often redirects to the company's board; the link the agent returned still
+      // names the known job, and the check describes that link (user decision 12, SOW-0040).
+      const returnedKey = dedupeKey({ canonical_url: canonical, ...fields });
+      const key = existing.has(returnedKey) ? returnedKey : dedupeKey({ canonical_url, ...fields });
       if (existing.has(key) || seen.has(key)) {
         duplicates++;
+        if (existing.has(key)) {
+          // Only an answer from the site replaces the stored status: a network error also reads as dead,
+          // and one outage must not hide every known job (user decision 10, SOW-0040). When several links
+          // lead to the same job, the first conclusive check wins.
+          const conclusive = verdict.httpStatus !== null && verdict.status !== 'unverified';
+          const verification = conclusive ? { status: verdict.status, verified_at: verifiedAt } : null;
+          const sighting = seenAgain.get(key);
+          if (!sighting) seenAgain.set(key, { dedupe_key: key, verification });
+          else if (!sighting.verification) sighting.verification = verification;
+        }
+        seen.add(key);
         continue;
       }
       seen.add(key);
@@ -262,7 +279,7 @@ export function createDiscoveryHandler(deps: DiscoveryDeps): RunHandler {
       });
     }
 
-    const inserted = jobsRepo.insertMany(ctx.run.id, newJobs);
+    const inserted = jobsRepo.insertMany(ctx.run.id, newJobs, [...seenAgain.values()]);
     // Count outcomes only for rows actually stored.
     const storedUrls = new Set(inserted.map((j) => j.dedupe_key));
     newJobs.forEach((j, i) => {

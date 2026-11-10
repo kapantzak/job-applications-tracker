@@ -77,7 +77,8 @@ describe('RunPage', () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'succeeded', summary: '2 new' });
     await act(async () => onDone('succeeded' as never));
     expect(await screen.findByText('2 new')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs');
+    // A finished search opens the Jobs page on the jobs it found (SOW-0040).
+    expect(screen.getByRole('link', { name: 'View jobs' })).toHaveAttribute('href', '/profiles/platform-roles/jobs?run=r1');
     expect(client.subscribeRunEvents).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -127,7 +128,8 @@ describe('RunPage', () => {
     expect(await screen.findByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/profiles/platform-roles/runs');
   });
 
-  it('offers the follow-up link for failed discovery runs too', async () => {
+  // A failed or cancelled search saved nothing, so the link opens the whole list.
+  it('offers the follow-up link for failed discovery runs too, to all jobs', async () => {
     vi.mocked(client.getRun).mockResolvedValue({ ...run, status: 'failed', error: 'x' });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();

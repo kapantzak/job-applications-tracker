@@ -132,4 +132,52 @@ describe('jobs repo', () => {
     const { repo } = setup();
     expect(() => repo.insertMany('no-such-run', [newJob(1)])).toThrow('Run not found: no-such-run');
   });
+
+  it('lists each job with the start time and mode of the search that first found it', () => {
+    const { repo, runId, db, pid } = setup();
+    db.prepare(
+      "INSERT INTO runs (id, profile_id, kind, status, started_at, effort_mode, created_at) VALUES ('run-max', ?, 'discover_jobs', 'succeeded', '2026-11-09T08:00:00.000Z', 'max', 't')",
+    ).run(pid);
+    repo.insertMany(runId, [newJob(1)]);
+    repo.insertMany('run-max', [newJob(2)]);
+    const started = (db.prepare('SELECT started_at FROM runs WHERE id = ?').get(runId) as { started_at: string })
+      .started_at;
+
+    expect(repo.list(pid).map((j) => [j.company, j.run_started_at, j.run_effort_mode])).toEqual([
+      ['Co 2', '2026-11-09T08:00:00.000Z', 'max'],
+      ['Co 1', started, 'default'],
+    ]);
+  });
+
+  it('records a sighting on the matching job of the run profile only, in the same call as new jobs', () => {
+    const { repo, runId, db, pid } = setup();
+    const other = insertTestProfile(db, 'Other roles');
+    db.prepare(
+      "INSERT INTO runs (id, profile_id, kind, status, created_at) VALUES ('run-other', ?, 'discover_jobs', 'succeeded', 't')",
+    ).run(other);
+    db.prepare(
+      "INSERT INTO runs (id, profile_id, kind, status, created_at) VALUES ('run-2', ?, 'discover_jobs', 'succeeded', 't')",
+    ).run(pid);
+    const [mine] = repo.insertMany(runId, [newJob(1), newJob(2, { verified_at: 'old' })]);
+    const [theirs] = repo.insertMany('run-other', [newJob(1)]);
+
+    const inserted = repo.insertMany('run-2', [newJob(3)], [
+      { dedupe_key: 'key-1', verification: { status: 'dead', verified_at: 'new' } },
+      { dedupe_key: 'key-2', verification: null },
+    ]);
+
+    expect(inserted.map((j) => j.company)).toEqual(['Co 3']);
+    expect(repo.get(mine!.id)).toMatchObject({
+      run_id: runId,
+      last_seen_run_id: 'run-2',
+      verification_status: 'dead',
+      verified_at: 'new',
+    });
+    expect(repo.list(pid, { includeDead: true }).find((j) => j.company === 'Co 2')).toMatchObject({
+      last_seen_run_id: 'run-2',
+      verification_status: 'ok',
+      verified_at: 'old',
+    });
+    expect(repo.get(theirs!.id)).toMatchObject({ last_seen_run_id: 'run-other', verification_status: 'ok' });
+  });
 });
