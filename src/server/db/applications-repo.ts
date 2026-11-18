@@ -17,6 +17,8 @@ export type NewApplication = {
   applied_at?: string | null;
   notes?: string;
   sender_domains?: string[];
+  // An application found in old mail last changed then, not now (SOW-0045, decision 16A).
+  status_changed_at?: string;
 };
 
 export type ApplicationPatch = Partial<
@@ -33,6 +35,11 @@ export const ATS_DOMAINS: readonly string[] = [
   'smartrecruiters.com',
   'linkedin.com',
   'indeed.com',
+  // Common senders that were missing (SOW-0045, decision 20B).
+  'myworkdayjobs.com',
+  'icims.com',
+  'jobvite.com',
+  'teamtailor.com',
 ];
 
 const OPEN_STATUSES = ['applied', 'screening', 'interview', 'no_response'];
@@ -112,7 +119,7 @@ export function createApplicationsRepo(db: Db) {
       url: input.url ?? null,
       status,
       applied_at: appliedAt,
-      status_changed_at: now,
+      status_changed_at: input.status_changed_at ?? now,
       notes: input.notes ?? null,
       sender_domains: JSON.stringify(input.sender_domains ?? []),
       created_at: now,
@@ -148,15 +155,16 @@ export function createApplicationsRepo(db: Db) {
     return rows.map(toApplication);
   }
 
-  // Profiles the scheduled mail sync should check: those with at least one open application, using the
-  // same rule as list({ open: true }). Ordered by profile name for a stable queue order.
-  function profileIdsWithOpen(): string[] {
+  // Profiles the scheduled mail sync should check: those with at least one open application (the same rule
+  // as list({ open: true })), and those with a Gmail scope, where sync also finds new applications
+  // (SOW-0045, decision 9). Ordered by profile name for a stable queue order.
+  function profileIdsToSync(): string[] {
     const cutoff = new Date(Date.now() - OFFER_WINDOW_MS).toISOString();
     const marks = OPEN_STATUSES.map(() => '?').join(', ');
     const rows = db
       .prepare(
         `SELECT p.id FROM profiles p
-         WHERE EXISTS (
+         WHERE trim(p.mail_filter) != '' OR EXISTS (
            SELECT 1 FROM applications a WHERE a.profile_id = p.id
              AND (a.status IN (${marks}) OR (a.status = 'offer' AND a.status_changed_at >= ?)))
          ORDER BY p.name COLLATE NOCASE ASC, p.rowid ASC`,
@@ -214,5 +222,5 @@ export function createApplicationsRepo(db: Db) {
     return selectProfileHistory.all(profileId) as StatusHistoryEntry[];
   }
 
-  return { create, get, findByJobId, list, profileIdsWithOpen, update, setStatus, history, historyForProfile };
+  return { create, get, findByJobId, list, profileIdsToSync, update, setStatus, history, historyForProfile };
 }

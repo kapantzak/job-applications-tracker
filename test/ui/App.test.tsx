@@ -12,6 +12,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   getProfileBySlug: vi.fn(),
   getHealth: vi.fn(),
   listProposals: vi.fn(),
+  listApplicationProposals: vi.fn(),
   listJobs: vi.fn(),
   updateProfile: vi.fn(),
   getCvAnalysis: vi.fn(),
@@ -43,6 +44,7 @@ async function renderApp(path: string, configure?: (client: typeof ClientModule)
     created_at: '2026-11-01T00:00:00.000Z',
   });
   vi.mocked(client.listProposals).mockResolvedValue([]);
+  vi.mocked(client.listApplicationProposals).mockResolvedValue([]);
   configure?.(client);
   const { App } = await import('../../src/ui/App.js');
   render(

@@ -7,6 +7,7 @@ import { createApplicationsRepo } from '../../../src/server/db/applications-repo
 import { migrate, openDatabase, type Db } from '../../../src/server/db/connection.js';
 import { createJobsRepo } from '../../../src/server/db/jobs-repo.js';
 import { createProfilesRepo } from '../../../src/server/db/profiles-repo.js';
+import { createApplicationProposalsRepo } from '../../../src/server/db/application-proposals-repo.js';
 import { createProposalsRepo } from '../../../src/server/db/proposals-repo.js';
 import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
 import {
@@ -170,7 +171,7 @@ describe('seedMockData', () => {
 
   it('has pending, accepted and rejected proposals', () => {
     const rich = profileByName('Frontend Platform');
-    expect(createProposalsRepo(db).listPending(rich.id)).toHaveLength(3);
+    expect(createProposalsRepo(db).listPending(rich.id)).toHaveLength(4);
     const states = db.prepare('SELECT state, COUNT(*) AS n FROM proposals GROUP BY state').all();
     expect(states).toEqual(
       expect.arrayContaining([
@@ -186,6 +187,32 @@ describe('seedMockData', () => {
       .prepare('SELECT p.id FROM proposals p JOIN runs r ON r.id = p.run_id WHERE p.created_at < r.finished_at')
       .all();
     expect(early).toEqual([]);
+  });
+
+  it('moves the saved application on with a proposal that carries the mail date (SOW-0045)', () => {
+    const rich = profileByName('Frontend Platform');
+    const saved = createApplicationsRepo(db).list(rich.id).find((a) => a.status === 'saved')!;
+    const [proposal] = createProposalsRepo(db).listPending(rich.id).filter((p) => p.application_id === saved.id);
+    expect(proposal).toMatchObject({ proposed_status: 'applied', applied_at: expect.any(String) });
+  });
+
+  it('has pending new-application proposals from the last sync, one linked to a job without an application', () => {
+    const rich = profileByName('Frontend Platform');
+    const pending = createApplicationProposalsRepo(db).listPending(rich.id);
+    expect(pending.map((p) => [p.company, p.status])).toEqual([
+      ['Umbrella Health', 'applied'],
+      ['Northwind Studio', 'interview'],
+    ]);
+    const job = createJobsRepo(db).get(pending[0]!.job_id!);
+    expect(job).toMatchObject({ company: 'Umbrella Health', title: pending[0]!.role });
+    expect(createApplicationsRepo(db).findByJobId(job!.id)).toBeNull();
+    expect(pending[1]!.job_id).toBeNull();
+    const sync = db.prepare('SELECT summary, finished_at FROM runs WHERE id = ?').get(pending[0]!.run_id) as {
+      summary: string;
+      finished_at: string;
+    };
+    expect(sync.summary).toBe('4 proposals created, 2 new applications found, 0 skipped');
+    expect(pending.every((p) => p.created_at === sync.finished_at)).toBe(true);
   });
 
   it('logs one result per surviving worker of each Max run, as its summary says', () => {

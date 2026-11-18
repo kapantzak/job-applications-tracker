@@ -4,6 +4,10 @@ import {
   cancelRun,
   dismissJob,
   restoreJob,
+  listApplicationProposals,
+  acceptApplicationProposal,
+  rejectApplicationProposal,
+  acceptAllApplicationProposals,
   getModelCatalogs,
   getRunLog,
   listJobs,
@@ -199,6 +203,24 @@ describe('api client', () => {
     await expect(restoreJob('p1', 'j1')).resolves.toBeUndefined();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect([url, init.method]).toEqual(['/api/profiles/p1/jobs/j1/restore', 'POST']);
+  });
+
+  it('sends the new-application proposal calls to the profile routes (SOW-0045)', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify({ accepted: 2 }), { status: 200 }));
+
+    await listApplicationProposals('p1');
+    await acceptApplicationProposal('p1', 'a b');
+    await rejectApplicationProposal('p1', 'x');
+    await expect(acceptAllApplicationProposals('p1', ['x', 'y'])).resolves.toEqual({ accepted: 2 });
+    expect((fetchMock.mock.calls[3]![1] as RequestInit).body).toBe(JSON.stringify({ ids: ['x', 'y'] }));
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, (init as RequestInit).method])).toEqual([
+      ['/api/profiles/p1/application-proposals', 'GET'],
+      ['/api/profiles/p1/application-proposals/a%20b/accept', 'POST'],
+      ['/api/profiles/p1/application-proposals/x/reject', 'POST'],
+      ['/api/profiles/p1/application-proposals/accept-all', 'POST'],
+    ]);
   });
 
   it('throws ApiError when a 2xx body is not JSON', async () => {

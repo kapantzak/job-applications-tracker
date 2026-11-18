@@ -14,6 +14,7 @@ import type { createApplicationsRepo } from './db/applications-repo.js';
 import type { Db } from './db/connection.js';
 import type { createJobsRepo } from './db/jobs-repo.js';
 import type { ProfilesRepo } from './db/profiles-repo.js';
+import type { ApplicationProposalsRepo } from './db/application-proposals-repo.js';
 import type { createProposalsRepo } from './db/proposals-repo.js';
 import type { RunsRepo } from './db/runs-repo.js';
 import type { createSettingsRepo } from './db/settings-repo.js';
@@ -21,6 +22,7 @@ import type { AgentTaskKind, Settings } from './domain/types.js';
 import type { LogStore } from './runs/log-store.js';
 import type { RunQueue } from './runs/queue.js';
 import type { SyncScheduler } from './runs/scheduler.js';
+import type { createApplicationProposalService } from './services/application-proposals.js';
 import type { createProposalService } from './services/proposals.js';
 
 export interface AppDeps {
@@ -34,6 +36,8 @@ export interface AppDeps {
   proposalsRepo: ReturnType<typeof createProposalsRepo>;
   runsRepo: RunsRepo;
   proposalService: ReturnType<typeof createProposalService>;
+  applicationProposalsRepo: ApplicationProposalsRepo;
+  applicationProposalService: ReturnType<typeof createApplicationProposalService>;
   queue: RunQueue;
   logStore: LogStore;
   scheduler: SyncScheduler;

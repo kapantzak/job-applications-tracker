@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { CircleCheckIcon, CircleXIcon, InboxIcon, MailIcon, MessagesSquareIcon, TrendingUpIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { DashboardSummary } from '../../server/domain/dashboard.js';
+import type { DashboardResponse } from '../../server/domain/dashboard.js';
 import type { Run, RunKind, Settings } from '../../server/domain/types.js';
 import {
   getSettings,
@@ -30,7 +30,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Stats {
-  summary: DashboardSummary | null;
+  summary: DashboardResponse | null;
   jobs: number | null;
   runs: Run[] | null;
   settings: Settings | null;
@@ -135,7 +135,12 @@ export function DashboardPage() {
   const listLink = (query: string) => href(`/applications?${query}`);
   const view = summary ? chooseView(storedView, summary.funnel.applied, narrow) : 'breakdown';
   const attention = summary && (
-    <AttentionCard pendingProposals={summary.pending_proposals} quiet={summary.quiet} href={href} />
+    <AttentionCard
+      pendingProposals={summary.pending_proposals}
+      newApplications={summary.pending_new_applications}
+      quiet={summary.quiet}
+      href={href}
+    />
   );
 
   return (
@@ -195,7 +200,7 @@ export function DashboardPage() {
           />
           <StatCard
             label="To review"
-            value={summary?.pending_proposals ?? null}
+            value={summary ? summary.pending_proposals + summary.pending_new_applications : null}
             testId="count-proposals"
             to={href('/review')}
             icon={<InboxIcon className="size-4" />}
@@ -207,11 +212,25 @@ export function DashboardPage() {
               <EmptyHeader>
                 <EmptyTitle>No applications yet</EmptyTitle>
                 <EmptyDescription>
-                  Save or mark jobs as applied on the{' '}
-                  <Link to={href('/jobs')} className="underline underline-offset-4">
-                    Jobs
-                  </Link>{' '}
-                  page and they will show up here.
+                  {summary.pending_new_applications > 0 ? (
+                    <>
+                      Sync from Gmail found {summary.pending_new_applications}{' '}
+                      {summary.pending_new_applications === 1 ? 'new application' : 'new applications'}. Accept them
+                      on the{' '}
+                      <Link to={href('/review')} className="underline underline-offset-4">
+                        Review page
+                      </Link>{' '}
+                      and they will show up here.
+                    </>
+                  ) : (
+                    <>
+                      Save or mark jobs as applied on the{' '}
+                      <Link to={href('/jobs')} className="underline underline-offset-4">
+                        Jobs
+                      </Link>{' '}
+                      page, or sync from Gmail to find applications you already made, and they will show up here.
+                    </>
+                  )}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

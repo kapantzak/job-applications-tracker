@@ -43,9 +43,26 @@ const MailFinding = z.object({
   evidence: MailEvidence,
 });
 
+// An application the mail shows but the app does not track (SOW-0045). Status is the latest stage, the
+// date the earliest message; the app turns the date into the stored timestamp.
+export const NEW_APPLICATION_STATUSES = ['applied', 'screening', 'interview', 'offer', 'rejected'] as const;
+
+export const NewApplicationFinding = z.object({
+  company: z.string(),
+  role: z.string(),
+  status: z.enum(NEW_APPLICATION_STATUSES),
+  applied_at: z.string(),
+  // The company's own mail domain, '' when only an ATS wrote.
+  sender_domain: z.string().default(''),
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+  evidence: MailEvidence,
+});
+
 export const SyncMailOutput = z.object({
   mail_access: z.boolean(),
   findings: z.array(MailFinding),
+  new_applications: z.array(NewApplicationFinding).default([]),
   notes: z.string().default(''),
   // What the profile's Gmail scope matched on its own, without date limits (SOW-0032); null without a scope.
   scope_message_count: z.number().int().min(0).nullable().default(null),
@@ -65,6 +82,7 @@ export const AnalyseCvOutput = z.object({
 export type DiscoverJobsResult = z.infer<typeof DiscoverJobsOutput>;
 export type AnalyseCvResult = z.infer<typeof AnalyseCvOutput>;
 export type SyncMailResult = z.infer<typeof SyncMailOutput>;
+export type NewApplicationResult = SyncMailResult['new_applications'][number];
 
 // Claude Code's validator rejects zod's draft-2020-12 `$schema` pointer, and the OpenAI
 // structured-output API behind Codex requires `additionalProperties: false` plus every property

@@ -36,7 +36,7 @@ export function createProposalService({
       if (!current)
         throw new Error(`Application not found: ${proposal.application_id}`);
       // Already at the proposed status: record the decision without a no-op history row.
-      const application =
+      let application =
         current.status === proposal.proposed_status
           ? current
           : applicationsRepo.setStatus(
@@ -45,6 +45,10 @@ export function createProposalService({
               "proposal",
               id,
             );
+      // A saved application has no applied date; the mail that moves it on supplies one (SOW-0045, 10A).
+      if (current.status === "saved" && proposal.applied_at && current.applied_at === null) {
+        application = applicationsRepo.update(current.id, { applied_at: proposal.applied_at });
+      }
       return { proposal: proposalsRepo.decide(id, "accepted"), application };
     },
   );

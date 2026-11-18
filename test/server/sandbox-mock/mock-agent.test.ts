@@ -72,10 +72,14 @@ describe('mock agent', () => {
   });
 
   // Through the app's own mail source, so a change to how it lists applications in the prompt fails here.
-  async function sync(applications: MailSyncRequest['applications'], mailScope: string | null = 'label:Jobs-Frontend') {
+  async function sync(
+    applications: MailSyncRequest['applications'],
+    mailScope: string | null = 'label:Jobs-Frontend',
+    tracked: MailSyncRequest['tracked'] = [],
+  ) {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
-      { applications, reviewed_message_ids: ['msg-001'], mail_scope: mailScope },
+      { applications, reviewed_message_ids: ['msg-001'], mail_scope: mailScope, new_applications_since: '2026/08/13', tracked },
       { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
     );
     return { findings, logs };
@@ -112,9 +116,23 @@ describe('mock agent', () => {
     expect(findings.findings.map((f) => f.proposed_status)).toEqual(['no_change', 'no_change']);
   });
 
-  it('returns no findings when there are no applications', async () => {
+  it('returns no findings when there are no applications, but new applications (SOW-0045)', async () => {
     const { findings } = await sync([]);
     expect(findings.findings).toEqual([]);
+    expect(findings.new_applications.map((a) => [a.company, a.status])).toEqual([
+      ['Contoso Pharma', 'applied'],
+      ['Fabrikam Games', 'screening'],
+    ]);
+  });
+
+  it('leaves out new applications the prompt already lists, and all of them when the scope matches nothing', async () => {
+    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [] };
+    expect((await sync([listed])).findings.new_applications.map((a) => a.company)).toEqual(['Fabrikam Games']);
+    const tracked = [{ company: 'fabrikam games', role: 'UI Developer' }];
+    expect((await sync([], 'label:Jobs-Frontend', tracked)).findings.new_applications.map((a) => a.company)).toEqual([
+      'Contoso Pharma',
+    ]);
+    expect((await sync([], 'label:NoMatch')).findings.new_applications).toEqual([]);
   });
 
   it('prints its result as one log line, so the Run page summarises it', async () => {

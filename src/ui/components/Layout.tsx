@@ -26,7 +26,7 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar';
 import type { Profile } from '../../server/domain/types.js';
-import { ApiError, getProfileBySlug, listProposals } from '../api/client.js';
+import { ApiError, getProfileBySlug, listApplicationProposals, listProposals } from '../api/client.js';
 import { profilePath, ProfileShellContext, type ProfileShell } from '../profile-route.js';
 import { HelpMenu } from './HelpMenu.js';
 import { LogoMark } from './LogoMark.js';
@@ -153,9 +153,10 @@ export function Layout() {
     setPending(0);
     if (!currentId) return;
     let active = true;
-    listProposals(currentId)
-      .then((proposals) => {
-        if (active) setPending(proposals.length);
+    // Status changes and new applications (SOW-0045) both wait on the Review page.
+    Promise.all([listProposals(currentId), listApplicationProposals(currentId)])
+      .then(([proposals, fresh]) => {
+        if (active) setPending(proposals.length + fresh.length);
       })
       // The badge is decorative; a failed fetch must not break the shell.
       .catch(() => {});

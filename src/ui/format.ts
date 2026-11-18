@@ -6,6 +6,12 @@ export const formatTime = (iso: string | null): string => {
   return Number.isNaN(Date.parse(iso)) ? iso : new Date(iso).toLocaleString();
 };
 
+// A stored day (local midnight) without a time; unparseable values show as written.
+export const formatDay = (iso: string | null): string => {
+  if (!iso) return '–';
+  return Number.isNaN(Date.parse(iso)) ? iso : new Date(iso).toLocaleDateString();
+};
+
 // The unit is chosen after rounding, so 999,960 reads "1.0M", not "1000.0k".
 function compact(n: number): string {
   if (n < 1_000) return String(n);

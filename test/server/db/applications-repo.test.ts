@@ -189,10 +189,18 @@ describe('inferSenderDomain', () => {
     expect(inferSenderDomain('not a url')).toBeNull();
   });
   it('exports the ATS list', () => {
-    expect(ATS_DOMAINS).toHaveLength(8);
+    expect(ATS_DOMAINS).toHaveLength(12);
+  });
+  it.each([
+    'https://acme.wd5.myworkdayjobs.com/en-US/careers/job/1',
+    'https://careers-acme.icims.com/jobs/1',
+    'https://jobs.jobvite.com/acme/job/1',
+    'https://acme.teamtailor.com/jobs/1',
+  ])('returns null for the ATS host of %s (SOW-0045)', (url) => {
+    expect(inferSenderDomain(url)).toBeNull();
   });
 
-  it('profileIdsWithOpen lists profiles with an open application only, by name', () => {
+  it('profileIdsToSync lists profiles with an open application, by name', () => {
     const { db, repo, pid } = setup();
     const busy = insertTestProfile(db, 'A busy profile');
     const closed = insertTestProfile(db, 'Closed profile');
@@ -203,6 +211,17 @@ describe('inferSenderDomain', () => {
     repo.create({ profile_id: closed, company: 'Hooli', role: 'R', status: 'saved' });
     const staleOffer = repo.create({ profile_id: closed, company: 'Umbrella', role: 'R', status: 'offer' });
     db.prepare('UPDATE applications SET status_changed_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', staleOffer.id);
-    expect(repo.profileIdsWithOpen()).toEqual([busy, pid]);
+    expect(repo.profileIdsToSync()).toEqual([busy, pid]);
+  });
+
+  it('profileIdsToSync also lists profiles with a Gmail scope and no open application (SOW-0045)', () => {
+    const { db, repo, pid } = setup();
+    const scoped = insertTestProfile(db, 'Scoped profile');
+    const blank = insertTestProfile(db, 'Blank scope');
+    db.prepare("UPDATE profiles SET mail_filter_kind = 'query', mail_filter = 'label:jobapplications' WHERE id = ?").run(scoped);
+    db.prepare("UPDATE profiles SET mail_filter = '   ' WHERE id = ?").run(blank);
+    repo.create({ profile_id: scoped, company: 'Acme', role: 'R', status: 'saved' });
+    expect(repo.profileIdsToSync()).toEqual([scoped]);
+    expect(repo.profileIdsToSync()).not.toContain(pid);
   });
 });

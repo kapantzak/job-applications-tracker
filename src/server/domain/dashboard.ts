@@ -42,6 +42,9 @@ export interface DashboardSummary {
   quiet_days: number;
 }
 
+// What the dashboard route returns: the summary plus the new applications Gmail sync proposed (SOW-0045).
+export type DashboardResponse = DashboardSummary & { pending_new_applications: number };
+
 export type HistoryRow = Pick<StatusHistoryEntry, 'application_id' | 'from_status' | 'to_status' | 'changed_at'>;
 
 const DAY_MS = 86_400_000;

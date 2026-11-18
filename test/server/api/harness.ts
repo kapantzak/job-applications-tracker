@@ -10,6 +10,7 @@ import { createApplicationsRepo } from '../../../src/server/db/applications-repo
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../../src/server/db/jobs-repo.js';
 import { createProfilesRepo, type ProfileInput } from '../../../src/server/db/profiles-repo.js';
+import { createApplicationProposalsRepo } from '../../../src/server/db/application-proposals-repo.js';
 import { createProposalsRepo } from '../../../src/server/db/proposals-repo.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
 import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
@@ -17,6 +18,7 @@ import type { AgentTaskKind, Job, Profile, RunKind, Settings } from '../../../sr
 import { createLogStore } from '../../../src/server/runs/log-store.js';
 import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
 import { createSyncScheduler } from '../../../src/server/runs/scheduler.js';
+import { createApplicationProposalService } from '../../../src/server/services/application-proposals.js';
 import { createProposalService } from '../../../src/server/services/proposals.js';
 
 export const TEST_HOST = '127.0.0.1:4173';
@@ -69,6 +71,8 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const proposalsRepo = createProposalsRepo(db);
   const runsRepo = createRunsRepo(db);
   const proposalService = createProposalService({ db, proposalsRepo, applicationsRepo });
+  const applicationProposalsRepo = createApplicationProposalsRepo(db);
+  const applicationProposalService = createApplicationProposalService({ db, applicationProposalsRepo, applicationsRepo });
   const logStore = createLogStore(runsDir);
   const handlers: Record<RunKind, RunHandler> = {
     discover_jobs: async () => ({ summary: 'ok' }),
@@ -90,7 +94,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
   const scheduler = createSyncScheduler({
     settingsRepo,
     queue,
-    syncProfileIds: () => applicationsRepo.profileIdsWithOpen(),
+    syncProfileIds: () => applicationsRepo.profileIdsToSync(),
   });
   const factoryCalls: Harness['factoryCalls'] = [];
   const healthFor: Harness['healthFor'] = {};
@@ -136,6 +140,8 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     proposalsRepo,
     runsRepo,
     proposalService,
+    applicationProposalsRepo,
+    applicationProposalService,
     queue,
     logStore,
     scheduler,

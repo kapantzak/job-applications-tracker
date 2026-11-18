@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dayToIso, formatTime, formatUsage, isoToDay } from '../../src/ui/format.js';
+import { dayToIso, formatDay, formatTime, formatUsage, isoToDay } from '../../src/ui/format.js';
 
 describe('formatTime', () => {
   it('returns a dash for a missing value', () => {
@@ -13,6 +13,14 @@ describe('formatTime', () => {
 
   it('returns the raw string when it is not a date', () => {
     expect(formatTime('not a date')).toBe('not a date');
+  });
+});
+
+describe('formatDay', () => {
+  it('shows the local day only, a dash for null and odd values as written', () => {
+    expect(formatDay(new Date(2026, 1, 1).toISOString())).toBe(new Date(2026, 1, 1).toLocaleDateString());
+    expect(formatDay(null)).toBe('–');
+    expect(formatDay('last week')).toBe('last week');
   });
 });
 

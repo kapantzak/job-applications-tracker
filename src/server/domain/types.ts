@@ -293,6 +293,32 @@ export interface Proposal {
   reason: string;
   evidence: ProposalEvidence;
   state: ProposalState;
+  // Set only when a saved application is proposed to move on: the date the mail shows (SOW-0045).
+  applied_at: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+// A status a Gmail sync may give an application it proposes (SOW-0045).
+export type NewApplicationStatus = Extract<ApplicationStatus, 'applied' | 'screening' | 'interview' | 'offer' | 'rejected'>;
+
+// An application the mail shows but the app does not track yet; accepting creates it (SOW-0045).
+export interface ApplicationProposal {
+  id: string;
+  profile_id: string;
+  run_id: string;
+  company: string;
+  role: string;
+  status: NewApplicationStatus;
+  applied_at: string;
+  job_id: string | null;
+  url: string | null;
+  sender_domains: string[];
+  confidence: number;
+  reason: string;
+  evidence: ProposalEvidence;
+  state: ProposalState;
+  application_id: string | null;
   decided_at: string | null;
   created_at: string;
 }

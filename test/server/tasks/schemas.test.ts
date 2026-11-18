@@ -43,10 +43,30 @@ describe('task schemas', () => {
     expect(() => SyncMailOutput.parse({ mail_access: true, findings: [], scope_message_count: 1.5 })).toThrow();
   });
 
+  it('sync_mail new_applications defaults to an empty list and validates each entry', () => {
+    expect(SyncMailOutput.parse({ mail_access: true, findings: [] }).new_applications).toEqual([]);
+    const entry = {
+      company: 'Acme',
+      role: 'Engineer',
+      status: 'interview',
+      applied_at: '2026-01-05',
+      sender_domain: '',
+      confidence: 0.8,
+      reason: 'Invited to an interview',
+      evidence: { message_id: 'msg-001', date: '2026-01-09', from: 'jobs@acme.example.com', subject: 'S', snippet: 'N' },
+    };
+    expect(SyncMailOutput.parse({ mail_access: true, findings: [], new_applications: [entry] }).new_applications).toEqual([entry]);
+    const { sender_domain: _omitted, ...withoutDomain } = entry;
+    expect(SyncMailOutput.parse({ mail_access: true, findings: [], new_applications: [withoutDomain] }).new_applications[0]?.sender_domain).toBe('');
+    expect(() => SyncMailOutput.parse({ mail_access: true, findings: [], new_applications: [{ ...entry, status: 'no_change' }] })).toThrow();
+    expect(() => SyncMailOutput.parse({ mail_access: true, findings: [], new_applications: [{ ...entry, confidence: 2 }] })).toThrow();
+  });
+
   it('json schema for sync_mail requires mail_access', () => {
     const s = outputJsonSchema('sync_mail');
     expect(s.required).toContain('mail_access');
     expect(s.required).toContain('scope_message_count');
+    expect(s.required).toContain('new_applications');
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });
 });

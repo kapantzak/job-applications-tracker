@@ -7,6 +7,7 @@ import { createApplicationsRepo } from '../../src/server/db/applications-repo.js
 import type { Db } from '../../src/server/db/connection.js';
 import { createJobsRepo, type NewJob } from '../../src/server/db/jobs-repo.js';
 import { createProfilesRepo, type ProfileInput } from '../../src/server/db/profiles-repo.js';
+import { createApplicationProposalsRepo } from '../../src/server/db/application-proposals-repo.js';
 import { createProposalsRepo } from '../../src/server/db/proposals-repo.js';
 import { createRunsRepo } from '../../src/server/db/runs-repo.js';
 import { createSettingsRepo } from '../../src/server/db/settings-repo.js';
@@ -15,6 +16,7 @@ import type {
   EffortMode,
   FitChecks,
   JobRemote,
+  NewApplicationStatus,
   ProposalEvidence,
   RunKind,
   RunStatus,
@@ -125,7 +127,7 @@ const RUNS: RunSpec[] = [
   { key: 'r5', profile: 'rich', kind: 'discover_jobs', status: 'aborted', daysAgo: 3, minutes: 2,
     error: 'Cancelled by user', cost: 0.09, tokens: [21_700, 400] },
   { key: 'r6', profile: 'rich', kind: 'sync_mail', status: 'succeeded', daysAgo: 1, minutes: 4,
-    summary: '3 proposals created, 0 skipped', cost: 0.26, tokens: [52_300, 2_300] },
+    summary: '4 proposals created, 2 new applications found, 0 skipped', cost: 0.26, tokens: [52_300, 2_300] },
   { key: 's1', profile: 'sparse', kind: 'discover_jobs', status: 'succeeded', daysAgo: 9, minutes: 8,
     summary: '2 new, 0 duplicates, 0 dead, 0 unverified', cost: 0.55, tokens: [120_800, 3_900] },
   // Search rounds (SOW-0041): each later search finds some earlier jobs again; the newest finds nothing new.
@@ -303,6 +305,8 @@ interface ProposalSpec {
   decided?: { state: 'accepted' | 'rejected'; daysAgo: number };
   subject: string;
   snippet: string;
+  // A saved application moving on carries the mail's date (SOW-0045, decision 10A).
+  appliedDaysAgo?: number;
 }
 
 const PROPOSALS: ProposalSpec[] = [
@@ -321,6 +325,36 @@ const PROPOSALS: ProposalSpec[] = [
   { run: 'r6', app: 'no_response', to: 'rejected', confidence: 0.97, daysAgo: 1,
     reason: 'A clear rejection email for the Staff Frontend Engineer role.',
     subject: 'Update on your application', snippet: 'After careful consideration we have decided not to move forward...' },
+  { run: 'r6', app: 'saved', to: 'applied', confidence: 0.86, daysAgo: 1, appliedDaysAgo: 4,
+    reason: 'A confirmation for the saved Tyrell Labs job: the application was sent.',
+    subject: 'We received your application', snippet: 'Thank you for applying to Senior Software Engineer, Web...' },
+];
+
+// Applications the last sync found that the app does not track (SOW-0045): one matches a job without an
+// application, so it is linked; the other came from an ATS only.
+interface NewApplicationSpec {
+  run: string;
+  job?: string;
+  company?: string;
+  role?: string;
+  status: NewApplicationStatus;
+  appliedDaysAgo: number;
+  confidence: number;
+  reason: string;
+  from: string;
+  subject: string;
+  snippet: string;
+}
+
+const NEW_APPLICATIONS: NewApplicationSpec[] = [
+  { run: 'r6', job: 'umbrella', status: 'applied', appliedDaysAgo: 3, confidence: 0.91,
+    reason: 'A confirmation from the Umbrella Health careers site for a job on the Jobs page.',
+    from: 'careers@umbrella-health.example.com', subject: 'Application received: Senior React Developer',
+    snippet: 'Thanks for your interest in Umbrella Health. We have received your application...' },
+  { run: 'r6', company: 'Northwind Studio', role: 'Senior Frontend Engineer', status: 'interview', appliedDaysAgo: 10,
+    confidence: 0.84, reason: 'An interview invitation for an application the app does not track yet.',
+    from: 'no-reply@ats.example.com', subject: 'Northwind Studio: schedule your interview',
+    snippet: 'We enjoyed reviewing your application and would like to invite you to an interview...' },
 ];
 
 export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
@@ -333,6 +367,7 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
   const applicationsRepo = createApplicationsRepo(db);
   const proposalsRepo = createProposalsRepo(db);
   const proposalService = createProposalService({ db, proposalsRepo, applicationsRepo });
+  const applicationProposalsRepo = createApplicationProposalsRepo(db);
 
   const touch = (table: string, id: string, fields: Record<string, string | null>): void => {
     const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ');
@@ -527,7 +562,14 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         snippet: spec.snippet,
       };
       const [proposal] = proposalsRepo.createMany(runs[spec.run]!.id, [
-        { application_id: app.id, proposed_status: spec.to, confidence: spec.confidence, reason: spec.reason, evidence },
+        {
+          application_id: app.id,
+          proposed_status: spec.to,
+          confidence: spec.confidence,
+          reason: spec.reason,
+          evidence,
+          applied_at: spec.appliedDaysAgo === undefined ? null : ago(spec.appliedDaysAgo),
+        },
       ]);
       // The app creates proposals while the run saves its results, at the end of the run.
       touch('proposals', proposal!.id, { created_at: runs[spec.run]!.finishedAt });
@@ -541,6 +583,32 @@ export function seedMockData(db: Db, opts: SeedOptions): SeedSummary {
         proposalService.reject(proposal!.id);
       }
       touch('proposals', proposal!.id, { decided_at: at });
+    });
+
+    NEW_APPLICATIONS.forEach((spec, i) => {
+      const job = spec.job ? jobs[spec.job] : undefined;
+      const run = runs[spec.run]!;
+      const [proposal] = applicationProposalsRepo.createMany(run.id, profiles.rich.id, [
+        {
+          company: job?.company ?? spec.company!,
+          role: job?.title ?? spec.role!,
+          status: spec.status,
+          applied_at: ago(spec.appliedDaysAgo),
+          job_id: job?.id ?? null,
+          url: job?.url ?? null,
+          sender_domains: job ? [spec.from.split('@')[1]!] : [],
+          confidence: spec.confidence,
+          reason: spec.reason,
+          evidence: {
+            message_id: `msg-new-${String(i + 1).padStart(3, '0')}`,
+            date: ago(spec.appliedDaysAgo).slice(0, 10),
+            from: spec.from,
+            subject: spec.subject,
+            snippet: spec.snippet,
+          },
+        },
+      ]);
+      touch('application_proposals', proposal!.id, { created_at: run.finishedAt });
     });
 
     return {

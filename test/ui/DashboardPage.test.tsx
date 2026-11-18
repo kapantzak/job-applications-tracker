@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
-import type { DashboardSummary } from '../../src/server/domain/dashboard.js';
+import type { DashboardResponse } from '../../src/server/domain/dashboard.js';
 import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
@@ -36,7 +36,7 @@ function renderPage() {
 const BASE = '/profiles/platform-roles';
 const NO_STOPS = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
 
-function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
+function summary(over: Partial<DashboardResponse> = {}): DashboardResponse {
   return {
     total: 34,
     status_counts: {
@@ -58,6 +58,7 @@ function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
       offer: { waiting: 1, rejected: 0, no_response: 0, withdrawn: 0 },
     },
     pending_proposals: 3,
+    pending_new_applications: 2,
     quiet: [
       { id: 'a1', company: 'Acme', role: 'Engineer', status: 'applied', since: '2026-10-01T00:00:00Z', days: 20 },
       { id: 'a2', company: 'Globex', role: 'Analyst', status: 'screening', since: '2026-10-05T00:00:00Z', days: 16 },
@@ -113,7 +114,8 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('count-offers')).toHaveAttribute('href', `${BASE}/applications?status=offer`);
     expect(screen.getByTestId('count-rejected')).toHaveTextContent('6');
     expect(screen.getByTestId('count-rejected')).toHaveAttribute('href', `${BASE}/applications?status=rejected`);
-    expect(screen.getByTestId('count-proposals')).toHaveTextContent('3');
+    // Status changes and new applications both wait on the Review page (SOW-0045).
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('5');
     expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
   });
 
@@ -164,15 +166,37 @@ describe('DashboardPage', () => {
         rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
         stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
         pending_proposals: 0,
+        pending_new_applications: 0,
         quiet: [],
       }),
     );
     renderPage();
     expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(screen.getByText(/or sync from Gmail to find applications you already made/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', `${BASE}/jobs`);
     expect(screen.queryByText(/Where your/)).not.toBeInTheDocument();
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('0');
+  });
+
+  it('points an empty profile to Review when new applications are waiting (decision 17A)', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(
+      summary({
+        total: 0,
+        status_counts: { saved: 0, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0, withdrawn: 0, no_response: 0 },
+        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
+        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
+        pending_proposals: 0,
+        pending_new_applications: 2,
+        quiet: [],
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
+    expect(screen.getByText(/Sync from Gmail found 2 new applications\./)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review page' })).toHaveAttribute('href', `${BASE}/review`);
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('2');
   });
 
   it('a failed summary still shows runs and agent', async () => {

@@ -211,11 +211,16 @@ describe('AttentionCard', () => {
     renderCard(
       <AttentionCard
         pendingProposals={3}
+        newApplications={2}
         quiet={[quiet(1, 'applied', 21), quiet(2, 'interview', 15, 'Globex')]}
         href={href}
       />,
     );
     expect(screen.getByRole('link', { name: '3 status proposals waiting' })).toHaveAttribute(
+      'href',
+      '/profiles/platform-roles/review',
+    );
+    expect(screen.getByRole('link', { name: '2 new applications found' })).toHaveAttribute(
       'href',
       '/profiles/platform-roles/review',
     );
@@ -234,18 +239,20 @@ describe('AttentionCard', () => {
   });
 
   it('one proposal is singular, none hides the line', () => {
-    renderCard(<AttentionCard pendingProposals={1} quiet={[]} href={href} />);
+    renderCard(<AttentionCard pendingProposals={1} newApplications={1} quiet={[]} href={href} />);
     expect(screen.getByRole('link', { name: '1 status proposal waiting' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '1 new application found' })).toBeInTheDocument();
     cleanup();
-    renderCard(<AttentionCard pendingProposals={0} quiet={[quiet(1, 'screening', 20)]} href={href} />);
+    renderCard(<AttentionCard pendingProposals={0} newApplications={0} quiet={[quiet(1, 'screening', 20)]} href={href} />);
     expect(screen.queryByText(/status proposals? waiting/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/new applications? found/)).not.toBeInTheDocument();
     expect(screen.getByText('Screening, no change in 20 days')).toBeInTheDocument();
   });
 
   it('shows five, then the rest on request', async () => {
     const user = userEvent.setup();
     const seven = Array.from({ length: 7 }, (_, i) => quiet(i + 1, 'applied', 30 - i));
-    renderCard(<AttentionCard pendingProposals={0} quiet={seven} href={href} />);
+    renderCard(<AttentionCard pendingProposals={0} newApplications={0} quiet={seven} href={href} />);
     const list = () => screen.getByRole('list', { name: 'Needs attention' });
     expect(within(list()).getAllByRole('listitem')).toHaveLength(5);
     expect(screen.queryByRole('link', { name: 'Acme · Role 6' })).not.toBeInTheDocument();
@@ -256,7 +263,7 @@ describe('AttentionCard', () => {
   });
 
   it('nothing to do', () => {
-    renderCard(<AttentionCard pendingProposals={0} quiet={[]} href={href} />);
+    renderCard(<AttentionCard pendingProposals={0} newApplications={0} quiet={[]} href={href} />);
     expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });

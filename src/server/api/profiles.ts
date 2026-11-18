@@ -16,6 +16,7 @@ import { createCvAnalysisRouter } from './cv-analysis.js';
 import { createDashboardRouter } from './dashboard.js';
 import { HttpError, readJson } from './errors.js';
 import { createJobsRouter } from './jobs.js';
+import { createApplicationProposalsRouter } from './application-proposals.js';
 import { createProposalsRouter } from './proposals.js';
 import { createProfileRunsRouter } from './runs.js';
 
@@ -183,6 +184,7 @@ export function createProfilesRouter(deps: AppDeps): Hono {
   scoped.route('/:pid/jobs', createJobsRouter(deps));
   scoped.route('/:pid/applications', createApplicationsRouter(deps));
   scoped.route('/:pid/proposals', createProposalsRouter(deps));
+  scoped.route('/:pid/application-proposals', createApplicationProposalsRouter(deps));
   scoped.route('/:pid/dashboard', createDashboardRouter(deps));
   scoped.route('/:pid/runs', createProfileRunsRouter(deps));
 

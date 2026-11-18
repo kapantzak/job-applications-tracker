@@ -229,6 +229,14 @@ describe('profiles: delete', () => {
       },
     ]);
     h.deps.proposalService.accept(proposal!.id);
+    // New-application proposals (SOW-0045): one linked to the job, one accepted into an application.
+    const evidence = { message_id: 'msg-002', date: '2026-11-01', from: 'no-reply@ats.example', subject: 's', snippet: 'x' };
+    const fresh = { role: 'Dev', status: 'applied' as const, applied_at: 't', url: null, sender_domains: [], confidence: 0.8, reason: 'r', evidence };
+    const [, accepted] = h.deps.applicationProposalsRepo.createMany(sync.id, profileId, [
+      { ...fresh, company: 'Initech', job_id: job.id },
+      { ...fresh, company: 'Hooli', job_id: null },
+    ]);
+    h.deps.applicationProposalService.accept(accepted!.id);
     for (const run of h.deps.runsRepo.list(profileId)) h.deps.runsRepo.update(run.id, { status: 'succeeded' });
     return { runIds: h.deps.runsRepo.list(profileId).map((r) => r.id), app };
   }
@@ -250,7 +258,8 @@ describe('profiles: delete', () => {
     const count = (sql: string) => (h.deps.db.prepare(sql).get() as { n: number }).n;
     expect(count('SELECT COUNT(*) AS n FROM runs')).toBe(theirs.runIds.length);
     expect(count('SELECT COUNT(*) AS n FROM jobs')).toBe(1);
-    expect(count('SELECT COUNT(*) AS n FROM applications')).toBe(1);
+    expect(count('SELECT COUNT(*) AS n FROM applications')).toBe(2);
+    expect(count('SELECT COUNT(*) AS n FROM application_proposals')).toBe(2);
     expect(count('SELECT COUNT(*) AS n FROM proposals')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM status_history')).toBe(1);
     expect(h.deps.applicationsRepo.history(theirs.app.id)).toHaveLength(1);
