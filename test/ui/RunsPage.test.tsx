@@ -308,4 +308,24 @@ describe('RunsPage sorting and filters', () => {
     await screen.findByText('Agent timed out');
     expect(order()).toEqual(['run-c', 'run-b']);
   });
+
+  it('filters the Finished date up to a picked "Finished to" day, leaving out unfinished runs', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 9, 12));
+    try {
+      const user = userEvent.setup();
+      vi.mocked(client.listRuns).mockResolvedValue(runs);
+      renderPage();
+      await screen.findByText('Agent timed out');
+      const toolbar = screen.getByRole('group', { name: 'Filter runs' });
+      expect(within(toolbar).getByRole('button', { name: 'Filter by started from' })).toBeInTheDocument();
+      expect(within(toolbar).getByRole('button', { name: 'Filter by started to' })).toBeInTheDocument();
+      await user.click(within(toolbar).getByRole('button', { name: 'Filter by finished to' }));
+      const popover = await screen.findByRole('dialog', { name: 'Filter by finished to' });
+      await user.click(within(popover).getByRole('button', { name: /November 2nd, 2026/ }));
+      expect(order()).toEqual(['run-a']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

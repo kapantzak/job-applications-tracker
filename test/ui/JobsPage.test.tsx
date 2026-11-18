@@ -546,22 +546,31 @@ describe('JobsPage sorting, search and filters', () => {
     expect(screen.getByTestId('search')).toHaveTextContent('?title=data');
   });
 
-  it('filters the Found date with a range picked on the calendar', async () => {
+  it('filters the Found date with a "from" day, then a "to" day, each cleared on its own', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 10, 9, 12));
     try {
       const user = userEvent.setup();
       renderPage();
       await screen.findByText('Initech');
-      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found($|:)/ }));
-      const popover = await screen.findByRole('dialog', { name: 'Filter by found' });
-      await user.click(within(popover).getByRole('button', { name: /November 4th, 2026/ }));
-      expect(companies()).toEqual(['Globex']);
-      await user.click(within(popover).getByRole('button', { name: /November 6th, 2026/ }));
+      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found from($|:)/ }));
+      const from = await screen.findByRole('dialog', { name: 'Filter by found from' });
+      await user.click(within(from).getByRole('button', { name: /November 4th, 2026/ }));
       expect(companies()).toEqual(['Initech', 'Globex']);
-      expect(screen.getByTestId('search')).toHaveTextContent('?found=2026-11-04..2026-11-06');
-      await user.click(within(popover).getByRole('button', { name: 'Clear' }));
-      expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+      expect(screen.getByTestId('search')).toHaveTextContent(/^\?found=2026-11-04\.\.$/);
+      await user.keyboard('{Escape}');
+      await user.click(within(toolbar()).getByRole('button', { name: /^Filter by found to($|:)/ }));
+      const to = await screen.findByRole('dialog', { name: 'Filter by found to' });
+      expect(within(to).getByRole('button', { name: /November 3rd, 2026/ })).toBeDisabled();
+      await user.click(within(to).getByRole('button', { name: /November 4th, 2026/ }));
+      expect(companies()).toEqual(['Globex']);
+      const day = new Date(2026, 10, 4).toLocaleDateString(undefined, { dateStyle: 'medium' });
+      expect(within(toolbar()).getByRole('button', { name: `Filter by found from: ${day}` })).toBeInTheDocument();
+      expect(within(toolbar()).getByRole('button', { name: `Filter by found to: ${day}` })).toBeInTheDocument();
+      expect(screen.getByTestId('search')).toHaveTextContent('?found=2026-11-04..2026-11-04');
+      await user.click(within(to).getByRole('button', { name: 'Clear' }));
+      expect(companies()).toEqual(['Initech', 'Globex']);
+      expect(screen.getByTestId('search')).toHaveTextContent(/^\?found=2026-11-04\.\.$/);
     } finally {
       vi.useRealTimers();
     }

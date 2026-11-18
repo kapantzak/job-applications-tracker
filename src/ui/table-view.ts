@@ -225,11 +225,13 @@ export function nextSort(current: SortState | null, id: string): SortState | nul
 
 export const isFiltered = (state: ViewState): boolean => !!state.q.trim() || Object.keys(state.filters).length > 0;
 
-const dayLabel = (day: string) => fromIsoDay(day).toLocaleDateString(undefined, { dateStyle: 'medium' });
+export const dayLabel = (day: string): string => fromIsoDay(day).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
-export function dateRangeLabel(range: DateRange): string {
-  if (range.from && range.to) {
-    return range.from === range.to ? dayLabel(range.from) : `${dayLabel(range.from)} – ${dayLabel(range.to)}`;
-  }
-  return range.from ? `From ${dayLabel(range.from)}` : `Until ${dayLabel(range.to!)}`;
+// Each date column has a "from" and a "to" filter that set one end of the same range (SOW-0046).
+export type DateBound = 'from' | 'to';
+
+// Null once both ends are open, which removes the filter.
+export function withDateBound(range: DateRange | undefined, bound: DateBound, day: string | null): DateRange | null {
+  const next: DateRange = { from: range?.from ?? null, to: range?.to ?? null, [bound]: day };
+  return next.from || next.to ? next : null;
 }

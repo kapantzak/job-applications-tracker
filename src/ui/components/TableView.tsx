@@ -1,16 +1,17 @@
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon, ListFilterIcon, XIcon } from 'lucide-react';
-import type { DateRange as DayRange } from 'react-day-picker';
 import type { TableView } from '../hooks/use-table-view.js';
 import {
   canonicalText,
   type ColumnDef,
+  type DateBound,
   type DateRange,
-  dateRangeLabel,
+  dayLabel,
   type FilterValue,
   facetOptions,
   fromIsoDay,
   toIsoDay,
+  withDateBound,
 } from '../table-view.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,13 +83,15 @@ export function SortableHead<Row>({
   );
 }
 
-function summary<Row>(column: ColumnDef<Row>, value: FilterValue, rows: Row[]): string {
+// A date filter shows only its own end; undefined while that end is open.
+function summary<Row>(column: ColumnDef<Row>, value: FilterValue, rows: Row[], bound?: DateBound): string | undefined {
   if (Array.isArray(value)) {
     if (value.length !== 1) return `${value.length} selected`;
     return facetOptions(rows, column, value).find((o) => o.value === value[0])?.label ?? value[0]!;
   }
   if (typeof value === 'string') return `“${value.trim()}”`;
-  return dateRangeLabel(value);
+  const day = bound ? value[bound] : null;
+  return day ? dayLabel(day) : undefined;
 }
 
 function ValuesFilter<Row>({ view, column }: { view: TableView<Row>; column: ColumnDef<Row> }) {
@@ -157,31 +160,27 @@ function TextFilter<Row>({ view, column }: { view: TableView<Row>; column: Colum
   );
 }
 
-function DateFilter<Row>({ view, column }: { view: TableView<Row>; column: ColumnDef<Row> }) {
+function DateFilter<Row>({ view, column, bound }: { view: TableView<Row>; column: ColumnDef<Row>; bound: DateBound }) {
   const range = view.state.filters[column.id] as DateRange | undefined;
-  const selected: DayRange | undefined = range && {
-    from: range.from ? fromIsoDay(range.from) : undefined,
-    to: range.to ? fromIsoDay(range.to) : undefined,
-  };
-  const onSelect = (next: DayRange | undefined, day: Date) => {
-    // DayPicker clears a range that has only an end (an "Until" range from the URL); add the start instead.
-    if (range && !range.from && range.to) {
-      const picked = toIsoDay(day);
-      view.setFilter(column.id, picked <= range.to ? { from: picked, to: range.to } : { from: range.to, to: picked });
-      return;
-    }
-    view.setFilter(
-      column.id,
-      next?.from ? { from: toIsoDay(next.from), to: next.to ? toIsoDay(next.to) : null } : null,
-    );
-  };
+  const day = range?.[bound] ?? null;
+  const other = (bound === 'from' ? range?.to : range?.from) ?? null;
+  const selected = day ? fromIsoDay(day) : undefined;
+  // The other end limits this calendar, so the range can never be reversed.
+  const disabled = other ? (bound === 'from' ? { after: fromIsoDay(other) } : { before: fromIsoDay(other) }) : undefined;
+  const set = (next: string | null) => view.setFilter(column.id, withDateBound(range, bound, next));
   return (
     <div className="flex flex-col">
-      <Calendar mode="range" selected={selected} onSelect={onSelect} defaultMonth={selected?.from ?? selected?.to} />
+      <Calendar
+        mode="single"
+        selected={selected}
+        onSelect={(next) => set(next ? toIsoDay(next) : null)}
+        disabled={disabled}
+        defaultMonth={selected ?? (other ? fromIsoDay(other) : undefined)}
+      />
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
-        <p className="text-xs text-muted-foreground">Pick the first day, then the last.</p>
-        {range && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => view.setFilter(column.id, null)}>
+        <p className="text-xs text-muted-foreground">{bound === 'from' ? 'This day and later.' : 'This day and earlier.'}</p>
+        {day && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => set(null)}>
             Clear
           </Button>
         )}
@@ -190,11 +189,13 @@ function DateFilter<Row>({ view, column }: { view: TableView<Row>; column: Colum
   );
 }
 
-function ColumnFilter<Row>({ view, column }: { view: TableView<Row>; column: ColumnDef<Row> }) {
+// A date column gets two of these, one per `bound`.
+function ColumnFilter<Row>({ view, column, bound }: { view: TableView<Row>; column: ColumnDef<Row>; bound?: DateBound }) {
   const value = view.state.filters[column.id];
   const kind = column.filter!.kind;
-  const name = `Filter by ${column.label.toLowerCase()}`;
-  const current = value === undefined ? undefined : summary(column, value, view.rows);
+  const label = bound ? `${column.label} ${bound}` : column.label;
+  const name = `Filter by ${label.toLowerCase()}`;
+  const current = value === undefined ? undefined : summary(column, value, view.rows, bound);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -207,7 +208,7 @@ function ColumnFilter<Row>({ view, column }: { view: TableView<Row>; column: Col
           aria-label={current ? `${name}: ${current}` : name}
         >
           <ListFilterIcon aria-hidden="true" />
-          {column.label}
+          {label}
           {current && (
             <>
               <Separator orientation="vertical" className="mx-0.5 h-4" />
@@ -226,7 +227,7 @@ function ColumnFilter<Row>({ view, column }: { view: TableView<Row>; column: Col
       >
         {kind === 'values' && <ValuesFilter view={view} column={column} />}
         {kind === 'text' && <TextFilter view={view} column={column} />}
-        {kind === 'date' && <DateFilter view={view} column={column} />}
+        {kind === 'date' && bound && <DateFilter view={view} column={column} bound={bound} />}
       </PopoverContent>
     </Popover>
   );
@@ -247,9 +248,11 @@ export function TableToolbar<Row>({ view, noun, note }: { view: TableView<Row>; 
         />
         {view.columns
           .filter((c) => c.filter)
-          .map((c) => (
-            <ColumnFilter key={c.id} view={view} column={c} />
-          ))}
+          .flatMap((c) =>
+            c.filter!.kind === 'date'
+              ? (['from', 'to'] as const).map((bound) => <ColumnFilter key={`${c.id}-${bound}`} view={view} column={c} bound={bound} />)
+              : [<ColumnFilter key={c.id} view={view} column={c} />],
+          )}
         {view.filtered && (
           <Button type="button" variant="ghost" size="sm" className="h-8" onClick={view.reset}>
             Reset
