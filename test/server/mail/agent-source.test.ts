@@ -14,6 +14,8 @@ const req: MailSyncRequest = {
   ],
   reviewed_message_ids: ['msg-001', 'msg-002'],
   mail_scope: null,
+  new_applications_since: '2026/08/13',
+  tracked: [{ company: 'Initech', role: 'SRE' }],
 };
 
 function ctx() {
@@ -91,8 +93,90 @@ describe('agent mail source', () => {
     const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
     await source.sync(req, ctx().c);
     expect(tasks[0]?.prompt).toContain(
-      '## Mailbox scope\n\nNo scope is set. Search only messages from the listed companies and the ATS domains above.\nSet `scope_message_count` to null.\n',
+      '## Mailbox scope\n\nNo scope is set. Search only messages from the listed companies and the ATS domains above.\nFor new applications, search only messages from the ATS domains above, sent after 2026/08/13.\nSet `scope_message_count` to null.\n',
     );
+  });
+
+  it('limits the new-application search to ATS domains and the lookback without a scope', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync(req, ctx().c);
+    expect(tasks[0]?.prompt).toContain(
+      'For new applications, search only messages from the ATS domains above, sent after 2026/08/13.',
+    );
+  });
+
+  it('searches the whole scope for new applications when the profile has one', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync({ ...req, mail_scope: 'label:jobapplications' }, ctx().c);
+    const prompt = tasks[0]?.prompt ?? '';
+    expect(prompt).toContain('For new applications, search the whole scope, with no date limit of your own.');
+    expect(prompt).not.toContain('2026/08/13');
+  });
+
+  it('renders (none) for the open applications when there are none', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync({ ...req, applications: [] }, ctx().c);
+    expect(tasks[0]?.prompt).toContain('## Open applications\n\n(none)\n');
+  });
+
+  it('lists the tracked applications the agent must not report again, or (none)', async () => {
+    const tasks: AgentTask[] = [];
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [] }), tasks));
+    await source.sync(req, ctx().c);
+    await source.sync({ ...req, tracked: [] }, ctx().c);
+    expect(tasks[0]?.prompt).toContain('## Already tracked\n\nDo not report these as new applications:\n\n- company: Initech | role: SRE\n');
+    expect(tasks[1]?.prompt).toContain('Do not report these as new applications:\n\n(none)\n');
+  });
+
+  it('drops a malformed new application and keeps the rest of the result (S1)', async () => {
+    const good = {
+      company: 'Initech', role: 'Dev', status: 'applied', applied_at: '2026-02-01', sender_domain: '', confidence: 0.9, reason: 'r',
+      evidence: { message_id: 'msg-010', date: '2026-02-01', from: 'a@example.com', subject: 'S', snippet: 'N' },
+    };
+    const finding = {
+      application_id: 'app-1', proposed_status: 'interview', confidence: 0.9, reason: 'r',
+      evidence: { message_id: 'msg-011', date: '2026-02-02', from: 'b@example.com', subject: 'S', snippet: 'N' },
+    };
+    const source = createAgentMailSource(
+      stub(ok({ mail_access: true, findings: [finding], new_applications: [{ ...good, status: 'withdrawn' }, good, 'junk'] })),
+    );
+    const { logs, c } = ctx();
+    const res = await source.sync(req, c);
+    expect(res.findings).toHaveLength(1);
+    expect(res.new_applications).toEqual([good]);
+    expect(logs.filter((l) => l.startsWith('Dropping a new application the agent returned in the wrong shape'))).toHaveLength(2);
+  });
+
+  it.each([null, { company: 'Acme' }, 'none'])('treats new_applications %j as an empty list and keeps the findings (S1)', async (value) => {
+    const finding = {
+      application_id: 'app-1', proposed_status: 'interview', confidence: 0.9, reason: 'r',
+      evidence: { message_id: 'msg-011', date: '2026-02-02', from: 'b@example.com', subject: 'S', snippet: 'N' },
+    };
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [finding], new_applications: value })));
+    const { logs, c } = ctx();
+    const res = await source.sync(req, c);
+    expect(res.findings).toHaveLength(1);
+    expect(res.new_applications).toEqual([]);
+    expect(logs).toContain('Ignoring new_applications: the agent did not return a list');
+  });
+
+  it('returns the new applications the agent found', async () => {
+    const entry = {
+      company: 'Initech',
+      role: 'Platform Engineer',
+      status: 'applied',
+      applied_at: '2026-02-01',
+      sender_domain: '',
+      confidence: 0.9,
+      reason: 'Application confirmation',
+      evidence: { message_id: 'msg-010', date: '2026-02-01', from: 'no-reply@ats.example.com', subject: 'S', snippet: 'N' },
+    };
+    const source = createAgentMailSource(stub(ok({ mail_access: true, findings: [], new_applications: [entry] })));
+    const res = await source.sync(req, ctx().c);
+    expect(res.new_applications).toEqual([entry]);
   });
 
   it('puts the profile scope on a line of its own', async () => {

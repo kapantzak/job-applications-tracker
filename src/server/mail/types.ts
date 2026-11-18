@@ -12,6 +12,10 @@ export interface MailSyncRequest {
   reviewed_message_ids: string[];
   // The profile's Gmail search (SOW-0031); null searches by company and ATS sender.
   mail_scope: string | null;
+  // Without a scope, new applications are searched from this day on, as Gmail's YYYY/MM/DD (SOW-0045).
+  new_applications_since: string;
+  // Applications and earlier proposals the agent must not report as new (SOW-0045, decision 14A).
+  tracked: { company: string; role: string }[];
 }
 
 // promptVersion and adapterId are optional so non-agent sources can omit them; the handler passes them

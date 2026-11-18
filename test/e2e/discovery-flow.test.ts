@@ -126,6 +126,25 @@ describe('discovery and sync flow over HTTP', () => {
           },
         },
       ],
+      // An application the app does not track yet (SOW-0045).
+      new_applications: [
+        {
+          company: 'Initech',
+          role: 'Site Reliability Engineer',
+          status: 'screening',
+          applied_at: '2026-10-20',
+          sender_domain: 'initech.example',
+          confidence: 0.85,
+          reason: 'Recruiter asked for an intro call',
+          evidence: {
+            message_id: 'msg-2',
+            date: '2026-10-28',
+            from: 'talent@initech.example',
+            subject: 'Intro call',
+            snippet: 'Thanks for applying, can we talk?',
+          },
+        },
+      ],
       notes: '',
     });
     const sync = await api('POST', `${p}/runs/sync`);
@@ -141,6 +160,13 @@ describe('discovery and sync flow over HTTP', () => {
     expect(detail.body.status).toBe('interview');
     expect(detail.body.history).toHaveLength(1);
     expect(detail.body.history[0].source).toBe('proposal');
+
+    const fresh = await api<any[]>('GET', `${p}/application-proposals`);
+    expect(fresh.body.map((f) => [f.company, f.status])).toEqual([['Initech', 'screening']]);
+    const imported = await api('POST', `${p}/application-proposals/${fresh.body[0].id}/accept`);
+    expect(imported.status).toBe(200);
+    expect(imported.body.application).toMatchObject({ company: 'Initech', status: 'screening', sender_domains: ['initech.example'] });
+    expect((await api<any[]>('GET', `${p}/applications`)).body).toHaveLength(2);
 
     const runIds = [discover.body.id, sync.body.id];
     for (const id of runIds) expect(existsSync(join(tmp, 'data', 'runs', `${id}.log`))).toBe(true);

@@ -18,7 +18,7 @@ export const FIELD_HELP = {
   profileNotes:
     'Anything else the search should know, in your own words: visa needs, a salary floor, industries to avoid. Discovery reads it with the other fields. A profile created from a CV gets a short summary of your experience here.',
   gmailSync:
-    "Where sync looks for replies about this profile's applications. Empty: your agent searches mail from the companies you applied to and from job-board senders. A label or search limits sync to that mail, from any sender, which keeps two profiles' replies apart.",
+    "Where sync looks for replies about this profile's applications, and for applications you have not added yet. Empty: your agent searches mail from the companies you applied to and from job-board senders, and looks for new applications in job-board mail from the last 90 days. A label or search limits sync to that mail, from any sender, which keeps two profiles' replies apart.",
   gmailLabel:
     'The label exactly as Gmail shows it, for example `Jobs/Frontend`. Create the label and a Gmail filter that applies it to replies yourself; the app only reads mail and never labels it.',
   gmailSearch:
@@ -28,7 +28,7 @@ export const FIELD_HELP = {
   role: 'The job title you applied for. Sync uses it to tell two applications at the same company apart.',
   url: 'Link to the job posting. When you add an application, the app takes the sender domain from it (for example `example.com`) so sync can look for mail from that domain. Job-board links such as Greenhouse or Lever give no domain.',
   status:
-    'Where this application stands now. Pick Saved for a job you have not applied to yet. Sync checks only open applications: Applied, Screening, Interview, No response, and Offers from the last 30 days.',
+    'Where this application stands now. Pick Saved for a job you have not applied to yet. Sync looks for replies to open applications only: Applied, Screening, Interview, No response, and Offers from the last 30 days. When mail shows you applied to a Saved job, sync proposes moving it on.',
   appliedDate:
     'The day you sent the application. When you add an application as Applied without a date, today is used. Sync tells your agent to skip mail older than this date.',
   applicationNotes: 'Your own notes, such as a contact name or the next step. They are never sent to your agent.',
@@ -66,7 +66,7 @@ export const FIELD_HELP = {
   runTimeout:
     "How long one agent may run, in milliseconds (1200000 = 20 minutes). An agent that goes over is stopped and what it found is lost. In a Max-effort search each of the five agents gets this much on its own, and the others' results are kept.",
   syncInterval:
-    'How often the app syncs Gmail by itself, once for each profile with open applications. It runs only while the app is running. Off: sync only when you click Sync.',
+    'How often the app syncs Gmail by itself, once for each profile with open applications or a Gmail label or search. It runs only while the app is running. Off: sync only when you click Sync.',
   spendCap:
     "Applies to Claude Code job searches only. The estimate is Claude Code's own, at list price, so it is not what your plan bills.",
   port: 'The port the app listens on, on this computer only (`127.0.0.1`). If it is taken, the next free port is used. `--port` on the command line overrides it.',

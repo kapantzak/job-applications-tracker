@@ -126,7 +126,7 @@ export function ApplicationsPage() {
     <div>
       <PageHeader
         title="Applications"
-        description="Every application you are tracking. Mail sync proposes status changes for review."
+        description="Every application you are tracking. Mail sync proposes status changes and new applications for review."
         actions={
           <>
             <Button type="button" variant="outline" disabled={syncing} onClick={sync}>

@@ -12,6 +12,7 @@ import { createCvAnalysesRepo } from './db/cv-analyses-repo.js';
 import { migrate, openDatabase } from './db/connection.js';
 import { createJobsRepo } from './db/jobs-repo.js';
 import { createProfilesRepo } from './db/profiles-repo.js';
+import { createApplicationProposalsRepo } from './db/application-proposals-repo.js';
 import { createProposalsRepo } from './db/proposals-repo.js';
 import { createRunsRepo } from './db/runs-repo.js';
 import { createSettingsRepo } from './db/settings-repo.js';
@@ -23,6 +24,7 @@ import { createSyncScheduler } from './runs/scheduler.js';
 import { createDiscoveryHandler } from './services/discovery.js';
 import { createImportHandler } from './services/import-jobs.js';
 import { createMailSyncHandler } from './services/mail-sync.js';
+import { createApplicationProposalService } from './services/application-proposals.js';
 import { createProposalService } from './services/proposals.js';
 
 export { APP_VERSION } from './version.js';
@@ -137,11 +139,16 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   const proposalsRepo = createProposalsRepo(db);
   const runsRepo = createRunsRepo(db);
   const proposalService = createProposalService({ db, proposalsRepo, applicationsRepo });
+  const applicationProposalsRepo = createApplicationProposalsRepo(db);
+  const applicationProposalService = createApplicationProposalService({ db, applicationProposalsRepo, applicationsRepo });
 
   const adapterFactory = createAdapter;
   const discovery = createDiscoveryHandler({ profilesRepo, jobsRepo, settingsRepo, adapterFactory });
   const sync = createMailSyncHandler({
+    db,
     applicationsRepo,
+    applicationProposalsRepo,
+    jobsRepo,
     profilesRepo,
     proposalsRepo,
     settingsRepo,
@@ -170,8 +177,9 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   const scheduler = createSyncScheduler({
     settingsRepo,
     queue,
-    // Profiles without open applications have nothing to check; skip them instead of queueing a no-op.
-    syncProfileIds: () => applicationsRepo.profileIdsWithOpen(),
+    // A profile with neither open applications nor a Gmail scope is skipped: a scheduled run there would
+    // spend tokens on an unscoped search the user never asked for.
+    syncProfileIds: () => applicationsRepo.profileIdsToSync(),
   });
 
   const deps: AppDeps = {
@@ -185,6 +193,8 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     proposalsRepo,
     runsRepo,
     proposalService,
+    applicationProposalsRepo,
+    applicationProposalService,
     queue,
     logStore,
     scheduler,

@@ -13,6 +13,8 @@ export type NewProposal = {
   confidence: number;
   reason: string;
   evidence: ProposalEvidence;
+  // Only for a saved application moving on (SOW-0045): the date the mail shows.
+  applied_at?: string | null;
 };
 
 type ProposalRow = Omit<Proposal, "evidence"> & { evidence: string };
@@ -24,9 +26,9 @@ function toProposal(row: ProposalRow): Proposal {
 export function createProposalsRepo(db: Db) {
   const insert = db.prepare(
     `INSERT INTO proposals (id, run_id, application_id, proposed_status, confidence, reason,
-       evidence, state, decided_at, created_at)
+       evidence, state, applied_at, decided_at, created_at)
      VALUES (@id, @run_id, @application_id, @proposed_status, @confidence, @reason,
-       @evidence, 'pending', NULL, @created_at)`,
+       @evidence, 'pending', @applied_at, NULL, @created_at)`,
   );
   const selectById = db.prepare("SELECT * FROM proposals WHERE id = ?");
   // rowid tiebreak keeps same-millisecond inserts in insertion order.
@@ -67,6 +69,7 @@ export function createProposalsRepo(db: Db) {
           confidence: item.confidence,
           reason: item.reason,
           evidence: JSON.stringify(item.evidence),
+          applied_at: item.applied_at ?? null,
           created_at: now,
         });
         return get(id) as Proposal;

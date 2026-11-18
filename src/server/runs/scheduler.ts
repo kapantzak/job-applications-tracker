@@ -6,7 +6,7 @@ type SettingsRepo = ReturnType<typeof createSettingsRepo>;
 export interface SyncSchedulerDeps {
   settingsRepo: Pick<SettingsRepo, 'getAll'>;
   queue: Pick<RunQueue, 'enqueue'>;
-  // Profiles worth syncing on each tick: those with open applications (SOW-0014).
+  // Profiles worth syncing on each tick: open applications (SOW-0014) or a Gmail scope (SOW-0045).
   syncProfileIds: () => string[];
 }
 

@@ -59,13 +59,18 @@ describe('renderPrompt', () => {
       reviewed_message_ids: 'R',
       ats_domains: 'D',
       mail_scope: 'SCOPE_X',
+      tracked: 'TRACKED_Y',
     });
-    expect(r.version).toBe('4');
+    expect(r.text).toContain('## Already tracked\n\nDo not report these as new applications:\n\nTRACKED_Y\n');
+    expect(r.version).toBe('5');
     expect(r.text).toContain('## Mailbox scope\n\nSCOPE_X\n');
     expect(r.text).toContain('- Search only the messages the mailbox scope above allows.');
-    expect(r.text).toContain('set `mail_access` to false and return an empty `findings` array.');
+    expect(r.text).toContain('set `mail_access` to false and return empty `findings` and `new_applications` arrays.');
+    expect(r.text).toContain('## New applications');
+    expect(r.text).toContain('at most 50 entries');
+    expect(r.text).toContain('Ignore job alerts, newsletters');
     expect(r.text).toContain('Gmail message id');
-    expect(r.text).not.toContain('version: 4');
+    expect(r.text).not.toContain('version: 5');
     expect(r.text).toContain('- Set `scope_message_count` as the mailbox scope above says.');
     expect(r.text.toLowerCase()).toContain('read only');
   });

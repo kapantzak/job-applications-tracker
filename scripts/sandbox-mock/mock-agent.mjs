@@ -128,9 +128,39 @@ function syncMail() {
       },
     };
   });
+  // Applications the mail shows but the prompt does not list (SOW-0045); none when the scope matches nothing.
+  // Open applications and the "Already tracked" lines ("- company: <c> | role: <r>") are never reported again.
+  const trackedSection = /^## Already tracked\n([\s\S]*?)^## /m.exec(prompt)?.[1] ?? '';
+  const tracked = [...trackedSection.matchAll(/^- company: (.*?) \| role: /gm)].map((m) => m[1]);
+  const listed = new Set([...apps.map((a) => a.company), ...tracked].map((c) => c.toLowerCase()));
+  const fresh = [
+    ['Contoso Pharma', 'Frontend Engineer', 'applied', 'confirms that your application was received'],
+    ['Fabrikam Games', 'UI Developer', 'screening', 'asks for a short intro call'],
+  ];
+  const newApplications = missed
+    ? []
+    : fresh
+        .filter(([company]) => !listed.has(company.toLowerCase()))
+        .map(([company, role, status, what]) => ({
+          company,
+          role,
+          status,
+          applied_at: today,
+          sender_domain: '',
+          confidence: 0.8,
+          reason: `Mock result: an email from ${company} ${what}.`,
+          evidence: {
+            message_id: `mock-msg-${randomUUID().slice(0, 12)}`,
+            date: today,
+            from: 'no-reply@ats.example.com',
+            subject: `${company}: ${role}`,
+            snippet: `Mock email: ${company} ${what}.`,
+          },
+        }));
   return {
     mail_access: true,
     findings,
+    new_applications: newApplications,
     notes: 'Mock agent: no mailbox was read.',
     scope_message_count: scoped ? (missed ? 0 : apps.length) : null,
   };

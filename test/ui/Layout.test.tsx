@@ -10,6 +10,7 @@ import { TEST_PROFILE } from './profile-shell.js';
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   listProposals: vi.fn(),
+  listApplicationProposals: vi.fn(),
   getProfileBySlug: vi.fn(),
   getHealth: vi.fn(),
 }));
@@ -49,6 +50,7 @@ beforeEach(() => {
   localStorage.clear();
   document.documentElement.className = '';
   vi.mocked(client.listProposals).mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never);
+  vi.mocked(client.listApplicationProposals).mockResolvedValue([{ id: 'n1' }] as never);
   vi.mocked(client.getProfileBySlug).mockResolvedValue(TEST_PROFILE);
   vi.mocked(client.getHealth).mockResolvedValue({ ok: true, version: '9.9.9', dataDir: '/data' });
 });
@@ -65,8 +67,10 @@ describe('Layout', () => {
     // The probe renders "loading:-" first, so wait for its text rather than for the element.
     await waitFor(() => expect(screen.getByTestId('shell')).toHaveTextContent('ready:pf1'));
     expect(client.getProfileBySlug).toHaveBeenCalledWith('platform-roles');
-    const review = await screen.findByRole('link', { name: 'Review, 2 pending' });
+    // Status changes and new applications (SOW-0045) both wait on the Review page.
+    const review = await screen.findByRole('link', { name: 'Review, 3 pending' });
     expect(client.listProposals).toHaveBeenCalledWith('pf1');
+    expect(client.listApplicationProposals).toHaveBeenCalledWith('pf1');
     expect(review).toHaveAttribute('href', '/profiles/platform-roles/review');
     expect(review).toHaveAttribute('aria-current', 'page');
     const nav = screen.getByRole('navigation', { name: 'Profile' });
@@ -133,7 +137,7 @@ describe('Layout', () => {
 
   it('leaves Cmd/Ctrl+B to the browser and writes no sidebar cookie', async () => {
     renderShell();
-    await screen.findByRole('link', { name: 'Review, 2 pending' });
+    await screen.findByRole('link', { name: 'Review, 3 pending' });
     expect(fireEvent.keyDown(window, { key: 'b', metaKey: true })).toBe(true);
     expect(fireEvent.keyDown(window, { key: 'b', ctrlKey: true })).toBe(true);
     expect(document.cookie).not.toContain('sidebar_state');

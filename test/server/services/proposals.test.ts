@@ -54,6 +54,41 @@ function setup(
 }
 
 describe("proposal service", () => {
+  it("accepting a proposal for a saved application sets its applied date from the mail (SOW-0045)", () => {
+    const { app, applicationsRepo, proposalsRepo, service } = setup("saved", "applied");
+    const runId = (proposalsRepo.listPending(app.profile_id)[0] as { run_id: string }).run_id;
+    const [withDate] = proposalsRepo.createMany(runId, [
+      {
+        application_id: app.id,
+        proposed_status: "interview",
+        confidence: 0.9,
+        reason: "invite",
+        evidence: { message_id: "msg-002", date: "2026-01-09", from: "r@example.com", subject: "s", snippet: "n" },
+        applied_at: "2026-01-05T00:00:00.000Z",
+      },
+    ]);
+    const result = service.accept(withDate!.id);
+    expect(result.application).toMatchObject({ status: "interview", applied_at: "2026-01-05T00:00:00.000Z" });
+    expect(applicationsRepo.get(app.id)?.applied_at).toBe("2026-01-05T00:00:00.000Z");
+  });
+
+  it("keeps the applied date of an application that is no longer saved", () => {
+    const { app, applicationsRepo, proposalsRepo, service } = setup("applied");
+    applicationsRepo.update(app.id, { applied_at: "2026-01-01T00:00:00.000Z" });
+    const runId = (proposalsRepo.listPending(app.profile_id)[0] as { run_id: string }).run_id;
+    const [withDate] = proposalsRepo.createMany(runId, [
+      {
+        application_id: app.id,
+        proposed_status: "rejected",
+        confidence: 0.9,
+        reason: "no",
+        evidence: { message_id: "msg-002", date: "2026-01-09", from: "r@example.com", subject: "s", snippet: "n" },
+        applied_at: "2026-01-05T00:00:00.000Z",
+      },
+    ]);
+    expect(service.accept(withDate!.id).application.applied_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
   it("accept moves the application and records proposal history", () => {
     const { app, proposal, applicationsRepo, service } = setup();
     const result = service.accept(proposal.id);

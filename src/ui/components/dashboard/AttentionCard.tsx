@@ -9,6 +9,8 @@ const VISIBLE = 5;
 
 interface AttentionCardProps {
   pendingProposals: number;
+  // Applications Gmail sync found that the app does not track yet (SOW-0045).
+  newApplications: number;
   quiet: QuietApplication[];
   href: (path: string) => string;
 }
@@ -19,7 +21,7 @@ function quietLine(q: QuietApplication): string {
     : `${STATUS_LABELS[q.status]}, no change in ${q.days} days`;
 }
 
-export function AttentionCard({ pendingProposals, quiet, href }: AttentionCardProps) {
+export function AttentionCard({ pendingProposals, newApplications, quiet, href }: AttentionCardProps) {
   const [expanded, setExpanded] = useState(false);
   // Expands in place: a link to a list page would show a different count than this card.
   const shown = expanded ? quiet : quiet.slice(0, VISIBLE);
@@ -33,7 +35,7 @@ export function AttentionCard({ pendingProposals, quiet, href }: AttentionCardPr
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 text-sm">
-        {pendingProposals === 0 && quiet.length === 0 ? (
+        {pendingProposals === 0 && newApplications === 0 && quiet.length === 0 ? (
           <p className="text-muted-foreground">Nothing needs you right now.</p>
         ) : (
           <ul aria-label="Needs attention" className="flex flex-col divide-y">
@@ -41,6 +43,13 @@ export function AttentionCard({ pendingProposals, quiet, href }: AttentionCardPr
               <li className="py-2 first:pt-0">
                 <Link to={href('/review')} className="font-medium hover:underline">
                   {pendingProposals} {pendingProposals === 1 ? 'status proposal' : 'status proposals'} waiting
+                </Link>
+              </li>
+            )}
+            {newApplications > 0 && (
+              <li className="py-2 first:pt-0">
+                <Link to={href('/review')} className="font-medium hover:underline">
+                  {newApplications} {newApplications === 1 ? 'new application' : 'new applications'} found
                 </Link>
               </li>
             )}

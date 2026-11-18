@@ -31,6 +31,23 @@ const evidence = (id: string) => ({
 });
 
 describe("proposals repo", () => {
+  it("stores the mail's applied date only when one is given", () => {
+    const { repo, runId, app } = setup();
+    const [plain, saved] = repo.createMany(runId, [
+      { application_id: app.id, proposed_status: "interview", confidence: 0.9, reason: "a", evidence: evidence("msg-001") },
+      {
+        application_id: app.id,
+        proposed_status: "applied",
+        confidence: 0.9,
+        reason: "b",
+        evidence: evidence("msg-002"),
+        applied_at: "2026-01-02T00:00:00.000Z",
+      },
+    ]);
+    expect(plain?.applied_at).toBeNull();
+    expect(saved?.applied_at).toBe("2026-01-02T00:00:00.000Z");
+  });
+
   it("createMany then listPending returns them oldest first", () => {
     const { repo, runId, app, pid } = setup();
     const created = repo.createMany(runId, [

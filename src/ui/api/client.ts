@@ -1,5 +1,6 @@
 import type {
   Application,
+  ApplicationProposal,
   ApplicationStatus,
   CvAnalysis,
   EffortMode,
@@ -14,7 +15,7 @@ import type {
   Settings,
   StatusHistoryEntry,
 } from '../../server/domain/types.js';
-import type { DashboardSummary } from '../../server/domain/dashboard.js';
+import type { DashboardResponse } from '../../server/domain/dashboard.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -129,7 +130,7 @@ export const getProfileBySlug = (slug: string): Promise<Profile> =>
 // `cvAnalysisId` saves the profile's applied CV analysis and replaces its CV (SOW-0024).
 export const updateProfile = (profileId: string, profile: ProfileInput, cvAnalysisId?: string): Promise<Profile> =>
   request('PUT', scoped(profileId, ''), cvAnalysisId ? { ...profile, cv_analysis_id: cvAnalysisId } : profile);
-export const getDashboard = (profileId: string): Promise<DashboardSummary> =>
+export const getDashboard = (profileId: string): Promise<DashboardResponse> =>
   request('GET', scoped(profileId, '/dashboard'));
 
 // Removes the profile with its jobs, applications, proposals, runs and run logs.
@@ -199,6 +200,23 @@ export const acceptProposal = (
   request('POST', scoped(profileId, `/proposals/${enc(id)}/accept`));
 export const rejectProposal = (profileId: string, id: string): Promise<{ proposal: Proposal }> =>
   request('POST', scoped(profileId, `/proposals/${enc(id)}/reject`));
+
+// Applications Gmail sync found that the app does not track yet (SOW-0045).
+export const listApplicationProposals = (profileId: string): Promise<ApplicationProposal[]> =>
+  request('GET', scoped(profileId, '/application-proposals'));
+// created: added; moved: a saved application took the status; already_tracked: nothing changed (decision 11C).
+export type AcceptOutcome = 'created' | 'moved' | 'already_tracked';
+export const acceptApplicationProposal = (
+  profileId: string,
+  id: string,
+): Promise<{ proposal: ApplicationProposal; application: Application; outcome: AcceptOutcome }> =>
+  request('POST', scoped(profileId, `/application-proposals/${enc(id)}/accept`));
+export const rejectApplicationProposal = (profileId: string, id: string): Promise<{ proposal: ApplicationProposal }> =>
+  request('POST', scoped(profileId, `/application-proposals/${enc(id)}/reject`));
+// Only the ids the page showed (decision 15A).
+export type AcceptManyResult = { accepted: number } & Record<AcceptOutcome, number>;
+export const acceptAllApplicationProposals = (profileId: string, ids: string[]): Promise<AcceptManyResult> =>
+  request('POST', scoped(profileId, '/application-proposals/accept-all'), { ids });
 
 export const listRuns = (profileId: string, limit?: number): Promise<Run[]> =>
   request('GET', scoped(profileId, limit === undefined ? '/runs' : `/runs?limit=${limit}`));

@@ -252,6 +252,35 @@ CREATE INDEX idx_runs_status ON runs (status);
 CREATE INDEX idx_runs_profile_id ON runs (profile_id);
 `,
   },
+  {
+    // Gmail sync proposes applications the app does not track yet (SOW-0045). A separate table, because
+    // proposals require an existing application. proposals.applied_at carries the mail's date when a
+    // saved application is proposed to move on (decision 10A); NULL for every other proposal.
+    id: 12,
+    sql: `
+ALTER TABLE proposals ADD COLUMN applied_at TEXT;
+CREATE TABLE application_proposals (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES profiles (id),
+  run_id TEXT NOT NULL REFERENCES runs (id),
+  company TEXT NOT NULL,
+  role TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('applied','screening','interview','offer','rejected')),
+  applied_at TEXT NOT NULL,
+  job_id TEXT REFERENCES jobs (id),
+  url TEXT,
+  sender_domains TEXT NOT NULL DEFAULT '[]',
+  confidence REAL NOT NULL,
+  reason TEXT NOT NULL,
+  evidence TEXT NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','accepted','rejected')),
+  application_id TEXT REFERENCES applications (id),
+  decided_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_application_proposals_profile_state ON application_proposals (profile_id, state);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.
