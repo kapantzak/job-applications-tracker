@@ -102,8 +102,19 @@ describe('mock agent', () => {
 
   it('reports a scope count only when the prompt carries a scope', async () => {
     const app = { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] };
-    expect((await sync([app])).findings.scope_message_count).toBe(1);
+    // One reply plus the two new applications' emails.
+    expect((await sync([app])).findings.scope_message_count).toBe(3);
     expect((await sync([app], null)).findings.scope_message_count).toBeNull();
+  });
+
+  // A labelled profile without applications (the seeded Backend Engineering) must not read as a scope miss.
+  it('reports a non-zero count for a scope with mail but no listed applications', async () => {
+    expect((await sync([])).findings.scope_message_count).toBe(2);
+    const tracked = [
+      { company: 'Contoso Pharma', role: 'Frontend Engineer' },
+      { company: 'Fabrikam Games', role: 'UI Developer' },
+    ];
+    expect((await sync([], 'label:Jobs-Backend', tracked)).findings.scope_message_count).toBe(1);
   });
 
   it('reports a zero count and no changes when the scope contains nomatch', async () => {
@@ -150,5 +161,72 @@ describe('mock agent', () => {
     const draft = AnalyseCvOutput.parse(output);
     expect(draft.name).toMatch(/^[A-Za-z0-9 ]{1,40}$/);
     expect(draft.target_roles.length).toBeGreaterThan(0);
+  });
+});
+
+// The demo video (SOW-0048) shows agent text on screen, so --demo must keep the shapes and drop "mock".
+describe('mock agent --demo', () => {
+  let cwd: string;
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    adapter_id: 'custom' as const,
+    custom_command: mockAgentCommand(process.execPath, SCRIPT, { delayMs: 0, demo: true }),
+  };
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'jobtrack-mock-demo-'));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  async function run(kind: AgentTaskKind, vars: Record<string, unknown>) {
+    const logs: string[] = [];
+    const result = await createAdapter(settings, kind).run(
+      { kind, prompt: renderPrompt(kind, vars).text, outputSchema: outputJsonSchema(kind) },
+      { timeoutMs: 10_000, cwd, onLog: (line) => logs.push(line) },
+    );
+    expect(result.ok).toBe(true);
+    return { output: result.output, logs };
+  }
+
+  const noMock = (text: string) => expect(text).not.toMatch(/mock/i);
+
+  it('returns jobs and progress lines without mock wording, except the links', async () => {
+    const vars = { profile: 'Target roles: Frontend Engineer', known_urls: '(none)', scope: DEFAULT_SCOPE, custom_prompt: '(none)' };
+    const { output, logs } = await run('discover_jobs', vars);
+    const { jobs, notes } = DiscoverJobsOutput.parse(output);
+    expect(jobs.length).toBeGreaterThanOrEqual(4);
+    for (const job of jobs) noMock(JSON.stringify({ ...job, url: '' }));
+    noMock(notes ?? '');
+    for (const line of logs.filter((l) => !l.trim().startsWith('{'))) noMock(line);
+  });
+
+  it('drafts a profile without mock wording', async () => {
+    const { output } = await run('analyse_cv', { cv_text: 'Sam Placeholder', seniority_levels: SENIORITY_LEVELS.join(', ') });
+    const draft = AnalyseCvOutput.parse(output);
+    expect(draft.name).toMatch(/^[A-Za-z0-9 ]{1,40}$/);
+    noMock(JSON.stringify(draft));
+  });
+
+  it('reports replies and new applications without mock wording, except message ids', async () => {
+    const logs: string[] = [];
+    const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
+      {
+        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] }],
+        reviewed_message_ids: [],
+        mail_scope: null,
+        new_applications_since: '2026/08/13',
+        tracked: [],
+      },
+      { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
+    );
+    expect(findings.findings.map((f) => f.proposed_status)).toEqual(['interview']);
+    expect(findings.new_applications).toHaveLength(2);
+    const strip = (e: { message_id: string }) => ({ ...e, message_id: '' });
+    for (const f of findings.findings) noMock(JSON.stringify({ ...f, evidence: strip(f.evidence) }));
+    for (const a of findings.new_applications) noMock(JSON.stringify({ ...a, evidence: strip(a.evidence) }));
+    noMock(findings.notes ?? '');
   });
 });

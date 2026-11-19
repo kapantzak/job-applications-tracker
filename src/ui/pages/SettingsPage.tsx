@@ -83,7 +83,7 @@ export function SettingsPage() {
       <div className="flex flex-col gap-6">
         <SettingsSection
           title="Agent"
-          description="The agent CLI the app runs for discovery and mail sync."
+          description="The agent CLI the app runs for job searches, Gmail sync and CV analysis."
           getPatch={() => ({
             adapter_id: values.adapter_id,
             custom_command: values.custom_command,

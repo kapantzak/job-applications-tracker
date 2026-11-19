@@ -1,5 +1,7 @@
 # Job Applications Tracker: Design
 
+> **Historical document.** This records the original v1 design as written on 2026-11-05. The app has changed since; the current product contract is [`.agents/sow/specs/product-v1.md`](../../../.agents/sow/specs/product-v1.md), and the SOWs under `.agents/sow/done/` record each later change.
+
 Date: 2026-11-05
 Status: approved by user on 2026-11-05
 

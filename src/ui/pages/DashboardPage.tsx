@@ -17,12 +17,13 @@ import { JourneyCard } from '../components/dashboard/JourneyCard.js';
 import { StatusBarCard } from '../components/dashboard/StatusBarCard.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
+import { InfoTip } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
 import { chooseView, readStoredView, storeView, useJourneyFits, type DashboardView } from '../dashboard-view.js';
 import { formatTime } from '../format.js';
-import { SCREEN_INTROS } from '../help-text.js';
+import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -156,10 +157,13 @@ export function DashboardPage() {
               onStart={(...args) => void start(() => startDiscovery(profileId, ...args))}
               onImported={(run) => navigate(href(`/runs/${run.id}`))}
             />
-            <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
-              <MailIcon />
-              Sync from Gmail
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="outline" disabled={busy} onClick={() => start(() => startSync(profileId))}>
+                <MailIcon />
+                Sync from Gmail
+              </Button>
+              <InfoTip topic="Sync from Gmail" text={FIELD_HELP.syncFromGmail} />
+            </div>
             <SyncScopeNote />
           </>
         }

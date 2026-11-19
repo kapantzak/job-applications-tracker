@@ -100,6 +100,15 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
   });
 
+  it('explains Sync from Gmail next to its button', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'About Sync from Gmail' }));
+    expect(await screen.findByRole('dialog', { name: 'About Sync from Gmail' })).toHaveTextContent(
+      /nothing changes until you accept/,
+    );
+  });
+
   it('tiles show counts and link to matching lists', async () => {
     renderPage();
     const inProgress = await screen.findByTestId('count-in-progress');

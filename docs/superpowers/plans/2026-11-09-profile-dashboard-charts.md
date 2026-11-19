@@ -1,5 +1,7 @@
 # Profile Dashboard Charts Implementation Plan
 
+> **Historical document.** This records the Dashboard implementation plan (SOW-0034) as written on 2026-11-09. The app has changed since; the current product contract is [`.agents/sow/specs/product-v1.md`](../../../.agents/sow/specs/product-v1.md), and the SOWs under `.agents/sow/done/` record each later change.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the Dashboard's three count tiles with four linked tiles, a status bar, a pipeline funnel and a needs-attention list, fed by one new profile-scoped summary route.
