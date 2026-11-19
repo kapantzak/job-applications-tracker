@@ -21,6 +21,8 @@ const framesDir = join(work, 'frames');
 const cvFile = join(work, 'sam-placeholder-cv.pdf');
 const outDir = join(root, 'docs', 'video');
 const VIEWPORT = { width: 1440, height: 900 };
+// How long the opening still of the Journey graph shows before the walkthrough (SOW-0050).
+const INTRO_SECONDS = 2;
 // Each mock task takes this long, so the progress screens are visible but short.
 const AGENT_DELAY_MS = 4000;
 
@@ -264,16 +266,23 @@ async function startCapture(context, page) {
       await cdp.send('Page.stopScreencast');
       const end = Date.now() / 1000;
       if (frames.length === 0) throw new Error('No frames were captured');
-      // The concat list quotes paths with '; a ' inside the path is written as '\''.
-      const q = (file) => `file '${file.replace(/'/g, "'\\''")}'`;
-      const lines = frames.flatMap((f, i) => [q(f.file), `duration ${Math.max(0.001, (frames[i + 1]?.t ?? end) - f.t).toFixed(3)}`]);
-      // The concat demuxer ignores the last duration unless the last file is listed again.
-      lines.push(q(frames.at(-1).file));
-      const list = join(work, 'frames.txt');
-      writeFileSync(list, `${lines.join('\n')}\n`);
-      return { list, seconds: end - frames[0].t };
+      // A copy, so a frame arriving late while the opening still is prepared cannot join the list.
+      return { frames: frames.slice(), end };
     },
   };
+}
+
+// The opening still goes first, so players that show the first frame before playback show the Journey graph.
+function writeConcatList({ frames, end }, intro) {
+  // The concat list quotes paths with '; a ' inside the path is written as '\''.
+  const q = (file) => `file '${file.replace(/'/g, "'\\''")}'`;
+  const lines = [q(intro.file), `duration ${intro.seconds.toFixed(3)}`];
+  lines.push(...frames.flatMap((f, i) => [q(f.file), `duration ${Math.max(0.001, (frames[i + 1]?.t ?? end) - f.t).toFixed(3)}`]));
+  // The concat demuxer ignores the last duration unless the last file is listed again.
+  lines.push(q(frames.at(-1).file));
+  const list = join(work, 'frames.txt');
+  writeFileSync(list, `${lines.join('\n')}\n`);
+  return list;
 }
 
 function encode(list, out) {
@@ -514,14 +523,29 @@ try {
   await context.addInitScript(OVERLAY);
   const page = await context.newPage();
   await page.goto(url);
+  // Capturing from the first-run screen keeps the app's "Loading..." shell out of the video; the fonts
+  // that screen uses may only start loading once React renders it.
+  await page.getByText('Start from your CV').first().waitFor();
   await page.evaluate(() => document.fonts.ready);
   const capture = await startCapture(context, page);
   const d = director(page);
   await storyboard(page, d, url);
-  const { list } = await capture.stop();
+  const captured = await capture.stop();
+
+  // The opening still: the Journey view from the last scene, with no card, caption, pointer or tooltip.
+  await d.card('');
+  // A single jump leaves Radix's grace area holding the tooltip open; intermediate moves let it close.
+  await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 4, { steps: 12 });
+  await page.getByRole('tooltip').first().waitFor({ state: 'hidden', timeout: 5000 });
+  await page.evaluate(() => {
+    document.getElementById('demo-pointer').style.display = 'none';
+  });
+  await sleep(400);
+  const intro = join(framesDir, 'intro.jpg');
+  await page.screenshot({ path: intro, type: 'jpeg', quality: 95 });
 
   const video = join(outDir, 'demo.mp4');
-  encode(list, video);
+  encode(writeConcatList(captured, { file: intro, seconds: INTRO_SECONDS }), video);
   const seconds = probeSeconds(video);
 
   // The poster is taken after capture stops, so its play button never shows in the video.
