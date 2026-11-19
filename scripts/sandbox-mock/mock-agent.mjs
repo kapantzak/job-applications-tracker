@@ -162,7 +162,9 @@ function syncMail() {
     findings,
     new_applications: newApplications,
     notes: 'Mock agent: no mailbox was read.',
-    scope_message_count: scoped ? (missed ? 0 : apps.length) : null,
+    // One email per reply and per new application; at least one, so a scope that matches mail never reads
+    // as a miss just because the profile has nothing open (the seeded Backend Engineering).
+    scope_message_count: scoped ? (missed ? 0 : Math.max(1, findings.length + newApplications.length)) : null,
   };
 }
 

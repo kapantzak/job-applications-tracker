@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "build": "tsup && vite build",
-    "dev:server": "tsx watch src/server/index.ts",
+    "dev:server": "tsx watch src/server/dev.ts",
     "sandbox": "npm run build && node bin/jobtrack.js --data-dir .tmp/sandbox",
     "sandbox:mock": "npm run build && tsx scripts/sandbox-mock/prepare.ts && node bin/jobtrack.js --data-dir .tmp/sandbox-mock",
     "test": "vitest run",

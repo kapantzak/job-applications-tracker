@@ -29,6 +29,7 @@ Settings and UI:
 - From SOW-0029 review: with a filter active (for example Application = Not tracked on Jobs, or a Status filter on Applications), Save, Mark applied or a status change removes the row at once (user decision 10) and focus falls to `body`; move focus to the next row or the table, together with the dismiss item above.
 - From SOW-0010 review: closing the Add application sheet discards a half-filled form; keep the draft in `ApplicationsPage` state if users ask for it.
 - From SOW-0010 real use: adapter cards show both an Installed badge and "installed <version>" text; drop one.
+- From SOW-0047 review: user-facing prose still says "discovery" where labels say "job search" (SOW-0039): `src/ui/pages/JobsPage.tsx` intro ("discovery runs") and empty state ("Run a discovery"), and `src/ui/help-text.ts` (`findJobs` "Starts a discovery run", `manualProfile`, and the profile field help "Discovery searches/marks/checks…"). One wording sweep; re-take `docs/images/jobs.png` and `profile-help.png` if their text changes.
 - `src/ui/api/client.ts` imports `Job` without using it (pre-existing, found by `--noUnusedLocals` in SOW-0010).
 
 Server:

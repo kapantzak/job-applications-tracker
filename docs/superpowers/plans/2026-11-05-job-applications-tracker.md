@@ -1,5 +1,7 @@
 # Job Applications Tracker Implementation Plan
 
+> **Historical document.** This records the v1 implementation plan as written on 2026-11-05. The app has changed since; the current product contract is [`.agents/sow/specs/product-v1.md`](../../../.agents/sow/specs/product-v1.md), and the SOWs under `.agents/sow/done/` record each later change.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the v1 of `job-applications-tracker`: an npm-installable local web app that uses the user's own CLI agent to find job openings and to propose application status changes from Gmail, with every change confirmed by the user.

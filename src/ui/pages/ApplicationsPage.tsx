@@ -5,11 +5,13 @@ import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '
 import { listApplications, setApplicationStatus, startSync } from '../api/client.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { InfoTip } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { StatusSelect } from '../components/StatusSelect.js';
 import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { formatTime } from '../format.js';
+import { FIELD_HELP } from '../help-text.js';
 import { useListLinkState, useTableView } from '../hooks/use-table-view.js';
 import { STATUS_LABELS } from '../labels.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
@@ -126,13 +128,16 @@ export function ApplicationsPage() {
     <div>
       <PageHeader
         title="Applications"
-        description="Every application you are tracking. Mail sync proposes status changes and new applications for review."
+        description="Every application you are tracking. Gmail sync proposes status changes and new applications for review."
         actions={
           <>
-            <Button type="button" variant="outline" disabled={syncing} onClick={sync}>
-              <MailIcon />
-              Sync from Gmail
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="outline" disabled={syncing} onClick={sync}>
+                <MailIcon />
+                Sync from Gmail
+              </Button>
+              <InfoTip topic="Sync from Gmail" text={FIELD_HELP.syncFromGmail} />
+            </div>
             <Sheet open={adding} onOpenChange={setAdding}>
               <SheetTrigger asChild>
                 <Button type="button">

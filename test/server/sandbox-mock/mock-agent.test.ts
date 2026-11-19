@@ -102,8 +102,19 @@ describe('mock agent', () => {
 
   it('reports a scope count only when the prompt carries a scope', async () => {
     const app = { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] };
-    expect((await sync([app])).findings.scope_message_count).toBe(1);
+    // One reply plus the two new applications' emails.
+    expect((await sync([app])).findings.scope_message_count).toBe(3);
     expect((await sync([app], null)).findings.scope_message_count).toBeNull();
+  });
+
+  // A labelled profile without applications (the seeded Backend Engineering) must not read as a scope miss.
+  it('reports a non-zero count for a scope with mail but no listed applications', async () => {
+    expect((await sync([])).findings.scope_message_count).toBe(2);
+    const tracked = [
+      { company: 'Contoso Pharma', role: 'Frontend Engineer' },
+      { company: 'Fabrikam Games', role: 'UI Developer' },
+    ];
+    expect((await sync([], 'label:Jobs-Backend', tracked)).findings.scope_message_count).toBe(1);
   });
 
   it('reports a zero count and no changes when the scope contains nomatch', async () => {

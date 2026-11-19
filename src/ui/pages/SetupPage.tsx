@@ -55,7 +55,7 @@ export function SetupPage() {
 
   return (
     <div className="max-w-2xl">
-      <PageHeader title="Setup" description="Pick the agent CLI that searches for jobs and reads your mail." />
+      <PageHeader title="Setup" description="Pick the agent CLI that searches for jobs, reads your mail and drafts profiles from your CV." />
       <Card>
         <form onSubmit={onSubmit} className="flex flex-col gap-6">
           <CardContent>

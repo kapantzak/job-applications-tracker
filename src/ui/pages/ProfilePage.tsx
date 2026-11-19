@@ -16,7 +16,10 @@ export function ProfilePage() {
   const profile = useCurrentProfile();
   return (
     <div className="max-w-2xl">
-      <PageHeader title="Profile" description="What you are looking for. Discovery runs use this to search." />
+      <PageHeader
+        title="Profile"
+        description="What you are looking for, your CV and where Gmail sync looks. Job searches use the search fields."
+      />
       {/* A new profile starts with its own form, CV analysis and review state. */}
       <ProfileEditor key={profile.id} profile={profile} />
     </div>

@@ -82,6 +82,15 @@ describe('ApplicationsPage', () => {
     expect(await screen.findByText(/Sync searches by company and job-board senders\./)).toBeInTheDocument();
   });
 
+  it('explains Sync from Gmail next to its button', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'About Sync from Gmail' }));
+    expect(await screen.findByRole('dialog', { name: 'About Sync from Gmail' })).toHaveTextContent(
+      /nothing changes until you accept/,
+    );
+  });
+
   it('posts the new status and updates the row', async () => {
     const user = userEvent.setup();
     vi.mocked(client.setApplicationStatus).mockResolvedValue({
