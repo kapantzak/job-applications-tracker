@@ -3,7 +3,7 @@ import {
   applyView,
   type ColumnDef,
   type DateRange,
-  dateRangeLabel,
+  dayLabel,
   EMPTY_VIEW,
   facetOptions,
   isFiltered,
@@ -11,6 +11,7 @@ import {
   orderIndex,
   parseView,
   toIsoDay,
+  withDateBound,
   writeView,
 } from '../../src/ui/table-view.js';
 
@@ -233,12 +234,21 @@ describe('helpers', () => {
     expect(toIsoDay(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
   });
 
-  it('labels single days, ranges and open ends', () => {
+  it('labels a day in the medium local date style', () => {
+    expect(dayLabel('2026-11-03')).toBe(new Date(2026, 10, 3).toLocaleDateString(undefined, { dateStyle: 'medium' }));
+  });
+
+  it('sets one end of a date range and keeps the other', () => {
     const r = (from: string | null, to: string | null): DateRange => ({ from, to });
-    const day = (s: string) => new Date(`${s}T00:00:00`).toLocaleDateString(undefined, { dateStyle: 'medium' });
-    expect(dateRangeLabel(r('2026-11-03', '2026-11-03'))).toBe(day('2026-11-03'));
-    expect(dateRangeLabel(r('2026-11-03', '2026-11-07'))).toBe(`${day('2026-11-03')} – ${day('2026-11-07')}`);
-    expect(dateRangeLabel(r('2026-11-03', null))).toBe(`From ${day('2026-11-03')}`);
-    expect(dateRangeLabel(r(null, '2026-11-07'))).toBe(`Until ${day('2026-11-07')}`);
+    expect(withDateBound(undefined, 'from', '2026-11-03')).toEqual(r('2026-11-03', null));
+    expect(withDateBound(undefined, 'to', '2026-11-07')).toEqual(r(null, '2026-11-07'));
+    expect(withDateBound(r(null, '2026-11-07'), 'from', '2026-11-03')).toEqual(r('2026-11-03', '2026-11-07'));
+    expect(withDateBound(r('2026-11-03', null), 'to', '2026-11-03')).toEqual(r('2026-11-03', '2026-11-03'));
+    expect(withDateBound(r('2026-11-03', '2026-11-07'), 'to', null)).toEqual(r('2026-11-03', null));
+  });
+
+  it('drops the range once both ends are open', () => {
+    expect(withDateBound({ from: '2026-11-03', to: null }, 'from', null)).toBeNull();
+    expect(withDateBound(undefined, 'to', null)).toBeNull();
   });
 });
