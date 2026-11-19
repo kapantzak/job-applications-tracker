@@ -2,6 +2,10 @@
 
 A local app that finds job postings matching your profile, checks that the links work, and tracks your applications. It can also read your mailbox through your AI agent and propose status changes. Everything runs on your machine; data is stored in a local SQLite file.
 
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/kapantzak/job-applications-tracker/blob/main/docs/video/demo.mp4)
+
+A walk-through of about a minute and a quarter, with captions and no sound: create a profile from a CV, find jobs, mark one applied, sync Gmail and accept what it found. It uses invented data and a stand-in agent.
+
 ## Install
 
 Requires Node 22 or newer.
@@ -319,6 +323,7 @@ npm run dev:ui      # Vite dev server; proxies the API to port 4173
 node bin/jobtrack.js --no-open --data-dir .tmp/dev
 npm run sandbox     # build, then run the app on a throwaway data dir (.tmp/sandbox)
 npm run sandbox:mock  # build, reseed .tmp/sandbox-mock with mock data, then run the app on it
+npm run demo:video  # build, then record docs/video/demo.mp4 and its poster
 ```
 
 Every pull request and every push to `main` runs `npm run typecheck` and `npm test` on GitHub Actions with Node 22 and the current Node LTS.
@@ -326,6 +331,8 @@ Every pull request and every push to `main` runs `npm run typecheck` and `npm te
 `npm run sandbox` never touches your real data in `~/.job-applications-tracker`. Delete `.tmp/sandbox` to start fresh. Extra flags go after `--`, for example `npm run sandbox -- --no-open --port 5000`.
 
 `npm run sandbox:mock` is for trying the UI. It deletes `.tmp/sandbox-mock` and fills it again on every start, so changes made in the UI last until the next start. The data is invented: a profile with a CV, jobs, applications in every status, proposals (two of them new applications from mail, one linked to a job) and past runs, and the Gmail label `Jobs/Frontend`; a sparse profile with a custom Gmail search; an empty one; "Backend Engineering", whose four past searches show search rounds (jobs seen again, one now redirected and one now dead, a custom search, and a latest search with no new jobs); and "Scope Miss", whose label `NoMatch` the mock agent reports as matching no mail, so its Sync shows "the Gmail scope matched no mail". The mock does the same for any label or search containing `nomatch`. The agent is set to a mock command (`scripts/sandbox-mock/mock-agent.mjs`) that returns canned results after a few seconds (Find jobs also returns the profile's newest known link, so a search shows a job seen again, and Sync mail also returns two invented new applications unless they are already tracked), so Find jobs, Sync mail and CV analysis never search the web, read your Gmail or start Claude Code or Codex. The app still checks job links over the network: the mock links point at `example.com`, so without a connection new jobs show up as dead or unverified. Changing the agent in Settings switches the sandbox to your real agent. Do not pass `--data-dir` after `--`: the mock data is always written to `.tmp/sandbox-mock`, and another folder would run the app on that folder's own data and agent instead.
+
+`npm run demo:video` records the README video on a fresh data folder (`.tmp/demo-video/data`) with the mock agent in its `--demo` mode, which writes realistic invented text instead of "Mock …". It installs `playwright-core` under `.tmp/demo-video` (not a project dependency) and the headless Chromium it needs (about 90 MB, in Playwright's usual browser cache; browsers other projects use are left alone), and needs `ffmpeg` and `ffprobe` on your `PATH` and a network connection, because the app checks the mock job links on `example.com`. Captions and the pointer are drawn on the page while recording; the steps and captions live in `scripts/demo-video/record.mjs`.
 
 The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
 

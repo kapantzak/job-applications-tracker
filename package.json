@@ -39,6 +39,7 @@
     "dev:server": "tsx watch src/server/dev.ts",
     "sandbox": "npm run build && node bin/jobtrack.js --data-dir .tmp/sandbox",
     "sandbox:mock": "npm run build && tsx scripts/sandbox-mock/prepare.ts && node bin/jobtrack.js --data-dir .tmp/sandbox-mock",
+    "demo:video": "npm run build && npm install --no-audit --no-fund --prefix .tmp/demo-video playwright-core@1.58.0 && tsx scripts/demo-video/record.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
     "dev:ui": "vite",

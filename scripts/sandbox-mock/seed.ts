@@ -1,7 +1,7 @@
 // Mock data for the UI sandbox (SOW-0028). Writes go through the repositories so the rows match what the
 // app itself stores; repositories stamp the current time, so timestamps are backdated afterwards.
 // Every company, person, address and link here is invented.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApplicationsRepo } from '../../src/server/db/applications-repo.js';
 import type { Db } from '../../src/server/db/connection.js';
@@ -46,9 +46,15 @@ export interface SeedSummary {
 // Double quotes with \" and \\ escaped, as splitShellWords in src/server/agents/presets.ts reads them.
 const quote = (word: string): string => `"${word.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
 
-export function mockAgentCommand(nodePath: string, scriptPath: string, opts: { delayMs?: number } = {}): string {
+// `demo` swaps the "Mock …" wording for realistic invented text, for the demo video (SOW-0048).
+export function mockAgentCommand(
+  nodePath: string,
+  scriptPath: string,
+  opts: { delayMs?: number; demo?: boolean } = {},
+): string {
   const delay = opts.delayMs === undefined ? [] : ['--delay-ms', String(opts.delayMs)];
-  return [quote(nodePath), quote(scriptPath), ...delay, '{prompt_file}'].join(' ');
+  const demo = opts.demo ? ['--demo'] : [];
+  return [quote(nodePath), quote(scriptPath), ...delay, ...demo, '{prompt_file}'].join(' ');
 }
 
 type ProfileKey = 'rich' | 'sparse' | 'empty' | 'miss' | 'rounds';
@@ -56,25 +62,8 @@ type ProfileKey = 'rich' | 'sparse' | 'empty' | 'miss' | 'rounds';
 const DAY = 86_400_000;
 const MINUTE = 60_000;
 
-const CV_TEXT = `# Sam Placeholder - Frontend Engineer
-
-Berlin, Germany - open to hybrid work
-
-## Summary
-
-Frontend engineer with eight years of experience building design systems and data-heavy web apps
-with React and TypeScript. Cares about accessibility, testing and fast builds.
-
-## Experience
-
-- Senior Frontend Engineer, Example Widgets GmbH (2022 - now): led the shared component library used by six teams.
-- Frontend Engineer, Sample Retail AG (2018 - 2022): rebuilt the checkout in React; cut bundle size by 40%.
-- Web Developer, Demo Agency (2016 - 2018): client sites and internal tools.
-
-## Skills
-
-React, TypeScript, Vite, Testing Library, Playwright, CSS architecture, WCAG 2.2, GraphQL
-`;
+// Shared with the demo video (scripts/demo-video/record.mjs), which turns it into a PDF.
+const CV_TEXT = readFileSync(new URL('./cv.md', import.meta.url), 'utf8');
 
 interface RunSpec {
   key: string;
