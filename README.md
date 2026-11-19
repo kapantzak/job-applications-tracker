@@ -2,12 +2,12 @@
 
 A local app that finds job postings matching your profile, checks that the links work, and tracks your applications. It can also read your mailbox through your AI agent and propose status changes. Everything runs on your machine; data is stored in a local SQLite file.
 
-https://github.com/user-attachments/assets/b8a99c62-5cd1-4d47-9ca8-b1f7545564ce
+https://github.com/user-attachments/assets/1e6bafb7-4eca-446d-95d0-9f96840d3fb4
 
 <details>
 <summary>Video not playing? Open it here</summary>
 
-[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/b8a99c62-5cd1-4d47-9ca8-b1f7545564ce)
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/1e6bafb7-4eca-446d-95d0-9f96840d3fb4)
 
 </details>
 
@@ -339,7 +339,7 @@ Every pull request and every push to `main` runs `npm run typecheck` and `npm te
 
 `npm run sandbox:mock` is for trying the UI. It deletes `.tmp/sandbox-mock` and fills it again on every start, so changes made in the UI last until the next start. The data is invented: a profile with a CV, jobs, applications in every status, proposals (two of them new applications from mail, one linked to a job) and past runs, and the Gmail label `Jobs/Frontend`; a sparse profile with a custom Gmail search; an empty one; "Backend Engineering", whose four past searches show search rounds (jobs seen again, one now redirected and one now dead, a custom search, and a latest search with no new jobs); and "Scope Miss", whose label `NoMatch` the mock agent reports as matching no mail, so its Sync shows "the Gmail scope matched no mail". The mock does the same for any label or search containing `nomatch`. The agent is set to a mock command (`scripts/sandbox-mock/mock-agent.mjs`) that returns canned results after a few seconds (Find jobs also returns the profile's newest known link, so a search shows a job seen again, and Sync mail also returns two invented new applications unless they are already tracked), so Find jobs, Sync mail and CV analysis never search the web, read your Gmail or start Claude Code or Codex. The app still checks job links over the network: the mock links point at `example.com`, so without a connection new jobs show up as dead or unverified. Changing the agent in Settings switches the sandbox to your real agent. Do not pass `--data-dir` after `--`: the mock data is always written to `.tmp/sandbox-mock`, and another folder would run the app on that folder's own data and agent instead.
 
-`npm run demo:video` records the README video on a fresh data folder (`.tmp/demo-video/data`) with the mock agent in its `--demo` mode, which writes realistic invented text instead of "Mock …". It installs `playwright-core` under `.tmp/demo-video` (not a project dependency) and the headless Chromium it needs (about 90 MB, in Playwright's usual browser cache; browsers other projects use are left alone), and needs `ffmpeg` and `ffprobe` on your `PATH` and a network connection, because the app checks the mock job links on `example.com`. Captions and the pointer are drawn on the page while recording; the steps and captions live in `scripts/demo-video/record.mjs`. The README plays a copy uploaded to GitHub as an attachment, because GitHub does not play a committed MP4; after re-recording, upload the new file from a comment box on github.com and replace both attachment links at the top of this file.
+`npm run demo:video` records the README video on a fresh data folder (`.tmp/demo-video/data`) with the mock agent in its `--demo` mode, which writes realistic invented text instead of "Mock …". It installs `playwright-core` under `.tmp/demo-video` (not a project dependency) and the headless Chromium it needs (about 90 MB, in Playwright's usual browser cache; browsers other projects use are left alone), and needs `ffmpeg` and `ffprobe` on your `PATH` and a network connection, because the app checks the mock job links on `example.com`. Captions and the pointer are drawn on the page while recording; the steps and captions live in `scripts/demo-video/record.mjs`. The README plays a copy uploaded to GitHub as an attachment, because GitHub does not play a committed MP4; after re-recording, upload the new file from a comment box on github.com, post the comment (until then the link does not work for visitors), and replace both attachment links at the top of this file.
 
 The UI is built with [shadcn/ui](https://ui.shadcn.com). Component sources live in `src/ui/components/ui/` and are owned by this repo. Add one with:
 
