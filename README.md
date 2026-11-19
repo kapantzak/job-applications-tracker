@@ -4,7 +4,7 @@ A local app that finds job postings matching your profile, checks that the links
 
 [![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/kapantzak/job-applications-tracker/blob/main/docs/video/demo.mp4)
 
-A walk-through of about a minute and a quarter, with captions and no sound: create a profile from a CV, find jobs, mark one applied, sync Gmail and accept what it found. It uses invented data and a stand-in agent.
+A walk-through of about a minute and a half, with captions and no sound: create a profile from a CV, find jobs, mark one applied, sync Gmail and accept what it found, then see the Dashboard's Journey graph a few weeks and 42 applications later. It uses invented data and a stand-in agent.
 
 ## Install
 

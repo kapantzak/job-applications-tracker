@@ -299,7 +299,58 @@ function probeSeconds(file) {
 
 // --- The storyboard (user-approved captions, SOW-0048 decision 15) --------------------------------------------
 
-async function storyboard(page, d) {
+// --- Many applications for the Journey scene (SOW-0049) -------------------------------------------------
+
+// User decision 3: where the 42 sent applications stopped, the demo's own two included, plus 3 saved.
+const JOURNEY = {
+  applied: { waiting: 12, rejected: 8, no_response: 3, withdrawn: 1 },
+  screening: { waiting: 3, rejected: 6, no_response: 0, withdrawn: 1 },
+  interview: { waiting: 2, rejected: 4, no_response: 0, withdrawn: 0 },
+  offer: { waiting: 2, rejected: 0, no_response: 0, withdrawn: 0 },
+};
+const JOURNEY_FUNNEL = { applied: 42, screening: 18, interview: 8, offer: 2 };
+const JOURNEY_SAVED = 3;
+const STAGES = ['applied', 'screening', 'interview', 'offer'];
+const ROLES = ['Senior Frontend Engineer', 'Frontend Platform Engineer', 'Senior React Developer', 'UI Engineer'];
+
+// Adds what the profile lacks for decision 3 through the app's own routes. Status changes go through the
+// status route so each leaves the history row that funnel reach counts.
+async function addJourneyApplications(base) {
+  const profiles = await api(base, 'GET', '/api/profiles');
+  if (profiles.length !== 1) throw new Error(`Expected one profile, found ${profiles.length}`);
+  const scope = `/api/profiles/${profiles[0].id}`;
+  const before = await api(base, 'GET', `${scope}/dashboard`);
+  const plans = [];
+  for (const [i, stage] of STAGES.entries()) {
+    for (const [exit, want] of Object.entries(JOURNEY[stage])) {
+      const missing = want - before.stopped_at[stage][exit];
+      if (missing < 0) throw new Error(`The demo already has more than ${want} ${exit} at ${stage}`);
+      const steps = [...STAGES.slice(1, i + 1), ...(exit === 'waiting' ? [] : [exit])];
+      for (let k = 0; k < missing; k++) plans.push({ start: 'applied', steps });
+    }
+  }
+  const saved = JOURNEY_SAVED - before.status_counts.saved;
+  if (saved < 0) throw new Error(`The demo already has more than ${JOURNEY_SAVED} saved`);
+  for (let k = 0; k < saved; k++) plans.push({ start: 'saved', steps: [] });
+
+  for (const [n, plan] of plans.entries()) {
+    // Plainly invented names: the card hides them, and word-based names could match real companies.
+    const company = `Example Company ${String(n + 1).padStart(2, '0')}`;
+    const app = await api(base, 'POST', `${scope}/applications`, { company, role: ROLES[n % ROLES.length], status: plan.start });
+    for (const status of plan.steps) await api(base, 'POST', `${scope}/applications/${app.id}/status`, { status });
+  }
+
+  const after = await api(base, 'GET', `${scope}/dashboard`);
+  // Spreading over the expected object fixes key order; the key count stops a missing key passing as expected.
+  const same = (got, want) =>
+    got != null && Object.keys(got).length === Object.keys(want).length && JSON.stringify({ ...want, ...got }) === JSON.stringify(want);
+  const stoppedOk = STAGES.every((s) => same(after.stopped_at[s], JOURNEY[s]));
+  if (!same(after.funnel, JOURNEY_FUNNEL) || !stoppedOk || after.status_counts.saved !== JOURNEY_SAVED) {
+    throw new Error(`Journey numbers differ from decision 3: ${JSON.stringify({ funnel: after.funnel, stopped: after.stopped_at })}`);
+  }
+}
+
+async function storyboard(page, d, base) {
   const card = (sel) => page.locator('[data-slot="card"]').filter({ hasText: sel });
 
   // 1. Empty start screen.
@@ -396,6 +447,49 @@ async function storyboard(page, d) {
   await sleep(600);
   await d.caption('See where every application stands.', 3400);
   await d.caption('', 0);
+
+  // 11. Weeks later: the Journey graph (SOW-0049). The data is added and the app navigated while the card
+  // covers the screen; DOM clicks keep the drawn pointer still, and in-app navigation keeps the overlay.
+  await d.card('<h1>A few weeks later: 42 applications sent.</h1>');
+  const shown = Date.now();
+  await addJourneyApplications(base);
+  const nav = (name) => page.getByRole('link', { name, exact: true }).evaluate((a) => a.click());
+  await nav('Applications');
+  await page.getByRole('table').waitFor();
+  await nav('Dashboard');
+  const graph = page.locator('svg[role="img"]').filter({ has: page.locator('g[data-stage="offer"]') });
+  await graph.waitFor();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const box = await graph.boundingBox();
+  if (!box || box.y + box.height > VIEWPORT.height - 150) {
+    await graph.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  }
+  await sleep(Math.max(0, 3000 - (Date.now() - shown)));
+  await d.card('');
+  await sleep(400);
+  await d.caption('Journey follows every application from Applied to Offer.', 3600);
+  await d.caption('Branches show where applications stopped: waiting, rejected or no response.', 400);
+  const ribbon = page.locator('g[data-stage="applied"] g[data-exit="rejected"] path').first();
+  // The ribbon is curved, so its box centre can miss it; hover the covered point nearest that centre.
+  const spot = await ribbon.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    let best = null;
+    for (let fx = 0.05; fx < 1; fx += 0.05) {
+      for (let fy = 0.05; fy < 1; fy += 0.05) {
+        const x = r.left + r.width * fx;
+        const y = r.top + r.height * fy;
+        if (document.elementFromPoint(x, y) !== el) continue;
+        const dist = Math.hypot(fx - 0.5, fy - 0.5);
+        if (!best || dist < best.dist) best = { x, y, dist };
+      }
+    }
+    return best;
+  });
+  if (!spot) throw new Error('The Applied rejected ribbon has no visible point to hover');
+  await d.moveTo(spot.x, spot.y);
+  await page.getByRole('tooltip').filter({ hasText: 'rejected after' }).first().waitFor();
+  await sleep(3200);
+  await d.caption('', 0);
   await d.card('<h1>Job Applications Tracker</h1><p>Install and run it with one command:</p><code>npx job-applications-tracker</code>');
   await sleep(3500);
 }
@@ -423,7 +517,7 @@ try {
   await page.evaluate(() => document.fonts.ready);
   const capture = await startCapture(context, page);
   const d = director(page);
-  await storyboard(page, d);
+  await storyboard(page, d, url);
   const { list } = await capture.stop();
 
   const video = join(outDir, 'demo.mp4');
