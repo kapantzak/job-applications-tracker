@@ -18,6 +18,7 @@ import type { AgentTaskKind, Job, Profile, RunKind, Settings } from '../../../sr
 import { createLogStore } from '../../../src/server/runs/log-store.js';
 import { createRunQueue, type RunHandler } from '../../../src/server/runs/queue.js';
 import { createSyncScheduler } from '../../../src/server/runs/scheduler.js';
+import { createUpdateChecker } from '../../../src/server/update-check.js';
 import { createApplicationProposalService } from '../../../src/server/services/application-proposals.js';
 import { createProposalService } from '../../../src/server/services/proposals.js';
 
@@ -96,6 +97,13 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     queue,
     syncProfileIds: () => applicationsRepo.profileIdsToSync(),
   });
+  // Never started and never online: tests stub status() or spy on refresh().
+  const updateChecker = createUpdateChecker({
+    currentVersion: '0.0.0-test',
+    enabled: () => settingsRepo.getAll().update_check,
+    env: {},
+    fetchLatest: async () => null,
+  });
   const factoryCalls: Harness['factoryCalls'] = [];
   const healthFor: Harness['healthFor'] = {};
   const catalogFor: Harness['catalogFor'] = {};
@@ -145,6 +153,7 @@ export function makeHarness(opts: { uiDir?: string | null; allowedHosts?: string
     queue,
     logStore,
     scheduler,
+    updateChecker,
     cvService,
     adapterFactory,
     uiDir: opts.uiDir ?? null,

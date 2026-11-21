@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_VERSION } from '../../../src/server/version.js';
 import { makeHarness, type Harness } from './harness.js';
 
@@ -17,6 +17,26 @@ describe('health', () => {
     const res = await h.app.request('/api/health');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, version: APP_VERSION, dataDir: h.deps.dataDir });
+  });
+});
+
+describe('update', () => {
+  it('returns the update checker status without fetching anything', async () => {
+    const status = { current: '0.3.0', latest: '0.3.1', available: true };
+    vi.spyOn(h.deps.updateChecker, 'status').mockReturnValue(status);
+    const res = await h.app.request('/api/update');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(status);
+  });
+
+  it('reports nothing known before any check', async () => {
+    const res = await h.app.request('/api/update');
+    expect(await res.json()).toEqual({ current: '0.0.0-test', latest: null, available: false });
+  });
+
+  it('refuses a foreign Host', async () => {
+    const res = await h.app.request('/api/update', { headers: { host: 'evil.example.com' } });
+    expect(res.status).toBe(403);
   });
 });
 

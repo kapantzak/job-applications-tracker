@@ -39,6 +39,7 @@ const SettingsPatch = z
     run_timeout_ms: z.number().int().min(10_000).max(3_600_000),
     sync_interval: z.enum(['off', '1h', '6h', '24h']),
     port: z.number().int().min(1024).max(65535),
+    update_check: z.boolean(),
   })
   .partial()
   .strict();
@@ -51,8 +52,9 @@ export function createSettingsRouter(deps: AppDeps): Hono {
   router.patch('/', async (c) => {
     const patch: Partial<Settings> = await readJson(c, SettingsPatch);
     const settings = deps.settingsRepo.set(patch);
-    // sync_interval may have changed; the scheduler re-reads settings itself.
+    // sync_interval or update_check may have changed; both re-read settings themselves.
     deps.scheduler.refresh();
+    deps.updateChecker.refresh();
     return c.json(settings);
   });
 

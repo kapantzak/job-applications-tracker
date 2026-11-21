@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listApplicationProposals: vi.fn(),
   getProfileBySlug: vi.fn(),
   getHealth: vi.fn(),
+  getUpdate: vi.fn(),
 }));
 
 // Shows what the shell resolved, and lets the test report a change the way pages do.
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.mocked(client.listApplicationProposals).mockResolvedValue([{ id: 'n1' }] as never);
   vi.mocked(client.getProfileBySlug).mockResolvedValue(TEST_PROFILE);
   vi.mocked(client.getHealth).mockResolvedValue({ ok: true, version: '9.9.9', dataDir: '/data' });
+  vi.mocked(client.getUpdate).mockResolvedValue({ current: '9.9.9', latest: '9.9.9', available: false });
 });
 
 afterEach(() => {
@@ -188,5 +190,99 @@ describe('Layout', () => {
     const menu = await screen.findByRole('menu');
     expect(within(menu).getByRole('menuitem', { name: 'Documentation' })).toBeInTheDocument();
     expect(within(menu).queryByText(/^Version/)).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout update notice', () => {
+  const repo = 'https://github.com/kapantzak/job-applications-tracker';
+  const newer = { current: '9.9.9', latest: '10.0.0', available: true };
+
+  it('shows a polite banner with both versions, the update commands and the release notes', async () => {
+    vi.mocked(client.getUpdate).mockResolvedValue(newer);
+    renderShell('/');
+    const banner = await screen.findByRole('status');
+    expect(banner).toHaveTextContent('Version 10.0.0 is available (you have 9.9.9)');
+    expect(banner).toHaveTextContent(
+      'Update with npm i -g job-applications-tracker@latest or run npx job-applications-tracker@latest, then restart the app.',
+    );
+    const notes = within(banner).getByRole('link', { name: "What's new in 10.0.0" });
+    expect(notes).toHaveAttribute('href', `${repo}/releases/tag/v10.0.0`);
+    expect(notes).toHaveAttribute('target', '_blank');
+    expect(notes).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows nothing when no newer version is known or the read fails', async () => {
+    renderShell('/');
+    await waitFor(() => expect(client.getUpdate).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Help & about' })).toBeInTheDocument();
+    cleanup();
+
+    vi.mocked(client.getUpdate).mockRejectedValue(new Error('offline'));
+    renderShell('/');
+    await waitFor(() => expect(client.getUpdate).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+    expect(screen.getByText('profiles page')).toBeInTheDocument();
+  });
+
+  it('dismissal hides the banner for that version only, and the Help & about line stays', async () => {
+    vi.mocked(client.getUpdate).mockResolvedValue(newer);
+    const user = userEvent.setup();
+    renderShell('/');
+    await user.click(await screen.findByRole('button', { name: 'Dismiss update notice' }));
+    expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+    expect(localStorage.getItem('update-dismissed')).toBe('10.0.0');
+
+    await user.click(screen.getByRole('button', { name: 'Help & about, update available' }));
+    const menu = await screen.findByRole('menu');
+    const item = within(menu).getByRole('menuitem', { name: 'Update available: 10.0.0' });
+    expect(item).toHaveAttribute('href', `${repo}/releases/tag/v10.0.0`);
+    cleanup();
+
+    // Still dismissed after a reload; a newer version brings the banner back.
+    renderShell('/');
+    await waitFor(() => expect(client.getUpdate).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(client.getUpdate).mockResolvedValue({ ...newer, latest: '10.1.0' });
+    renderShell('/');
+    expect(await screen.findByRole('status')).toHaveTextContent('Version 10.1.0 is available (you have 9.9.9)');
+  });
+
+  it('reads the update status again once the first server check is due', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      renderShell('/');
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(client.getUpdate).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/is available/)).not.toBeInTheDocument();
+      vi.mocked(client.getUpdate).mockResolvedValue(newer);
+      await act(() => vi.advanceTimersByTimeAsync(15_999));
+      expect(client.getUpdate).toHaveBeenCalledTimes(1);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(client.getUpdate).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('status')).toHaveTextContent('Version 10.0.0 is available');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the update status again when the window regains focus', async () => {
+    renderShell('/');
+    await waitFor(() => expect(client.getUpdate).toHaveBeenCalledTimes(1));
+    vi.mocked(client.getUpdate).mockResolvedValue(newer);
+    fireEvent.focus(window);
+    expect(await screen.findByRole('status')).toHaveTextContent('Version 10.0.0 is available');
+    expect(client.getUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads the update status on navigation', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await waitFor(() => expect(client.getUpdate).toHaveBeenCalledTimes(1));
+    vi.mocked(client.getUpdate).mockResolvedValue(newer);
+    await user.click(await screen.findByRole('link', { name: 'Dashboard' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Version 10.0.0 is available');
   });
 });

@@ -13,13 +13,15 @@ import { AdapterChooser } from '../components/AdapterChooser.js';
 import { AgentModelFields } from '../components/AgentModelFields.js';
 import { DataSection } from '../components/DataSection.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
-import { WithInfo } from '../components/InfoTip.js';
+import { InfoTip, WithInfo } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SettingsSection } from '../components/SettingsSection.js';
 import { FIELD_HELP, SCREEN_INTROS, type FieldHelpKey } from '../help-text.js';
 import { SYNC_INTERVAL_LABELS } from '../labels.js';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 type TextKey =
@@ -185,7 +187,7 @@ export function SettingsPage() {
         <SettingsSection
           title="Server"
           description={SCREEN_INTROS.settingsServer}
-          getPatch={() => ({ port: values.port })}
+          getPatch={() => ({ port: values.port, update_check: values.update_check })}
         >
           <Field className="max-w-xs">
             <WithInfo topic="Port" text={FIELD_HELP.port}>
@@ -198,6 +200,18 @@ export function SettingsPage() {
               onChange={(e) => set('port', Number(e.target.value))}
             />
             <FieldDescription>Port changes take effect on restart.</FieldDescription>
+          </Field>
+          <Field>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={`${id}-update-check`}
+                checked={values.update_check}
+                onCheckedChange={(v) => set('update_check', v === true)}
+              />
+              <Label htmlFor={`${id}-update-check`}>Check for updates</Label>
+              <InfoTip topic="Check for updates" text={FIELD_HELP.updateCheck} />
+            </div>
+            <FieldDescription>Shows a notice at the top of the app and in the terminal when a new version is out.</FieldDescription>
           </Field>
         </SettingsSection>
         <DataSection dataDir={dataDir} />

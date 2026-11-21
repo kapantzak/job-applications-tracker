@@ -120,7 +120,11 @@ prompt?.close();
 
 let app;
 try {
-  app = await server.startApp({ port, dataDir: values['data-dir'] });
+  app = await server.startApp({
+    port,
+    dataDir: values['data-dir'],
+    onUpdateAvailable: (current, latest) => process.stdout.write(server.formatUpdateNotice(current, latest)),
+  });
 } catch (err) {
   process.stderr.write(`Error: ${err?.message ?? err}\n`);
   process.exit(1);

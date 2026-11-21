@@ -189,6 +189,16 @@ export interface Settings {
   run_timeout_ms: number;
   sync_interval: 'off' | '1h' | '6h' | '24h';
   port: number;
+  // Ask the npm registry for a newer version (SOW-0053); NO_UPDATE_NOTIFIER also turns it off.
+  update_check: boolean;
+}
+
+// GET /api/update (SOW-0053).
+export interface UpdateStatus {
+  current: string;
+  // The newest published version seen by the last successful check; null when unknown or turned off.
+  latest: string | null;
+  available: boolean;
 }
 
 export interface Run {

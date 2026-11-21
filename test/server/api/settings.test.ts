@@ -28,6 +28,14 @@ describe('settings', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('PATCH stores update_check and refreshes the update checker', async () => {
+    const refresh = vi.spyOn(h.deps.updateChecker, 'refresh');
+    const res = await h.app.request('/api/settings', json('PATCH', { update_check: false }));
+    expect(res.status).toBe(200);
+    expect(h.deps.settingsRepo.getAll().update_check).toBe(false);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
   it('PATCH accepts every settings key', async () => {
     const res = await h.app.request('/api/settings', json('PATCH', DEFAULT_SETTINGS));
     expect(res.status).toBe(200);
@@ -77,6 +85,7 @@ describe('settings', () => {
     ['spend cap with three decimals', { claude_max_budget_usd_discover: '1.005' }],
     ['spend cap as a number', { claude_max_budget_usd_discover: 5 }],
     ['spend cap with a flag', { claude_max_budget_usd_discover: '5 --bare' }],
+    ['update check as a string', { update_check: 'false' }],
   ])('PATCH rejects %s with 400 and writes nothing', async (_name, patch) => {
     const refresh = vi.spyOn(h.deps.scheduler, 'refresh');
     const res = await h.app.request('/api/settings', json('PATCH', patch));

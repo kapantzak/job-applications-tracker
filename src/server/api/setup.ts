@@ -11,6 +11,9 @@ export function createSetupRouter(deps: AppDeps): Hono {
 
   router.get('/health', (c) => c.json({ ok: true, version: APP_VERSION, dataDir: deps.dataDir }));
 
+  // The last update check's result, held in memory; nothing is fetched on request (SOW-0053).
+  router.get('/update', (c) => c.json(deps.updateChecker.status()));
+
   router.get('/setup/adapters', async (c) => {
     const settings = deps.settingsRepo.getAll();
     const ids: AdapterId[] = ['claude', 'codex', 'custom'];

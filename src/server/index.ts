@@ -27,8 +27,11 @@ import { createImportHandler } from './services/import-jobs.js';
 import { createMailSyncHandler } from './services/mail-sync.js';
 import { createApplicationProposalService } from './services/application-proposals.js';
 import { createProposalService } from './services/proposals.js';
+import { createUpdateChecker, fetchLatestVersion } from './update-check.js';
+import { APP_VERSION } from './version.js';
 
 export { APP_VERSION } from './version.js';
+export { formatUpdateNotice } from './update-check.js';
 // Used by bin/jobtrack.js before the server starts (SOW-0025).
 export { CONFIG_USAGE, runConfigCommand } from './config/cli.js';
 export { chooseDataDirOnFirstRun, createTerminalPrompt, PromptCancelledError } from './config/first-run.js';
@@ -46,6 +49,10 @@ export interface StartAppOptions {
   env?: NodeJS.ProcessEnv;
   // Home folder for the default data directory and the config file; tests point it at a temp folder.
   home?: string;
+  // Called once per newer npm version found (SOW-0053, decision 7B); bin/jobtrack.js prints it.
+  onUpdateAvailable?: (current: string, latest: string) => void;
+  // Tests point the update check at a local registry stub and shorten its first delay.
+  updateCheck?: { registryUrl?: string; firstDelayMs?: number };
 }
 
 export interface RunningApp {
@@ -183,6 +190,14 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     // spend tokens on an unscoped search the user never asked for.
     syncProfileIds: () => applicationsRepo.profileIdsToSync(),
   });
+  const updateChecker = createUpdateChecker({
+    currentVersion: APP_VERSION,
+    enabled: () => settingsRepo.getAll().update_check,
+    env: opts.env ?? process.env,
+    fetchLatest: () => fetchLatestVersion({ url: opts.updateCheck?.registryUrl }),
+    onUpdateAvailable: opts.onUpdateAvailable,
+    firstDelayMs: opts.updateCheck?.firstDelayMs,
+  });
 
   const deps: AppDeps = {
     db,
@@ -200,6 +215,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     queue,
     logStore,
     scheduler,
+    updateChecker,
     cvService,
     adapterFactory,
     uiDir: opts.uiDir === undefined ? defaultUiDir() : opts.uiDir,
@@ -208,6 +224,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
 
   queue.start();
   scheduler.start();
+  updateChecker.start();
 
   const server = createServer(getRequestListener(app.fetch));
   let port: number;
@@ -215,6 +232,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     port = await listenWithFallback(server, opts.port ?? settingsRepo.getAll().port);
   } catch (err) {
     // Do not leak the background loops or the db handle when binding fails.
+    updateChecker.stop();
     scheduler.stop();
     await queue.stop();
     await cvService.stop();
@@ -225,6 +243,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
   let closing: Promise<void> | null = null;
   const close = (): Promise<void> => {
     closing ??= (async () => {
+      updateChecker.stop();
       scheduler.stop();
       await queue.stop();
       await cvService.stop();
