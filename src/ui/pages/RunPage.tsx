@@ -175,18 +175,18 @@ export function RunPage() {
                   </div>
                 </>
               )}
-              {/* Only discovery records usage (SOW-0016), so sync runs show neither row. */}
+              {/* Discovery and Gmail sync record usage (SOW-0016, SOW-0051); only discovery has a mode. */}
               {run.kind === 'discover_jobs' && (
-                <>
-                  <div>
-                    <dt className="text-muted-foreground">Mode</dt>
-                    <dd>{run.effort_mode === 'max' ? 'Max effort' : 'Default'}</dd>
-                  </div>
-                  <div className="col-span-2">
-                    <dt className="text-muted-foreground">Usage</dt>
-                    <dd>{formatUsage(run) ?? 'Not reported'}</dd>
-                  </div>
-                </>
+                <div>
+                  <dt className="text-muted-foreground">Mode</dt>
+                  <dd>{run.effort_mode === 'max' ? 'Max effort' : 'Default'}</dd>
+                </div>
+              )}
+              {(run.kind === 'discover_jobs' || run.kind === 'sync_mail') && (
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">Usage</dt>
+                  <dd>{formatUsage(run) ?? 'Not reported'}</dd>
+                </div>
               )}
               {run.custom_prompt && (
                 <div className="col-span-full">

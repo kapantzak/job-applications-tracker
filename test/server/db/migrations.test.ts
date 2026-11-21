@@ -39,9 +39,9 @@ function ownerIds(db: Db, table: string): string[] {
 }
 
 describe('migrate', () => {
-  it('applies every migration and creates the nine tables', () => {
+  it('applies every migration and creates the tables', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(12);
+    expect(migrate(db)).toBe(13);
 
     const names = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
@@ -56,6 +56,9 @@ describe('migrate', () => {
       'status_history',
       'proposals',
       'cv_analyses',
+      'application_proposals',
+      'mail_threads',
+      'mail_listings',
     ]) {
       expect(names).toContain(t);
     }
@@ -84,7 +87,7 @@ describe('migrate', () => {
     db.prepare(
       "INSERT INTO runs (id, kind, status, adapter_id, created_at) VALUES ('run-1', 'sync_mail', 'succeeded', 'claude', 't')",
     ).run();
-    expect(migrate(db)).toBe(11);
+    expect(migrate(db)).toBe(12);
     expect(
       db.prepare('SELECT adapter_id, agent_model, agent_effort, agent_model_reported FROM runs').get(),
     ).toEqual({ adapter_id: 'claude', agent_model: null, agent_effort: null, agent_model_reported: null });
@@ -134,7 +137,7 @@ describe('migrate', () => {
     ).run();
     populate(db);
 
-    expect(migrate(db)).toBe(10);
+    expect(migrate(db)).toBe(11);
 
     const profiles = db.prepare('SELECT * FROM profiles').all() as Record<string, unknown>[];
     expect(profiles).toHaveLength(1);
@@ -258,7 +261,7 @@ describe('migrate', () => {
     add.run('p5', 'Cafe');
     add.run('p6', 'New');
 
-    expect(migrate(db)).toBe(9);
+    expect(migrate(db)).toBe(10);
 
     expect(db.prepare('SELECT id, name, slug FROM profiles ORDER BY rowid').all()).toEqual([
       { id: 'p1', name: 'SRE Platform 2', slug: 'sre-platform-2' },
@@ -291,7 +294,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
   VALUES ('job-1', 'p1', 'run-1', 'Acme', 'SRE', 'https://acme.example/1', 'https://acme.example/1', 'k1', 'ok', 't');
 `);
 
-    expect(migrate(db)).toBe(8);
+    expect(migrate(db)).toBe(9);
 
     expect(
       db.prepare('SELECT effort_mode, usage_cost_usd, usage_input_tokens, usage_output_tokens FROM runs').get(),
@@ -308,7 +311,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
     db.exec("INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't')");
 
     // Migrations 7 to 11 follow.
-    expect(migrate(db)).toBe(7);
+    expect(migrate(db)).toBe(8);
 
     expect(db.prepare('SELECT name, cv_file_name, cv_file_type, cv_added_at FROM profiles').get()).toEqual({
       name: 'Platform',
@@ -333,7 +336,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
     );
 
     // Migrations 8 to 11 follow.
-    expect(migrate(db)).toBe(6);
+    expect(migrate(db)).toBe(7);
 
     expect(db.prepare('SELECT id, profile_id FROM cv_analyses').all()).toEqual([{ id: 'a1', profile_id: null }]);
     const insert = db.prepare(
@@ -349,7 +352,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
     db.exec("INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't')");
 
     // Migrations 9 to 11 follow.
-    expect(migrate(db)).toBe(5);
+    expect(migrate(db)).toBe(6);
 
     expect(db.prepare('SELECT mail_filter_kind, mail_filter FROM profiles').get()).toEqual({
       mail_filter_kind: 'label',
@@ -373,7 +376,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
 `);
 
     // Migrations 10 and 11 follow.
-    expect(migrate(db)).toBe(4);
+    expect(migrate(db)).toBe(5);
 
     expect(db.prepare('SELECT id, last_seen_at, last_seen_run_id FROM jobs ORDER BY id').all()).toEqual([
       { id: 'job-1', last_seen_at: '2026-11-01T10:00:00.000Z', last_seen_run_id: 'run-1' },
@@ -398,7 +401,7 @@ INSERT INTO runs (id, profile_id, kind, status, adapter_id, created_at) VALUES
   ('run-1', 'p1', 'discover_jobs', 'succeeded', 'claude', 't');
 `);
 
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
 
     expect(db.prepare('SELECT id, custom_prompt FROM runs').all()).toEqual([{ id: 'run-1', custom_prompt: null }]);
     db.prepare("UPDATE runs SET custom_prompt = 'Only fintech companies' WHERE id = 'run-1'").run();
@@ -418,7 +421,7 @@ INSERT INTO jobs (id, profile_id, run_id, company, title, url, canonical_url, de
 `);
     const before = db.prepare('SELECT * FROM runs ORDER BY rowid').all();
 
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
 
     expect(db.prepare('SELECT * FROM runs ORDER BY rowid').all()).toEqual(before);
     expect(
@@ -447,7 +450,7 @@ INSERT INTO proposals (id, run_id, application_id, proposed_status, confidence, 
   ('prop-1', 'run-1', 'app-1', 'interview', 0.9, 'invented', 'pending', 't');
 `);
 
-    expect(migrate(db)).toBe(1);
+    expect(migrate(db)).toBe(2);
 
     expect(db.prepare('SELECT id, applied_at FROM proposals').all()).toEqual([{ id: 'prop-1', applied_at: null }]);
     const insert = (status: string) =>
@@ -468,6 +471,27 @@ INSERT INTO proposals (id, run_id, application_id, proposed_status, confidence, 
     expect(() =>
       db.prepare("UPDATE application_proposals SET application_id = 'missing' WHERE id = 'ap-interview'").run(),
     ).toThrow(/FOREIGN KEY constraint failed/);
+    db.close();
+  });
+
+  it('migration 13 adds the read-thread ledger, one row per profile and thread', () => {
+    const db = upTo(12);
+    db.exec("INSERT INTO profiles (id, name, slug, created_at) VALUES ('p1', 'Platform', 'platform', 't')");
+    expect(migrate(db)).toBe(1);
+
+    const insert = db.prepare(
+      "INSERT INTO mail_threads (profile_id, thread_id, last_message_id, read_at) VALUES (?, 'thr-001', 'msg-001', 't')",
+    );
+    insert.run('p1');
+    expect(db.prepare('SELECT * FROM mail_threads').all()).toEqual([
+      { profile_id: 'p1', thread_id: 'thr-001', last_message_id: 'msg-001', read_at: 't' },
+    ]);
+    expect(() => insert.run('p1')).toThrow(/UNIQUE constraint failed/);
+    expect(() => insert.run('missing')).toThrow(/FOREIGN KEY constraint failed/);
+    const mark = db.prepare("INSERT INTO mail_listings (profile_id, scope, listed_through) VALUES (?, 'label:x', '2026/11/20')");
+    mark.run('p1');
+    expect(() => mark.run('p1')).toThrow(/UNIQUE constraint failed/);
+    expect(() => mark.run('missing')).toThrow(/FOREIGN KEY constraint failed/);
     db.close();
   });
 

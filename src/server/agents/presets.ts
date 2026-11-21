@@ -32,13 +32,16 @@ function selectionFor(settings: Settings, agent: 'claude' | 'codex', kind: Agent
 // definition; `--allowedTools` alone only skips prompts. MCP servers loaded through `--setting-sources user`
 // cost ~260k context tokens per run on a machine with many connectors (probed 2026-11-07), so they are
 // skipped unless the user allowed an MCP tool for discovery. The spend cap is Claude Code's own estimate.
-function claudeDiscoverFlags(settings: Settings): string[] {
-  const entries = settings.allowed_tools_discover
+function toolEntries(allowed: string): string[] {
+  return allowed
     .split(/[\s,]+/)
     .map((t) => t.trim())
     .filter(Boolean);
-  const usesMcp = entries.some((t) => t.startsWith('mcp__'));
-  const builtins = [
+}
+
+// The built-in tools named in an allowed-tools setting, as `--tools` takes them.
+function builtinTools(entries: string[]): string[] {
+  return [
     ...new Set(
       entries
         .filter((t) => !t.startsWith('mcp__'))
@@ -46,6 +49,12 @@ function claudeDiscoverFlags(settings: Settings): string[] {
         .filter((t) => BUILTIN_TOOL_NAME.test(t)),
     ),
   ];
+}
+
+function claudeDiscoverFlags(settings: Settings): string[] {
+  const entries = toolEntries(settings.allowed_tools_discover);
+  const usesMcp = entries.some((t) => t.startsWith('mcp__'));
+  const builtins = builtinTools(entries);
   const budget = settings.claude_max_budget_usd_discover;
   if (budget !== '' && (!BUDGET_PATTERN.test(budget) || !(Number(budget) > 0))) {
     throw new Error('Invalid spend cap setting');
@@ -56,6 +65,14 @@ function claudeDiscoverFlags(settings: Settings): string[] {
     ...(usesMcp ? [] : ['--strict-mcp-config']),
     ...(budget ? ['--max-budget-usd', budget] : []),
   ];
+}
+
+// Sync needs the Gmail connector, so MCP servers stay loaded (never `--strict-mcp-config`). Without `--tools`
+// every built-in loads and the agent tries Bash; `--tools ""` also drops ToolSearch, so Claude Code loads
+// every MCP tool definition up front: one Gmail search cost 612,940 input tokens that way, 110,074 with no
+// flag and 58,563 with ToolSearch alone (Claude Code 2.1.329, 2026-11-20; SOW-0051, decision 6A).
+function claudeSyncFlags(settings: Settings): string[] {
+  return ['--tools', builtinTools(['ToolSearch', ...toolEntries(settings.allowed_tools_sync)]).join(',')];
 }
 
 // `--setting-sources user` also loads the user's personal CLAUDE.md, auto-memory and hooks, which are
@@ -161,7 +178,7 @@ export function buildAdapterConfig(settings: Settings, kind: AgentTaskKind): Cli
           '--permission-mode', '{permission_mode}', '--allowedTools', '{allowed_tools}',
           '--setting-sources', 'user', '--settings', CLAUDE_ISOLATION_SETTINGS,
           '--disallowedTools', 'Agent,Task',
-          ...(discover ? claudeDiscoverFlags(settings) : []),
+          ...(discover ? claudeDiscoverFlags(settings) : claudeSyncFlags(settings)),
           ...(selection.model ? ['--model', selection.model] : []),
           ...(selection.effort ? ['--effort', selection.effort] : []),
         ],

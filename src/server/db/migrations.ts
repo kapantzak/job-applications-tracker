@@ -281,6 +281,27 @@ CREATE TABLE application_proposals (
 CREATE INDEX idx_application_proposals_profile_state ON application_proposals (profile_id, state);
 `,
   },
+  {
+    // Threads a scoped Gmail sync has read, with the newest message it saw (SOW-0051, decision 3A). A later
+    // sync reads a thread again only when its newest message changed. No run reference, so the ledger
+    // outlives the runs that wrote it. mail_listings holds the scope and day of the profile's last complete
+    // listing, from which a scheduled sync lists only newer mail (decision 14B).
+    id: 13,
+    sql: `
+CREATE TABLE mail_threads (
+  profile_id TEXT NOT NULL REFERENCES profiles (id),
+  thread_id TEXT NOT NULL,
+  last_message_id TEXT NOT NULL,
+  read_at TEXT NOT NULL,
+  PRIMARY KEY (profile_id, thread_id)
+);
+CREATE TABLE mail_listings (
+  profile_id TEXT PRIMARY KEY REFERENCES profiles (id),
+  scope TEXT NOT NULL,
+  listed_through TEXT NOT NULL
+);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

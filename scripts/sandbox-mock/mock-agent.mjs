@@ -103,6 +103,13 @@ function discover() {
   return { jobs, notes };
 }
 
+function replySnippet(status, app, what) {
+  if (!demo) return `Mock email: ${app.company} ${what}.`;
+  if (status === 'interview') return `Hi Sam, thank you for applying for the ${app.role} role. We would like to invite you to a technical interview next week.`;
+  if (status === 'rejected') return `Hi Sam, thank you for your interest in the ${app.role} role. We have decided to move forward with other candidates.`;
+  return `Hi Sam, thank you for your application for the ${app.role} role.`;
+}
+
 function syncMail() {
   // Lines rendered by src/server/mail/agent-source.ts: "- id: <id> | company: <c> | role: <r> | ...".
   const apps = [...prompt.matchAll(/^- id: (\S+) \| company: (.*?) \| role: (.*?) \|/gm)].map((m) => ({
@@ -110,16 +117,6 @@ function syncMail() {
     company: m[2],
     role: m[3],
   }));
-  const plan = [
-    ['interview', 0.92, 'invites you to a technical interview'],
-    ['rejected', 0.71, 'says they will not move forward'],
-  ];
-  const replySnippet = (status, app, what) => {
-    if (!demo) return `Mock email: ${app.company} ${what}.`;
-    if (status === 'interview') return `Hi Sam, thank you for applying for the ${app.role} role. We would like to invite you to a technical interview next week.`;
-    if (status === 'rejected') return `Hi Sam, thank you for your interest in the ${app.role} role. We have decided to move forward with other candidates.`;
-    return `Hi Sam, thank you for your application for the ${app.role} role.`;
-  };
   // Rendered by src/server/mail/agent-source.ts. A profile without a Gmail scope asks for a null count;
   // a scope containing "nomatch" (the seeded Scope Miss profile) matches no mail, so nothing changes.
   const scopeSection = /^## Mailbox scope\n([\s\S]*?)^## /m.exec(prompt)?.[1] ?? '';
@@ -129,7 +126,7 @@ function syncMail() {
   // Real mail carries a time; a bare day would show as midnight UTC in local time.
   const sent = (minutesAgo) => (demo ? new Date(Date.now() - minutesAgo * 60_000).toISOString() : today);
   const findings = apps.map((app, i) => {
-    const [status, confidence, what] = (!missed && plan[i]) || ['no_change', 0.5, 'has no update'];
+    const [status, confidence, what] = (!missed && REPLY_PLAN[i]) || ['no_change', 0.5, 'has no update'];
     return {
       application_id: app.id,
       proposed_status: status,
@@ -150,15 +147,9 @@ function syncMail() {
   const trackedSection = /^## Already tracked\n([\s\S]*?)^## /m.exec(prompt)?.[1] ?? '';
   const tracked = [...trackedSection.matchAll(/^- company: (.*?) \| role: /gm)].map((m) => m[1]);
   const listed = new Set([...apps.map((a) => a.company), ...tracked].map((c) => c.toLowerCase()));
-  const fresh = [
-    ['Contoso Pharma', 'Frontend Engineer', 'applied', 'confirms that your application was received',
-      'Thank you for applying to Contoso Pharma. We have received your application for Frontend Engineer.'],
-    ['Fabrikam Games', 'UI Developer', 'screening', 'asks for a short intro call',
-      'Hi Sam, thanks for applying for UI Developer. Do you have 20 minutes for a short intro call this week?'],
-  ];
   const newApplications = missed
     ? []
-    : fresh
+    : FRESH
         .filter(([company]) => !listed.has(company.toLowerCase()))
         .map(([company, role, status, what, demoSnippet], i) => ({
           company,
@@ -185,6 +176,80 @@ function syncMail() {
     // as a miss just because the profile has nothing open (the seeded Backend Engineering).
     scope_message_count: scoped ? (missed ? 0 : Math.max(1, findings.length + newApplications.length)) : null,
   };
+}
+
+// A scoped sync (SOW-0051) lists the scope's threads, then reads them in batches. Thread and message ids are
+// stable, so a second sync finds every thread unchanged and reads nothing, like a real mailbox with no new mail.
+const REPLY_PLAN = [
+  ['interview', 0.92, 'invites you to a technical interview'],
+  ['rejected', 0.71, 'says they will not move forward'],
+];
+const FRESH = [
+  ['Contoso Pharma', 'Frontend Engineer', 'applied', 'confirms that your application was received',
+    'Thank you for applying to Contoso Pharma. We have received your application for Frontend Engineer.'],
+  ['Fabrikam Games', 'UI Developer', 'screening', 'asks for a short intro call',
+    'Hi Sam, thanks for applying for UI Developer. Do you have 20 minutes for a short intro call this week?'],
+];
+const SCOPED_THREADS = ['mock-thread-reply-1', 'mock-thread-reply-2', 'mock-thread-new-1', 'mock-thread-new-2', 'mock-thread-alert-1'];
+
+function listThreads() {
+  // Rendered by src/server/mail/agent-source.ts: the query on its own line under "## Search query".
+  const query = /^## Search query\n\n(.*)$/m.exec(prompt)?.[1] ?? '';
+  // A scope containing "nomatch" (the seeded Scope Miss profile) matches no mail.
+  const threads = /nomatch/i.test(query) ? [] : SCOPED_THREADS;
+  return {
+    mail_access: true,
+    windows: [{ after: '', before: '', thread_count: threads.length }],
+    threads: threads.map((id) => ({ thread_id: id, last_message_id: id.replace('mock-thread-', 'mock-msg-') })),
+    notes: demo ? 'Listed the threads in the label.' : 'Mock agent: no mailbox was searched.',
+  };
+}
+
+function readThreads() {
+  const section = (name) => new RegExp(`^## ${name}\\n\\n([\\s\\S]*?)\\n\\n## `, 'm').exec(prompt)?.[1] ?? '';
+  const ids = [...section('Threads').matchAll(/^- (\S+)$/gm)].map((m) => m[1]);
+  // Lines rendered by src/server/mail/agent-source.ts: "- id: <id> | company: <c> | role: <r> | ...".
+  const apps = [...section('Open applications').matchAll(/^- id: (\S+) \| company: (.*?) \| role: (.*?) \|/gm)].map((m) => ({
+    id: m[1],
+    company: m[2],
+    role: m[3],
+  }));
+  const today = new Date().toISOString().slice(0, 10);
+  const threads = [];
+  const notApplications = [];
+  for (const id of ids) {
+    const reply = /^mock-thread-reply-(\d+)$/.exec(id);
+    const fresh = /^mock-thread-new-(\d+)$/.exec(id);
+    const n = Number((reply ?? fresh)?.[1]) - 1;
+    const app = reply ? apps[n] : undefined;
+    if (reply && app) {
+      const [status, confidence, what] = REPLY_PLAN[n] ?? ['applied', 0.5, 'has no update'];
+      threads.push({
+        thread_id: id, application_id: app.id, company: app.company, role: app.role, status, first_date: today,
+        sender_domain: '', confidence,
+        reason: demo ? `A reply from ${app.company} ${what}.` : `Mock result: a reply from ${app.company} ${what}.`,
+        evidence: {
+          message_id: id.replace('mock-thread-', 'mock-msg-'), date: today,
+          from: `recruiting@${app.company.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.example.com`,
+          subject: `Your application for ${app.role}`, snippet: replySnippet(status, app, what),
+        },
+      });
+    } else if (fresh && FRESH[n]) {
+      const [company, role, status, what, demoSnippet] = FRESH[n];
+      threads.push({
+        thread_id: id, application_id: '', company, role, status, first_date: today, sender_domain: '', confidence: 0.8,
+        reason: demo ? `An email from ${company} ${what}.` : `Mock result: an email from ${company} ${what}.`,
+        evidence: {
+          message_id: id.replace('mock-thread-', 'mock-msg-'), date: today, from: 'no-reply@ats.example.com',
+          subject: `${company}: ${role}`, snippet: demo ? demoSnippet : `Mock email: ${company} ${what}.`,
+        },
+      });
+    } else {
+      // A reply with no open application to match, a job alert, or an id this mock does not know.
+      notApplications.push(id);
+    }
+  }
+  return { mail_access: true, threads, not_applications: notApplications, notes: demo ? 'Read the threads.' : 'Mock agent: no mail was read.' };
 }
 
 function analyseCv() {
@@ -229,6 +294,12 @@ if (task.startsWith('discover job openings')) {
     ['Searching your mail for replies from the companies you applied to', 'Reading the replies'],
   );
   result = syncMail();
+} else if (task.startsWith('list Gmail threads')) {
+  await work(['listing the mock mailbox'], ['Listing the threads in your label']);
+  result = listThreads();
+} else if (task.startsWith('read Gmail threads')) {
+  await work(['reading mock threads'], ['Reading the threads']);
+  result = readThreads();
 } else if (task.startsWith('draft a job-search profile')) {
   await work(['reading the CV text'], ['Reading the CV']);
   result = analyseCv();

@@ -6,6 +6,7 @@ const HOUR = 3_600_000;
 
 let interval: 'off' | '1h' | '6h' | '24h';
 let calls: string[];
+let inputs: unknown[];
 let profileIds: string[];
 let listProfiles: () => string[];
 let scheduler: SyncScheduler;
@@ -14,9 +15,10 @@ function build(): SyncScheduler {
   return createSyncScheduler({
     settingsRepo: { getAll: () => ({ sync_interval: interval }) as never },
     queue: {
-      enqueue: (kind, profileId) => {
+      enqueue: (kind, profileId, options) => {
         if (profileId === 'p-broken') throw new Error('enqueue failed');
         calls.push(`${kind}:${profileId}`);
+        inputs.push(options?.input);
         return { id: 'r1', kind } as unknown as Run;
       },
     },
@@ -28,6 +30,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   interval = 'off';
   calls = [];
+  inputs = [];
   profileIds = ['p1'];
   listProfiles = () => profileIds;
   scheduler = build();
@@ -53,6 +56,8 @@ describe('sync scheduler', () => {
     vi.advanceTimersByTime(2 * HOUR);
     expect(calls).toHaveLength(3);
     expect(calls.every((k) => k === 'sync_mail:p1')).toBe(true);
+    // A scheduled sync lists only recent mail (SOW-0051, decision 14B).
+    expect(inputs.every((i) => JSON.stringify(i) === JSON.stringify({ trigger: 'schedule' }))).toBe(true);
   });
 
   it('enqueues one sync per listed profile on each tick, read fresh every time', () => {

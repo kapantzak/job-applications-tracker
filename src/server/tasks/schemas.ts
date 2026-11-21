@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FIT_VERDICTS, type AgentTaskKind } from '../domain/types.js';
+import { FIT_VERDICTS, type PromptName } from '../domain/types.js';
 
 const verdict = z.enum(FIT_VERDICTS).default('unknown');
 const FitChecks = z
@@ -68,6 +68,49 @@ export const SyncMailOutput = z.object({
   scope_message_count: z.number().int().min(0).nullable().default(null),
 });
 
+// A scoped sync first lists the scope's threads by date window (SOW-0051). The app checks the windows for
+// coverage itself: `''` is an open end, else Gmail's YYYY/MM/DD.
+export const ThreadWindow = z.object({
+  after: z.string(),
+  before: z.string(),
+  thread_count: z.number().int().min(0),
+});
+
+export const ListedThread = z.object({
+  thread_id: z.string(),
+  last_message_id: z.string(),
+});
+
+export const SyncMailListOutput = z.object({
+  mail_access: z.boolean(),
+  windows: z.array(ThreadWindow),
+  threads: z.array(ListedThread),
+  notes: z.string().default(''),
+});
+
+// One thread about an application, from a read batch (SOW-0051). The app groups threads into applications.
+export const ThreadRecord = z.object({
+  thread_id: z.string(),
+  // The open application the thread is about, '' for none.
+  application_id: z.string().default(''),
+  company: z.string(),
+  // '' when the mail names no job title (decision 9).
+  role: z.string(),
+  status: z.enum(NEW_APPLICATION_STATUSES),
+  first_date: z.string(),
+  sender_domain: z.string().default(''),
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+  evidence: MailEvidence,
+});
+
+export const SyncMailReadOutput = z.object({
+  mail_access: z.boolean(),
+  threads: z.array(ThreadRecord),
+  not_applications: z.array(z.string()).default([]),
+  notes: z.string().default(''),
+});
+
 // A CV analysis (SOW-0023). Seniority is a list of levels; the app joins it into the profile's text field.
 export const AnalyseCvOutput = z.object({
   name: z.string().default(''),
@@ -83,6 +126,10 @@ export type DiscoverJobsResult = z.infer<typeof DiscoverJobsOutput>;
 export type AnalyseCvResult = z.infer<typeof AnalyseCvOutput>;
 export type SyncMailResult = z.infer<typeof SyncMailOutput>;
 export type NewApplicationResult = SyncMailResult['new_applications'][number];
+export type MailFindingResult = SyncMailResult['findings'][number];
+export type SyncMailListResult = z.infer<typeof SyncMailListOutput>;
+export type ListedThreadResult = z.infer<typeof ListedThread>;
+export type ThreadRecordResult = z.infer<typeof ThreadRecord>;
 
 // Claude Code's validator rejects zod's draft-2020-12 `$schema` pointer, and the OpenAI
 // structured-output API behind Codex requires `additionalProperties: false` plus every property
@@ -103,9 +150,15 @@ function toAgentSchema(node: unknown): unknown {
   return out;
 }
 
-const OUTPUT_SCHEMAS = { discover_jobs: DiscoverJobsOutput, sync_mail: SyncMailOutput, analyse_cv: AnalyseCvOutput };
+const OUTPUT_SCHEMAS: Record<PromptName, z.ZodType> = {
+  discover_jobs: DiscoverJobsOutput,
+  sync_mail: SyncMailOutput,
+  sync_mail_list: SyncMailListOutput,
+  sync_mail_read: SyncMailReadOutput,
+  analyse_cv: AnalyseCvOutput,
+};
 
-export function outputJsonSchema(kind: AgentTaskKind): Record<string, unknown> {
-  const schema = OUTPUT_SCHEMAS[kind];
+export function outputJsonSchema(name: PromptName): Record<string, unknown> {
+  const schema = OUTPUT_SCHEMAS[name];
   return toAgentSchema(z.toJSONSchema(schema, { io: 'output' })) as Record<string, unknown>;
 }

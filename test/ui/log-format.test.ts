@@ -36,7 +36,7 @@ describe('formatLog: app and plain lines', () => {
   it('recognises the handlers\' own lines', () => {
     const lines = [
       'No open applications to check',
-      'Dropping finding for unknown application app-9',
+      'Dropping finding for unknown application "app-9"',
       'Skipping duplicate finding for app-1 (interview)',
       '2 proposals created, 1 skipped',
       '0 proposals created, 3 new applications found, 1 skipped',
@@ -54,6 +54,51 @@ describe('formatLog: app and plain lines', () => {
       'Skipping unsupported url: javascript:alert(1)',
     ];
     expect(formatLog(lines).map((e) => [e.kind, e.tone])).toEqual(lines.map(() => ['app', 'muted']));
+  });
+
+  it('recognises the scoped sync lines, warning on a failed batch and on unconfirmed dates (SOW-0051)', () => {
+    const lines = [
+      'Listing all mail',
+      'Listing mail since 2026/11/19',
+      'Scheduled sync lists all mail: no complete listing yet',
+      'Listing again: from 2026/10/01 to before 2026/11/01',
+      'Listed 328 threads',
+      'Reading 300 of 328 threads in 15 batches of up to 20, 3 at a time',
+      'No new or changed threads to read',
+      'Skipping a thread without a company',
+      'Ignoring an unknown application id from the agent: "app-x"',
+      'Skipping a thread that names no role: Acme',
+      'Skipping a finding from a message already reviewed: app-1',
+      'Dropping a date range the agent returned in the wrong shape: windows.0.after Invalid input',
+      'Dropping a listed thread in the wrong shape: threads.3',
+      'Dropping a thread the agent returned in the wrong shape: threads.2.status Invalid option',
+      'Dropping 2 threads that were not in the batch',
+      '2 threads were not read; the next sync tries them again',
+      '3 proposals created, 40 new applications found, 2 skipped; 1 of 15 batches failed; some mail may not have been listed',
+      '0 proposals created, 0 new applications found, 0 skipped; some mail may not have been listed',
+      'Batch 3 failed: Agent run failed: Timed out after 1000 ms',
+      'Listing again failed: Agent run failed: boom',
+      'Could not confirm that every thread was listed: before 2026/01/01',
+    ];
+    expect(formatLog(lines).map((e) => [e.kind, e.tone])).toEqual([
+      ...lines.slice(0, 18).map(() => ['app', 'muted']),
+      ['app', 'warning'],
+      ['app', 'warning'],
+      ['app', 'warning'],
+    ]);
+  });
+
+  it('formats list and batch lines like any other line and names the call', () => {
+    const entries = formatLog([
+      `[list 1] ${j({ type: 'assistant', message: { content: [{ type: 'text', text: 'listing' }] } })}`,
+      '[batch 2] [stderr] slow network',
+      '[batch 3] Dropping 2 threads that were not in the batch',
+    ]);
+    expect(entries.map((e) => [e.kind, e.text])).toEqual([
+      ['message', 'List 1: listing'],
+      ['stderr', 'Batch 2: slow network'],
+      ['app', 'Batch 3: Dropping 2 threads that were not in the batch'],
+    ]);
   });
 
   it('recognises the Gmail scope lines, warning when the scope matched no mail', () => {

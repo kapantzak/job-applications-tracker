@@ -13,6 +13,7 @@ import { migrate, openDatabase } from './db/connection.js';
 import { createJobsRepo } from './db/jobs-repo.js';
 import { createProfilesRepo } from './db/profiles-repo.js';
 import { createApplicationProposalsRepo } from './db/application-proposals-repo.js';
+import { createMailThreadsRepo } from './db/mail-threads-repo.js';
 import { createProposalsRepo } from './db/proposals-repo.js';
 import { createRunsRepo } from './db/runs-repo.js';
 import { createSettingsRepo } from './db/settings-repo.js';
@@ -149,6 +150,7 @@ export async function startApp(opts: StartAppOptions = {}): Promise<RunningApp> 
     applicationsRepo,
     applicationProposalsRepo,
     jobsRepo,
+    mailThreadsRepo: createMailThreadsRepo(db),
     profilesRepo,
     proposalsRepo,
     settingsRepo,

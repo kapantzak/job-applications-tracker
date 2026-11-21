@@ -8,6 +8,7 @@ import { createAdapter } from '../../../src/server/agents/index.js';
 import { DEFAULT_SETTINGS } from '../../../src/server/db/settings-repo.js';
 import { createAgentMailSource } from '../../../src/server/mail/agent-source.js';
 import type { MailSyncRequest } from '../../../src/server/mail/types.js';
+import { groupThreadRecords } from '../../../src/server/domain/thread-grouping.js';
 import { SENIORITY_LEVELS } from '../../../src/server/domain/seniority.js';
 import type { AgentTaskKind } from '../../../src/server/domain/types.js';
 import { DEFAULT_SCOPE } from '../../../src/server/services/discovery.js';
@@ -76,74 +77,105 @@ describe('mock agent', () => {
     applications: MailSyncRequest['applications'],
     mailScope: string | null = 'label:Jobs-Frontend',
     tracked: MailSyncRequest['tracked'] = [],
+    known: Map<string, string> = new Map(),
   ) {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
-      { applications, reviewed_message_ids: ['msg-001'], mail_scope: mailScope, new_applications_since: '2026/08/13', tracked },
-      { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
+      {
+        applications,
+        reviewed_message_ids: ['msg-001'],
+        mail_scope: mailScope,
+        new_applications_since: '2026/08/13',
+        tracked,
+        known_threads: known,
+        today: '2026/11/20',
+        list_since: null,
+      },
+      {
+        log: (line) => logs.push(line),
+        signal: new AbortController().signal,
+        runDir: cwd,
+        timeoutMs: 10_000,
+        recordAgent: () => {},
+        recordUsage: () => {},
+      },
     );
-    return { findings, logs };
+    // A scoped sync returns per-thread records; group them as the handler does (SOW-0051).
+    const grouped = groupThreadRecords({ records: findings.threads?.records ?? [], open: applications, applications: [] });
+    return { findings, grouped, logs };
   }
 
-  it('proposes changes only for applications listed in the prompt', async () => {
-    const { findings, logs } = await sync([
-      { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: ['acme.example.com'] },
-      { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
-      { id: 'app-003', company: 'Initech', role: 'Designer', applied_at: '2026-10-03', sender_domains: [] },
-    ]);
+  const threeApps = [
+    { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: ['acme.example.com'] },
+    { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
+    { id: 'app-003', company: 'Initech', role: 'Designer', applied_at: '2026-10-03', sender_domains: [] },
+  ];
+
+  it('without a scope, proposes changes only for applications listed in the prompt', async () => {
+    const { findings, logs } = await sync(threeApps, null);
     expect(findings.findings.map((f) => [f.application_id, f.proposed_status])).toEqual([
       ['app-001', 'interview'],
       ['app-002', 'rejected'],
       ['app-003', 'no_change'],
     ]);
     expect(findings.findings.some((f) => f.evidence.message_id === 'msg-001')).toBe(false);
+    expect(findings.scope_message_count).toBeNull();
     expect(logs.some((l) => l.includes('mock agent'))).toBe(true);
   });
 
-  it('reports a scope count only when the prompt carries a scope', async () => {
-    const app = { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] };
-    // One reply plus the two new applications' emails.
-    expect((await sync([app])).findings.scope_message_count).toBe(3);
-    expect((await sync([app], null)).findings.scope_message_count).toBeNull();
+  it('without a scope, leaves out new applications the prompt lists as open or tracked', async () => {
+    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [] };
+    expect((await sync([listed], null)).findings.new_applications.map((a) => a.company)).toEqual(['Fabrikam Games']);
+    const tracked = [{ company: 'fabrikam games', role: 'UI Developer' }];
+    expect((await sync([], null, tracked)).findings.new_applications.map((a) => a.company)).toEqual(['Contoso Pharma']);
   });
 
-  // A labelled profile without applications (the seeded Backend Engineering) must not read as a scope miss.
-  it('reports a non-zero count for a scope with mail but no listed applications', async () => {
-    expect((await sync([])).findings.scope_message_count).toBe(2);
-    const tracked = [
-      { company: 'Contoso Pharma', role: 'Frontend Engineer' },
-      { company: 'Fabrikam Games', role: 'UI Developer' },
-    ];
-    expect((await sync([], 'label:Jobs-Backend', tracked)).findings.scope_message_count).toBe(1);
-  });
-
-  it('reports a zero count and no changes when the scope contains nomatch', async () => {
-    const apps = [
-      { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] },
-      { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
-    ];
-    const { findings } = await sync(apps, 'label:NoMatch');
-    expect(findings.scope_message_count).toBe(0);
-    expect(findings.findings.map((f) => f.proposed_status)).toEqual(['no_change', 'no_change']);
-  });
-
-  it('returns no findings when there are no applications, but new applications (SOW-0045)', async () => {
-    const { findings } = await sync([]);
-    expect(findings.findings).toEqual([]);
-    expect(findings.new_applications.map((a) => [a.company, a.status])).toEqual([
+  it('with a scope, lists threads, reads them in a batch and replies to the first two open applications', async () => {
+    const { findings, grouped, logs } = await sync(threeApps);
+    expect(findings.threads?.listed).toBe(5);
+    expect(findings.threads?.uncovered).toEqual([]);
+    expect(findings.threads?.batches).toEqual({ total: 1, failed: 0 });
+    expect(findings.threads?.read).toHaveLength(5);
+    expect(grouped.findings.map((f) => [f.application_id, f.proposed_status])).toEqual([
+      ['app-001', 'interview'],
+      ['app-002', 'rejected'],
+    ]);
+    expect(grouped.newApplications.map((a) => [a.company, a.status])).toEqual([
       ['Contoso Pharma', 'applied'],
       ['Fabrikam Games', 'screening'],
     ]);
+    expect(logs).toContain('Listed 5 threads');
+    expect(logs.some((l) => l.startsWith('[batch 1] mock agent: '))).toBe(true);
   });
 
-  it('leaves out new applications the prompt already lists, and all of them when the scope matches nothing', async () => {
+  // A labelled profile without applications (the seeded Backend Engineering) must not read as a scope miss.
+  it('with a scope, counts the listed threads, also with no open application', async () => {
+    const { findings, grouped } = await sync([], 'label:Jobs-Backend');
+    expect(findings.scope_message_count).toBe(5);
+    expect(grouped.findings).toEqual([]);
+    expect(grouped.newApplications.map((a) => a.company)).toEqual(['Contoso Pharma', 'Fabrikam Games']);
+  });
+
+  it('matches a listed open application by name, so it is not proposed as new', async () => {
     const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [] };
-    expect((await sync([listed])).findings.new_applications.map((a) => a.company)).toEqual(['Fabrikam Games']);
-    const tracked = [{ company: 'fabrikam games', role: 'UI Developer' }];
-    expect((await sync([], 'label:Jobs-Frontend', tracked)).findings.new_applications.map((a) => a.company)).toEqual([
-      'Contoso Pharma',
-    ]);
-    expect((await sync([], 'label:NoMatch')).findings.new_applications).toEqual([]);
+    const { grouped } = await sync([listed]);
+    expect(grouped.newApplications.map((a) => a.company)).toEqual(['Fabrikam Games']);
+  });
+
+  it('lists nothing when the scope contains nomatch', async () => {
+    const { findings, grouped } = await sync(threeApps, 'label:NoMatch');
+    expect(findings.scope_message_count).toBe(0);
+    expect(findings.threads?.batches.total).toBe(0);
+    expect(grouped.findings).toEqual([]);
+    expect(grouped.newApplications).toEqual([]);
+  });
+
+  it('reads nothing on a second sync, since every thread is unchanged', async () => {
+    const first = await sync(threeApps);
+    const known = new Map(first.findings.threads!.read.map((r) => [r.thread_id, r.last_message_id]));
+    const second = await sync(threeApps, 'label:Jobs-Frontend', [], known);
+    expect(second.findings.threads?.batches.total).toBe(0);
+    expect(second.logs).toContain('No new or changed threads to read');
   });
 
   it('prints its result as one log line, so the Run page summarises it', async () => {
@@ -219,8 +251,18 @@ describe('mock agent --demo', () => {
         mail_scope: null,
         new_applications_since: '2026/08/13',
         tracked: [],
+        known_threads: new Map(),
+        today: '2026/11/20',
+        list_since: null,
       },
-      { log: (line) => logs.push(line), signal: new AbortController().signal, runDir: cwd, timeoutMs: 10_000, recordAgent: () => {} },
+      {
+        log: (line) => logs.push(line),
+        signal: new AbortController().signal,
+        runDir: cwd,
+        timeoutMs: 10_000,
+        recordAgent: () => {},
+        recordUsage: () => {},
+      },
     );
     expect(findings.findings.map((f) => f.proposed_status)).toEqual(['interview']);
     expect(findings.new_applications).toHaveLength(2);
@@ -228,5 +270,33 @@ describe('mock agent --demo', () => {
     for (const f of findings.findings) noMock(JSON.stringify({ ...f, evidence: strip(f.evidence) }));
     for (const a of findings.new_applications) noMock(JSON.stringify({ ...a, evidence: strip(a.evidence) }));
     noMock(findings.notes ?? '');
+  });
+
+  it('lists and reads a scope without mock wording, except ids', async () => {
+    const logs: string[] = [];
+    const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
+      {
+        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] }],
+        reviewed_message_ids: [],
+        mail_scope: 'label:Jobs-Frontend',
+        new_applications_since: '2026/08/13',
+        tracked: [],
+        known_threads: new Map(),
+        today: '2026/11/20',
+        list_since: null,
+      },
+      {
+        log: (line) => logs.push(line),
+        signal: new AbortController().signal,
+        runDir: cwd,
+        timeoutMs: 10_000,
+        recordAgent: () => {},
+        recordUsage: () => {},
+      },
+    );
+    const records = findings.threads?.records ?? [];
+    expect(records.length).toBe(3);
+    for (const r of records) noMock(JSON.stringify({ ...r, thread_id: '', evidence: { ...r.evidence, message_id: '' } }));
+    for (const line of logs.filter((l) => !l.includes('{'))) noMock(line.replace(/\[(list|batch) \d+\] /, ''));
   });
 });

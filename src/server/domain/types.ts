@@ -17,6 +17,9 @@ export const RUN_KINDS = ['discover_jobs', 'sync_mail', 'import_jobs'] as const;
 export type AgentRunKind = Exclude<RunKind, 'import_jobs'>;
 // What the app asks an agent to do: a queued run, or a CV analysis outside the queue (SOW-0023).
 export type AgentTaskKind = AgentRunKind | 'analyse_cv';
+// Prompt templates and output schemas. A scoped sync runs its list and read calls as `sync_mail` tasks, so
+// they share its preset flags and settings (SOW-0051).
+export type PromptName = AgentTaskKind | 'sync_mail_list' | 'sync_mail_read';
 // Logged when a run starts saving its results; the UI matches it exactly to lock the cancel control.
 export const RUN_SAVING_LOG_LINE = 'Saving results; the run can no longer be cancelled';
 
@@ -44,6 +47,11 @@ export const MAX_EFFORT_CONCURRENCY = 3;
 export const workersFailedNote = (failed: number, total: number): string => `; ${failed} of ${total} workers failed`;
 // A scoped sync whose scope matched no mail ends its summary with this note (SOW-0032).
 export const SCOPE_MATCHED_NOTHING_NOTE = '; the Gmail scope matched no mail';
+// A scoped sync whose read calls partly failed, or whose list calls left date ranges unconfirmed (SOW-0051).
+export const batchesFailedNote = (failed: number, total: number): string => `; ${failed} of ${total} batches failed`;
+export const UNLISTED_MAIL_NOTE = '; some mail may not have been listed';
+// The run input of a scheduled sync, which lists only recent mail (SOW-0051, decision 14B).
+export const SCHEDULED_SYNC_INPUT = { trigger: 'schedule' } as const;
 export const hasFailedWorkers = (summary: string | null): boolean => /; \d+ of \d+ workers failed$/.test(summary ?? '');
 export const VERIFICATION_STATUSES = ['ok', 'redirected', 'dead', 'unverified'] as const;
 export const PROPOSAL_STATES = ['pending', 'accepted', 'rejected'] as const;
