@@ -30,6 +30,8 @@ jobtrack
 
 The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your browser.
 
+When a newer version is published, the app tells you: a notice at the top of every page (close it and it stays closed until the next version), a line in Help & about, and one line in the terminal. To update, run `npm i -g job-applications-tracker@latest` (or start it with `npx job-applications-tracker@latest`), then restart the app. Your data folder and settings are kept.
+
 ## First run
 
 1. Data folder: the first time you start `jobtrack` in a terminal, it asks where to keep your data. Press Enter for the default (see [Choosing the data directory](#choosing-the-data-directory)).
@@ -225,6 +227,7 @@ Sync needs a Gmail tool in your agent.
   - A custom command gets none of these: it runs with whatever access you give it.
 - On Claude Code the app also loads only your user-level Claude settings, leaves out your personal `CLAUDE.md`, auto-memory and hooks, and blocks subagents. On Codex (tested with codex-cli 0.163.0 or newer) it turns subagents off, but Codex still reads your personal `~/.codex/AGENTS.md`: Codex has no switch for it, and running it from a separate Codex home could leave your normal Codex sign-in on an old token.
 - The app never applies to jobs, sends mail, or modifies labels or messages.
+- Besides checking job links, the app makes one request of its own: 10 seconds after it starts and then once a day while it runs, it asks the npm registry (`registry.npmjs.org`) for the newest version of this package. The request carries nothing about you or your data; like any request, it shows npm your IP address. Turn it off by unticking Settings → Server → Check for updates, or by setting the `NO_UPDATE_NOTIFIER` environment variable to any value.
 
 ## Data and logs
 
@@ -304,6 +307,7 @@ Commands:
 - Without `--port`, the app uses the port in Settings → Server (4173 unless you changed it). When the port is taken it tries the next ones, up to 10 in all, then stops with "No free port in range …". `--port 0` lets the system pick any free port.
 - `--data-dir` applies to this run only and is not saved. `JOBTRACK_DATA_DIR` sets the data directory too; `--data-dir` takes precedence, and both win over the saved folder. A leading `~` works in both.
 - The browser does not open when the `CI` environment variable is set, as on a build server.
+- `NO_UPDATE_NOTIFIER`, set to any value, turns off the check for new versions (see [Security](#security)).
 
 ## Known limitations
 
@@ -316,7 +320,7 @@ Commands:
 - The Dashboard shows In progress, Interviews, Offers, Rejected and To review tiles (each number links to the rows behind it), the Journey graph, and what needs attention: status proposals and new applications waiting on the Review page, and applied, screening or interview applications with no change in 14 days ("Applied 20 days ago, no reply"; five shown, "Show 3 more" for the rest). To review counts both kinds of proposal. Below them: the last successful job search and Gmail sync, and the model and effort that job searches and Gmail sync use. A profile with no applications shows "No applications yet", with a pointer to Jobs and to Sync from Gmail.
 - Journey is a flow graph where applications move from Applied to Offer, each stage showing its count and its share of the stage before, and those that stop at a stage branch off (waiting, rejected, no response, withdrawn). Every number is written on the graph; hovering a part adds a short tooltip. In windows narrower than about 1280 px the graph keeps its size and scrolls sideways, so its labels stay readable; Tab to it and use the arrow keys to scroll with the keyboard.
 - Every form field has an ⓘ button next to its label: click it (or press Enter on it) to see what the field asks for and how the app uses it. Esc or a click elsewhere closes it. Every screen says what it is for under its title.
-- Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository, "Star on GitHub" and "Report an issue" (a new issue on GitHub). The links open in a new tab; the app never contacts GitHub by itself.
+- Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository, "Star on GitHub" and "Report an issue" (a new issue on GitHub). The links open in a new tab; the app never contacts GitHub by itself. When a newer version is out, a dot marks the menu and it shows "Update available: <version>", linking to that release's notes.
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
 - Deleting a profile, purging run logs, dismissing a job, cancelling a run, starting a Max-effort search, accepting all new applications, cancelling or discarding a CV analysis and removing a CV ask for confirmation first.
 - A dismissed job is hidden from the Jobs list. Tick "Show dismissed" to see it again, marked Dismissed, and click Restore to bring it back.

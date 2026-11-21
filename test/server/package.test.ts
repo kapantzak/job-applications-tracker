@@ -19,4 +19,14 @@ describe('package metadata', () => {
     expect(existsSync(path)).toBe(true);
     expect(readFileSync(path, 'utf8').startsWith('MIT License')).toBe(true);
   });
+
+  // Mock runs, screenshots and the demo video must never show an update notice (SOW-0053).
+  it('turns the update check off for the mock sandbox and the demo recording', () => {
+    expect(pkg.scripts['sandbox:mock']).toContain('node --env-file=scripts/sandbox-mock/no-update-check.env bin/jobtrack.js');
+    const envFile = readFileSync(join(repoRoot, 'scripts/sandbox-mock/no-update-check.env'), 'utf8');
+    expect(envFile).toMatch(/^NO_UPDATE_NOTIFIER=1$/m);
+    expect(readFileSync(join(repoRoot, 'scripts/demo-video/record.mjs'), 'utf8')).toContain(
+      "env: { ...process.env, NO_UPDATE_NOTIFIER: '1' }",
+    );
+  });
 });

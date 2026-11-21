@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
-import { BookOpenIcon, BugIcon, CircleHelpIcon, StarIcon } from 'lucide-react';
+import { BookOpenIcon, BugIcon, CircleArrowUpIcon, CircleHelpIcon, StarIcon } from 'lucide-react';
+import type { UpdateStatus } from '../../server/domain/types.js';
 import { getHealth } from '../api/client.js';
 import {
   DropdownMenu,
@@ -12,6 +13,9 @@ import {
 import { SidebarMenuButton } from '@/components/ui/sidebar';
 
 export const REPO_URL = 'https://github.com/kapantzak/job-applications-tracker';
+
+// Every npm version has a GitHub release under the tag v<version>.
+export const releaseUrl = (version: string) => `${REPO_URL}/releases/tag/v${version}`;
 
 // lucide-react ships no brand icons, so the GitHub mark (Octicons "mark-github", MIT) is inlined.
 function GitHubMark(props: ComponentProps<'svg'>) {
@@ -34,7 +38,8 @@ function ExternalItem({ href, icon, children }: { href: string; icon: ReactNode;
 }
 
 // Plain links only: no star count, so the app never calls the GitHub API (SOW-0038 decisions 9-10).
-export function HelpMenu() {
+// `update` comes from Layout, which also shows the dismissible banner; this line stays (SOW-0053, decision 4C).
+export function HelpMenu({ update = null }: { update?: UpdateStatus | null }) {
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,12 +55,18 @@ export function HelpMenu() {
     };
   }, []);
 
+  const newer = update?.available ? update.latest : null;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <SidebarMenuButton>
           <CircleHelpIcon />
-          <span>Help &amp; about</span>
+          <span>
+            Help &amp; about
+            {newer && <span className="sr-only">, update available</span>}
+          </span>
+          {newer && <span aria-hidden="true" className="ml-auto size-2 shrink-0 rounded-full bg-primary" />}
         </SidebarMenuButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-56">
@@ -64,6 +75,14 @@ export function HelpMenu() {
           {version && <span className="text-xs font-normal text-muted-foreground">Version {version}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {newer && (
+          <>
+            <ExternalItem href={releaseUrl(newer)} icon={<CircleArrowUpIcon />}>
+              Update available: {newer}
+            </ExternalItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <ExternalItem href={`${REPO_URL}#readme`} icon={<BookOpenIcon />}>
           Documentation
         </ExternalItem>

@@ -25,12 +25,13 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar';
-import type { Profile } from '../../server/domain/types.js';
-import { ApiError, getProfileBySlug, listApplicationProposals, listProposals } from '../api/client.js';
+import type { Profile, UpdateStatus } from '../../server/domain/types.js';
+import { ApiError, getProfileBySlug, getUpdate, listApplicationProposals, listProposals } from '../api/client.js';
 import { profilePath, ProfileShellContext, type ProfileShell } from '../profile-route.js';
 import { HelpMenu } from './HelpMenu.js';
 import { LogoMark } from './LogoMark.js';
 import { ThemeMenu } from './ThemeMenu.js';
+import { UpdateBanner } from './UpdateBanner.js';
 
 interface NavItem {
   to: string;
@@ -39,6 +40,9 @@ interface NavItem {
   end?: boolean;
   badge?: boolean;
 }
+
+// Past the server's first update check (10 s after start), with room for a slow registry answer.
+const UPDATE_REREAD_MS = 16_000;
 
 const PROFILES_ITEM: NavItem = { to: '/', label: 'Profiles', icon: UsersIcon, end: true };
 const SETTINGS_ITEM: NavItem = { to: '/settings', label: 'Settings', icon: SettingsIcon };
@@ -165,6 +169,32 @@ export function Layout() {
     };
   }, [currentId, pathname, version]);
 
+  // The server checks npm itself, first 10 s after it starts, when the browser is usually open already.
+  // Read again once that check is due, on window focus and on navigation, so its result shows without a reload.
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [updateTick, setUpdateTick] = useState(0);
+  useEffect(() => {
+    const reread = () => setUpdateTick((t) => t + 1);
+    const timer = window.setTimeout(reread, UPDATE_REREAD_MS);
+    window.addEventListener('focus', reread);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', reread);
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    getUpdate()
+      .then((u) => {
+        if (active) setUpdate(u);
+      })
+      // The notice is optional; a failed read must not break the shell.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [pathname, updateTick]);
+
   const profileChanged = useCallback((updated?: Profile) => {
     if (updated) {
       adopted.current = { slug: updated.slug, version: versionRef.current };
@@ -234,7 +264,7 @@ export function Layout() {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <HelpMenu />
+              <HelpMenu update={update} />
             </SidebarMenuItem>
             <SidebarMenuItem>
               <ThemeMenu />
@@ -246,6 +276,7 @@ export function Layout() {
           Journey graph, tables) scrolling inside its own box instead of the whole page (SOW-0052). */}
       <SidebarInset className="min-w-0">
         <div className="mx-auto w-full max-w-6xl flex-1 px-8 py-6">
+          <UpdateBanner update={update} />
           <ProfileShellContext.Provider value={shell}>
             <Outlet />
           </ProfileShellContext.Provider>

@@ -1,6 +1,6 @@
 {
   "name": "job-applications-tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local job applications tracker that uses your own agent CLI to find openings and sync application status from Gmail",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
     "build": "tsup && vite build",
     "dev:server": "tsx watch src/server/dev.ts",
     "sandbox": "npm run build && node bin/jobtrack.js --data-dir .tmp/sandbox",
-    "sandbox:mock": "npm run build && tsx scripts/sandbox-mock/prepare.ts && node bin/jobtrack.js --data-dir .tmp/sandbox-mock",
+    "sandbox:mock": "npm run build && tsx scripts/sandbox-mock/prepare.ts && node --env-file=scripts/sandbox-mock/no-update-check.env bin/jobtrack.js --data-dir .tmp/sandbox-mock",
     "demo:video": "npm run build && npm install --no-audit --no-fund --prefix .tmp/demo-video playwright-core@1.58.0 && tsx scripts/demo-video/record.mjs",
     "test": "vitest run",
     "prepublishOnly": "npm run build",

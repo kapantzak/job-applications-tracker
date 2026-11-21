@@ -14,6 +14,7 @@ import type {
   RunStatus,
   Settings,
   StatusHistoryEntry,
+  UpdateStatus,
 } from '../../server/domain/types.js';
 import type { DashboardResponse } from '../../server/domain/dashboard.js';
 
@@ -117,6 +118,7 @@ export async function getRunLog(profileId: string, id: string): Promise<string> 
 }
 
 export const getHealth = (): Promise<Health> => request('GET', '/api/health');
+export const getUpdate = (): Promise<UpdateStatus> => request('GET', '/api/update');
 export const getAdapters = (): Promise<AdapterStatus[]> => request('GET', '/api/setup/adapters');
 export const getModelCatalogs = (): Promise<ModelCatalogs> => request('GET', '/api/setup/models');
 

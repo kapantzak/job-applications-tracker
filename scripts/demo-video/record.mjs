@@ -61,6 +61,8 @@ if (!process.env.DEMO_CHROMIUM_PATH) {
 function startApp() {
   const child = spawn(process.execPath, [join(root, 'bin', 'jobtrack.js'), '--data-dir', dataDir, '--no-open', '--port', '0'], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    // No update notice in the recording, whatever npm has published since (SOW-0053).
+    env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
   });
   return new Promise((resolveStart, reject) => {
     let out = '';

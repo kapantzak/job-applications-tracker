@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   run_timeout_ms: 1200000,
   sync_interval: 'off',
   port: 4173,
+  update_check: true,
 };
 
 export function createSettingsRepo(db: Db) {

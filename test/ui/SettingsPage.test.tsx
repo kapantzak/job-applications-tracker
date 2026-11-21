@@ -52,6 +52,7 @@ const settings = {
   run_timeout_ms: 600000,
   sync_interval: 'off',
   port: 4000,
+  update_check: true,
 };
 
 function renderPage() {
@@ -223,11 +224,14 @@ describe('SettingsPage', () => {
       'Sync interval',
       'Claude spend cap',
       'Port',
+      'Check for updates',
     ]) {
       expect(screen.getByRole('button', { name: `About ${topic}` })).toBeInTheDocument();
     }
     expect(screen.getByText('Time limits, scheduled Gmail sync and the Claude spend cap.')).toBeInTheDocument();
-    expect(screen.getByText('Where the app listens on this computer.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Where the app listens on this computer, and whether it checks for new versions.'),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'About Allowed tools (sync)' }));
     expect(await screen.findByRole('dialog', { name: 'About Allowed tools (sync)' })).toHaveTextContent(
       /^Claude Code only\. The tools a run may use/,
@@ -245,6 +249,18 @@ describe('SettingsPage', () => {
       sync_interval: '6h',
       claude_max_budget_usd_discover: '5',
     });
+    expect(await within(section).findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('saves the port and the update check with the server section', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const check = await screen.findByRole('checkbox', { name: 'Check for updates' });
+    expect(check).toBeChecked();
+    await user.click(check);
+    const section = screen.getByRole('region', { name: 'Server' });
+    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    expect(client.patchSettings).toHaveBeenCalledWith({ port: 4000, update_check: false });
     expect(await within(section).findByText('Saved')).toBeInTheDocument();
   });
 

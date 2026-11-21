@@ -9,6 +9,8 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['test/server/**/*.test.ts', 'test/e2e/**/*.test.ts'],
+          // No test may ask the npm registry for updates (SOW-0053); spawned bins inherit it.
+          env: { NO_UPDATE_NOTIFIER: '1' },
         },
       },
       {

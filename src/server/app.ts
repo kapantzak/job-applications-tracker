@@ -24,6 +24,7 @@ import type { RunQueue } from './runs/queue.js';
 import type { SyncScheduler } from './runs/scheduler.js';
 import type { createApplicationProposalService } from './services/application-proposals.js';
 import type { createProposalService } from './services/proposals.js';
+import type { UpdateChecker } from './update-check.js';
 
 export interface AppDeps {
   db: Db;
@@ -41,6 +42,7 @@ export interface AppDeps {
   queue: RunQueue;
   logStore: LogStore;
   scheduler: SyncScheduler;
+  updateChecker: Pick<UpdateChecker, 'refresh' | 'status'>;
   cvService: CvService;
   adapterFactory: (settings: Settings, kind: AgentTaskKind) => AgentAdapter;
   uiDir: string | null;

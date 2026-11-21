@@ -72,6 +72,8 @@ export const FIELD_HELP = {
   spendCap:
     "Applies to Claude Code job searches only. The estimate is Claude Code's own, at list price, so it is not what your plan bills.",
   port: 'The port the app listens on, on this computer only (`127.0.0.1`). If it is taken, the next free port is used. `--port` on the command line overrides it.',
+  updateCheck:
+    'Once a day while the app runs, it asks the npm registry for the newest version and shows a notice when one is out. The request sends nothing about you or your data. Setting the `NO_UPDATE_NOTIFIER` environment variable also turns it off.',
 } as const;
 
 export type FieldHelpKey = keyof typeof FIELD_HELP;
@@ -83,7 +85,7 @@ export const SCREEN_INTROS = {
   manualProfile:
     'Describe the jobs you want. Name and at least one target role are required; the more you fill in, the better discovery can judge a fit.',
   settingsRuns: 'Time limits, scheduled Gmail sync and the Claude spend cap.',
-  settingsServer: 'Where the app listens on this computer.',
+  settingsServer: 'Where the app listens on this computer, and whether it checks for new versions.',
   runs: 'Every job search, Gmail sync and import, newest first. Open one to see what happened.',
   settings: 'Agent and app settings, shared by all profiles. Each section saves on its own.',
 } as const;
