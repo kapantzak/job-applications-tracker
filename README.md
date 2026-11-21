@@ -2,6 +2,8 @@
 
 A local app that finds job postings matching your profile, checks that the links work, and tracks your applications. It can also read your mailbox through your AI agent and propose status changes. Everything runs on your machine; data is stored in a local SQLite file.
 
+Website: [jobtrack.kapantzakis.gr](https://jobtrack.kapantzakis.gr/)
+
 https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571
 
 <details>
