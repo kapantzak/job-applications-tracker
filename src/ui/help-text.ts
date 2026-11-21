@@ -68,7 +68,7 @@ export const FIELD_HELP = {
   runTimeout:
     "How long one agent may run, in milliseconds (1200000 = 20 minutes). An agent that goes over is stopped and what it found is lost. In a Max-effort search each of the five agents gets this much on its own, and the others' results are kept.",
   syncInterval:
-    'How often the app syncs Gmail by itself, once for each profile with open applications or a Gmail label or search. It runs only while the app is running. Off: sync only when you click Sync.',
+    'How often the app syncs Gmail by itself, once for each profile with open applications or a Gmail label or search. It runs only while the app is running. With a label or search, a scheduled sync looks only at mail since the last full check; click Sync to look through all of it. Off: sync only when you click Sync.',
   spendCap:
     "Applies to Claude Code job searches only. The estimate is Claude Code's own, at list price, so it is not what your plan bills.",
   port: 'The port the app listens on, on this computer only (`127.0.0.1`). If it is taken, the next free port is used. `--port` on the command line overrides it.',

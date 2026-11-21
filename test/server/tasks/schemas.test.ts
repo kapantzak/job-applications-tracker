@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DiscoverJobsOutput, SyncMailOutput, outputJsonSchema } from '../../../src/server/tasks/schemas.js';
+import { DiscoverJobsOutput, SyncMailListOutput, SyncMailOutput, SyncMailReadOutput, ThreadRecord, outputJsonSchema } from '../../../src/server/tasks/schemas.js';
 
 const job = { company: 'Acme', title: 'Dev', url: 'https://acme.test/1' };
 
@@ -71,6 +71,52 @@ describe('task schemas', () => {
   });
 });
 
+describe('sync_mail list and read schemas', () => {
+  const evidence = { message_id: 'msg-001', date: '2026-11-02', from: 'hr@acme.example.com', subject: 'Interview', snippet: 'Pick a slot' };
+  const record = {
+    thread_id: 'thr-001',
+    application_id: '',
+    company: 'Acme',
+    role: 'Engineer',
+    status: 'interview',
+    first_date: '2026-10-20',
+    sender_domain: 'acme.example.com',
+    confidence: 0.9,
+    reason: 'Interview invitation',
+    evidence,
+  };
+
+  it('list output carries windows and threads, with notes defaulting to empty', () => {
+    const out = SyncMailListOutput.parse({
+      mail_access: true,
+      windows: [{ after: '', before: '2026/11/01', thread_count: 12 }],
+      threads: [{ thread_id: 'thr-001', last_message_id: 'msg-009' }],
+    });
+    expect(out.notes).toBe('');
+    expect(() => SyncMailListOutput.parse({ mail_access: true, windows: [{ after: '', before: '', thread_count: -1 }], threads: [] })).toThrow();
+  });
+
+  it('read records take the new-application stages, with application_id and sender_domain defaulting to empty', () => {
+    const { application_id: _a, sender_domain: _s, ...bare } = record;
+    expect(ThreadRecord.parse(bare)).toMatchObject({ application_id: '', sender_domain: '' });
+    expect(() => ThreadRecord.parse({ ...record, status: 'no_change' })).toThrow();
+    expect(() => ThreadRecord.parse({ ...record, confidence: 1.5 })).toThrow();
+    expect(SyncMailReadOutput.parse({ mail_access: true, threads: [record] }).not_applications).toEqual([]);
+  });
+
+  it('json schemas require every field the app reads', () => {
+    const list = outputJsonSchema('sync_mail_list') as any;
+    expect(list.required).toEqual(['mail_access', 'windows', 'threads', 'notes']);
+    expect(list.properties.windows.items.required).toEqual(['after', 'before', 'thread_count']);
+    expect(list.properties.threads.items.required).toEqual(['thread_id', 'last_message_id']);
+    const read = outputJsonSchema('sync_mail_read') as any;
+    expect(read.required).toEqual(['mail_access', 'threads', 'not_applications', 'notes']);
+    expect(read.properties.threads.items.required).toEqual([
+      'thread_id', 'application_id', 'company', 'role', 'status', 'first_date', 'sender_domain', 'confidence', 'reason', 'evidence',
+    ]);
+  });
+});
+
 // Claude Code rejects a draft-2020-12 `$schema` pointer; the OpenAI structured-output API behind
 // Codex requires `additionalProperties: false` and every property in `required`.
 function assertAgentCompatible(node: unknown, path = '$'): void {
@@ -90,7 +136,7 @@ function assertAgentCompatible(node: unknown, path = '$'): void {
 }
 
 describe('agent-compatible json schema', () => {
-  it.each(['discover_jobs', 'sync_mail', 'analyse_cv'] as const)('%s schema is strict and carries no $schema pointer', (kind) => {
+  it.each(['discover_jobs', 'sync_mail', 'sync_mail_list', 'sync_mail_read', 'analyse_cv'] as const)('%s schema is strict and carries no $schema pointer', (kind) => {
     assertAgentCompatible(outputJsonSchema(kind));
   });
 

@@ -1,4 +1,5 @@
 import type { createSettingsRepo } from '../db/settings-repo.js';
+import { SCHEDULED_SYNC_INPUT } from '../domain/types.js';
 import type { RunQueue } from './queue.js';
 
 type SettingsRepo = ReturnType<typeof createSettingsRepo>;
@@ -45,7 +46,8 @@ export function createSyncScheduler({ settingsRepo, queue, syncProfileIds }: Syn
       }
       for (const id of ids) {
         try {
-          queue.enqueue('sync_mail', id);
+          // Marked so the sync lists only recent mail (SOW-0051, decision 14B); a click on Sync lists all of it.
+          queue.enqueue('sync_mail', id, { input: SCHEDULED_SYNC_INPUT });
         } catch {
           // The queue logs its own failures; one profile must not block the others.
         }

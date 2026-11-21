@@ -20,6 +20,7 @@ import { outputJsonSchema, DiscoverJobsOutput, type DiscoverJobsResult } from '.
 import { renderPrompt } from '../tasks/prompts.js';
 import { canonicalUrl, dedupeKey } from '../verify/canonicalize.js';
 import { verifyLink } from '../verify/links.js';
+import { mapLimit } from '../runs/map-limit.js';
 
 export interface DiscoveryDeps {
   profilesRepo: Pick<ProfilesRepo, 'get'>;
@@ -102,20 +103,6 @@ function renderProfile(p: Profile): string {
     `Excluded companies: ${list(p.excluded_companies)}`,
     `Notes: ${p.notes || '(none)'}`,
   ].join('\n');
-}
-
-// Order-preserving map with bounded concurrency; avoids a dependency for one call site.
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i]!);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
 }
 
 // Shared by discovery and imports (SOW-0043): checks each link, dedupes against the profile's jobs, records

@@ -569,11 +569,23 @@ describe('buildAdapterConfig', () => {
     expect(buildAdapterConfig(settings, 'discover_jobs').argv).not.toContain('--max-budget-usd');
   });
 
-  it('claude sync gets none of the discovery limits', () => {
+  // Decision 6A (SOW-0051): `--tools ""` would drop ToolSearch and load every MCP tool up front (612,940 input
+  // tokens for one search, probed on 2.1.329); ToolSearch alone keeps them deferred (58,563).
+  it('claude sync keeps only ToolSearch and the allowed built-ins, and none of the discovery limits', () => {
     const c = buildAdapterConfig({ ...DEFAULT_SETTINGS, adapter_id: 'claude' }, 'sync_mail');
-    expect(c.argv).not.toContain('--tools');
+    expect(c.argv.slice(c.argv.indexOf('Agent,Task') + 1)).toEqual(['--tools', 'ToolSearch']);
     expect(c.argv).not.toContain('--strict-mcp-config');
     expect(c.argv).not.toContain('--max-budget-usd');
+  });
+
+  it('claude sync adds built-ins named in the sync allowed tools, once', () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      adapter_id: 'claude' as const,
+      allowed_tools_sync: `${DEFAULT_SETTINGS.allowed_tools_sync}, Read, ToolSearch, Bash(cat:*)`,
+    };
+    const c = buildAdapterConfig(settings, 'sync_mail');
+    expect(c.argv.slice(c.argv.indexOf('--tools'), c.argv.indexOf('--tools') + 2)).toEqual(['--tools', 'ToolSearch,Read,Bash']);
   });
 
   it('refuses a stored spend cap that is not a positive amount', () => {

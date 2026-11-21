@@ -52,6 +52,12 @@ function fromTimestamp(value: string): string | null {
 
 const parse = (value: string): string | null => fromDay(value) ?? fromTimestamp(value);
 
+// A mail date as epoch milliseconds (a bare day is local midnight), or null when it is not a date.
+export function mailTime(value: string): number | null {
+  const iso = parse(value);
+  return iso === null ? null : Date.parse(iso);
+}
+
 // Never in the future (S7): an agent date past now is a misread.
 const notAfter = (iso: string, now: Date): string => (Date.parse(iso) > now.getTime() ? now.toISOString() : iso);
 

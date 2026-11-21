@@ -267,23 +267,48 @@ const APP_LINES: RegExp[] = [
   /^Dropping a new application the agent returned in the wrong shape: /,
   /^Keeping the first \d+ new applications; the next sync looks again$/,
   /^Skipping (unparseable|unsupported) url: /,
+  // A scoped sync (SOW-0051) lists, then reads in batches; a scheduled one lists only recent mail.
+  /^Listing all mail$/,
+  /^Listing mail since \d{4}\/\d{2}\/\d{2}$/,
+  /^Scheduled sync lists all mail: /,
+  /^Listing again: /,
+  /^Listed \d+ threads$/,
+  /^Reading \d+ of \d+ threads in \d+ batches of up to \d+, \d+ at a time$/,
+  /^No new or changed threads to read$/,
+  /^Skipping a thread without a company$/,
+  /^Ignoring an unknown application id from the agent: /,
+  /^Skipping a thread that names no role: /,
+  /^Skipping a finding from a message already reviewed: /,
+  /^Dropping a date range the agent returned in the wrong shape: /,
+  /^Dropping a listed thread in the wrong shape: /,
+  /^Dropping a thread the agent returned in the wrong shape: /,
+  /^Dropping \d+ threads that were not in the batch$/,
+  /^\d+ threads were not read; the next sync tries them again$/,
   // Runs before SOW-0045 have no new-applications count.
-  /^\d+ proposals created, (\d+ new applications found, )?\d+ skipped(; the Gmail scope matched no mail)?$/,
+  /^\d+ proposals created, (\d+ new applications found, )?\d+ skipped(; \d+ of \d+ batches failed)?(; some mail may not have been listed)?(; the Gmail scope matched no mail)?$/,
   /^\d+ new, \d+ duplicates, \d+ dead, \d+ unverified(; \d+ of \d+ workers failed)?$/,
   /^Max effort: \d+ workers, up to \d+ at a time$/,
   /^Worker \d+ \(.+\) started$/,
 ];
 // A failed Max worker does not fail the run, so it is a warning rather than an error.
 const WORKER_FAILED = /^Worker \d+ \(.+\) failed: /;
-// A scope that matched no mail does not fail the sync either (SOW-0032).
-const SCOPE_MISSED = /^The Gmail scope matched no mail; /;
-// Max workers' own output is written with this prefix (src/server/services/discovery.ts).
-const WORKER_PREFIX = /^\[worker (\d+)\] (.*)$/;
+// A scope that matched no mail does not fail the sync either (SOW-0032), nor do a failed read batch and
+// date ranges the list calls could not confirm (SOW-0051).
+const SYNC_WARNINGS = [
+  /^The Gmail scope matched no mail; /,
+  /^Batch \d+ failed: /,
+  /^Listing again failed: /,
+  /^Could not confirm that every thread was listed: /,
+];
+// Each Max worker and each list or read call of a scoped sync is its own agent process, written with this
+// prefix (src/server/services/discovery.ts, src/server/mail/agent-source.ts).
+const CALL_PREFIX = /^\[(worker|list|batch) (\d+)\] (.*)$/;
+const CALL_LABELS: Record<string, string> = { worker: 'Worker', list: 'List', batch: 'Batch' };
 
 function appLine(line: string): LogEntry | null {
   const finished = /^Run \S+ (succeeded|failed|aborted)(:.*)?$/.exec(line);
   if (finished) return { kind: 'app', tone: finished[1] === 'succeeded' ? 'muted' : 'error', text: clip(line) };
-  if (WORKER_FAILED.test(line) || SCOPE_MISSED.test(line)) return { kind: 'app', tone: 'warning', text: clip(line) };
+  if (WORKER_FAILED.test(line) || SYNC_WARNINGS.some((re) => re.test(line))) return { kind: 'app', tone: 'warning', text: clip(line) };
   if (line === RUN_SAVING_LOG_LINE || APP_LINES.some((re) => re.test(line))) {
     return { kind: 'app', tone: 'muted', text: clip(line) };
   }
@@ -314,18 +339,18 @@ function formatLine(line: string, started: Set<string>): LogEntry[] {
 
 export function formatLog(lines: string[]): LogEntry[] {
   const started = new Set<string>();
-  // Each Max worker is its own agent process with its own item ids.
-  const workerStarted = new Map<string, Set<string>>();
+  // Each prefixed call is its own agent process with its own item ids.
+  const callStarted = new Map<string, Set<string>>();
   const out: LogEntry[] = [];
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (line.trim() === '') continue;
-    const worker = WORKER_PREFIX.exec(line);
-    if (worker) {
-      const id = worker[1]!;
-      if (!workerStarted.has(id)) workerStarted.set(id, new Set());
-      for (const entry of formatLine(worker[2]!, workerStarted.get(id)!)) {
-        out.push({ ...entry, text: `Worker ${id}: ${entry.text}` });
+    const call = CALL_PREFIX.exec(line);
+    if (call) {
+      const id = `${call[1]} ${call[2]}`;
+      if (!callStarted.has(id)) callStarted.set(id, new Set());
+      for (const entry of formatLine(call[3]!, callStarted.get(id)!)) {
+        out.push({ ...entry, text: `${CALL_LABELS[call[1]!]} ${call[2]}: ${entry.text}` });
       }
       continue;
     }

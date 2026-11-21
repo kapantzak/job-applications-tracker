@@ -224,13 +224,20 @@ describe('RunPage', () => {
     expect(detail('Usage')).toBe('Not reported');
   });
 
-  it('shows no mode and no usage for a sync run, which records none', async () => {
-    vi.mocked(client.getRun).mockResolvedValue({ ...run, kind: 'sync_mail', status: 'succeeded' });
+  it('shows the usage of a sync run, summed over its agent calls, and no mode (SOW-0051)', async () => {
+    vi.mocked(client.getRun).mockResolvedValue({
+      ...run,
+      kind: 'sync_mail',
+      status: 'succeeded',
+      usage_cost_usd: 2.5,
+      usage_input_tokens: 120_000,
+      usage_output_tokens: 900,
+    });
     vi.mocked(client.getRunLog).mockResolvedValue('');
     renderPage();
     await screen.findByText('Gmail sync');
     expect(screen.queryByText('Mode', { selector: 'dt' })).toBeNull();
-    expect(screen.queryByText('Usage', { selector: 'dt' })).toBeNull();
+    expect(detail('Usage')).toBe('$2.50 estimated · 120.0k tokens in, 900 out');
   });
 
   it('marks model and effort as not recorded for older runs and as custom for custom commands', async () => {

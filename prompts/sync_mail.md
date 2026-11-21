@@ -1,5 +1,5 @@
 ---
-version: 5
+version: 6
 ---
 # Task: check email for application updates
 
@@ -36,6 +36,7 @@ Do not report these as new applications:
 ## Rules
 
 - Search only the messages the mailbox scope above allows.
+- A search that returns 45 threads or more, or as many as the page size allows, is cut off: split its date range in two and search each half, until every search returns fewer. Do not depend on page tokens.
 - Set `scope_message_count` as the mailbox scope above says.
 - Consider only messages newer than each application's `applied_at`.
 - Return at most one finding per application.
@@ -50,7 +51,7 @@ Do not report these as new applications:
 
 - Add an entry to `new_applications` for each job application the user made that matches none of the open applications and none of the already tracked ones above (compare company and role).
 - Count only mail that shows the user applied: an application confirmation, or a reply, assessment, interview invitation, offer or rejection about that application. Ignore job alerts, newsletters, job recommendations and recruiter outreach about jobs the user did not apply to.
-- Return at most one entry per company and role, and at most 50 entries in total.
+- Return at most one entry per company and role, and at most 500 entries in total.
 - `company` is the hiring company, never the job board or the ATS. `role` is the job title as the mail states it.
 - `status` is the stage the latest message about that application shows: `applied`, `screening`, `interview`, `offer` or `rejected`.
 - `applied_at` is the date of the earliest message about that application, as YYYY-MM-DD.

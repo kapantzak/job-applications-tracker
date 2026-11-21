@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Application, Profile, ProfileListItem } from '../../../src/server/domain/types.js';
+import { createMailThreadsRepo } from '../../../src/server/db/mail-threads-repo.js';
 import { insertJob, json, makeHarness, SAMPLE_PROFILE, type Harness } from './harness.js';
 
 let h: Harness;
@@ -237,6 +238,9 @@ describe('profiles: delete', () => {
       { ...fresh, company: 'Hooli', job_id: null },
     ]);
     h.deps.applicationProposalService.accept(accepted!.id);
+    // Threads a scoped sync has read (SOW-0051).
+    createMailThreadsRepo(h.deps.db).upsertMany(profileId, [{ thread_id: 'thr-001', last_message_id: 'msg-003' }]);
+    createMailThreadsRepo(h.deps.db).setListing(profileId, 'label:jobs', '2026/11/20');
     for (const run of h.deps.runsRepo.list(profileId)) h.deps.runsRepo.update(run.id, { status: 'succeeded' });
     return { runIds: h.deps.runsRepo.list(profileId).map((r) => r.id), app };
   }
@@ -260,6 +264,8 @@ describe('profiles: delete', () => {
     expect(count('SELECT COUNT(*) AS n FROM jobs')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM applications')).toBe(2);
     expect(count('SELECT COUNT(*) AS n FROM application_proposals')).toBe(2);
+    expect(count('SELECT COUNT(*) AS n FROM mail_threads')).toBe(1);
+    expect(count('SELECT COUNT(*) AS n FROM mail_listings')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM proposals')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM status_history')).toBe(1);
     expect(h.deps.applicationsRepo.history(theirs.app.id)).toHaveLength(1);
