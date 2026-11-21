@@ -68,7 +68,8 @@ describe('dashboard', () => {
     expect(body.status_counts.offer).toBe(0);
     expect(body.funnel.interview).toBe(1);
     expect(body.funnel.offer).toBe(0);
-    expect(body.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
+    // Only the removed Breakdown funnel read it (SOW-0052); stopped_at carries the same counts.
+    expect(body).not.toHaveProperty('rejected_at');
     // Acme reached interview and is still there; Globex is saved, so it was never sent.
     const none = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
     expect(body.stopped_at).toEqual({

@@ -50,7 +50,6 @@ function summary(over: Partial<DashboardResponse> = {}): DashboardResponse {
       no_response: 3,
     },
     funnel: { applied: 24, screening: 8, interview: 3, offer: 1 },
-    rejected_at: { applied: 4, screening: 1, interview: 1, offer: 0 },
     stopped_at: {
       applied: { waiting: 9, rejected: 4, no_response: 2, withdrawn: 1 },
       screening: { waiting: 3, rejected: 1, no_response: 1, withdrawn: 0 },
@@ -128,12 +127,11 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
   });
 
-  it('shows the bar, funnel and attention cards in Breakdown', async () => {
-    localStorage.setItem('dashboard-view', 'breakdown');
+  it('shows the journey graph with the attention card below it', async () => {
     renderPage();
-    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
+    const journey = await screen.findByRole('heading', { name: "Your applications' journey" });
+    const attention = screen.getByRole('heading', { name: 'Needs attention' });
+    expect(journey.compareDocumentPosition(attention) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('discovery line carries the jobs count', async () => {
@@ -172,7 +170,6 @@ describe('DashboardPage', () => {
           no_response: 0,
         },
         funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
-        rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
         stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
         pending_proposals: 0,
         pending_new_applications: 0,
@@ -183,7 +180,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('No applications yet')).toBeInTheDocument();
     expect(screen.getByText(/or sync from Gmail to find applications you already made/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', `${BASE}/jobs`);
-    expect(screen.queryByText(/Where your/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Your applications' journey" })).not.toBeInTheDocument();
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('0');
   });
@@ -194,7 +191,6 @@ describe('DashboardPage', () => {
         total: 0,
         status_counts: { saved: 0, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0, withdrawn: 0, no_response: 0 },
         funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
-        rejected_at: { applied: 0, screening: 0, interview: 0, offer: 0 },
         stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
         pending_proposals: 0,
         pending_new_applications: 2,
@@ -332,100 +328,55 @@ describe('DashboardPage search buttons', () => {
   });
 });
 
-describe('DashboardPage views', () => {
+// Journey is the only view (SOW-0052): no switch, no stored choice, no count or width rule.
+describe('DashboardPage journey view', () => {
   const sent = (applied: number) => summary({ funnel: { applied, screening: 0, interview: 0, offer: 0 } });
-  const switcher = () => screen.queryByRole('group', { name: 'Dashboard view' });
-  const viewButton = (name: 'Journey' | 'Breakdown') => within(switcher()!).getByRole('button', { name });
-  const journeyHeading = () => screen.queryByRole('heading', { name: "Your applications' journey" });
-  const barHeading = () => screen.queryByRole('heading', { name: /^Where your/ });
+  const journeyHeading = () => screen.findByRole('heading', { name: "Your applications' journey" });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('opens Journey from 10 sent, with the attention card below the graph', async () => {
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(10));
+  it('shows Journey for a single sent application, with no view switch', async () => {
+    vi.mocked(client.getDashboard).mockResolvedValue(sent(1));
     renderPage();
-    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
-    expect(barHeading()).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'How far applications get' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument();
-    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
-    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'false');
-    // Opening a view stores nothing; only a click does.
-    expect(localStorage.getItem('dashboard-view')).toBeNull();
+    expect(await journeyHeading()).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Dashboard view' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Breakdown' })).not.toBeInTheDocument();
   });
 
-  it('opens Breakdown below 10 sent', async () => {
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
+  // Nothing reads the width now; this fails if a width rule that hides Journey comes back.
+  it('shows Journey in a window narrower than 1280 px', async () => {
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })),
+    );
     renderPage();
-    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
-    expect(journeyHeading()).not.toBeInTheDocument();
-    expect(viewButton('Breakdown')).toHaveAttribute('aria-pressed', 'true');
-    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'false');
+    expect(await journeyHeading()).toBeInTheDocument();
   });
 
-  it('switches view on click and remembers the choice', async () => {
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(9));
-    const user = userEvent.setup();
+  it('ignores a view choice stored by an earlier version', async () => {
+    localStorage.setItem('dashboard-view', 'breakdown');
     renderPage();
-    await screen.findByRole('group', { name: 'Dashboard view' });
-    await user.click(viewButton('Journey'));
-    expect(journeyHeading()).toBeInTheDocument();
-    expect(barHeading()).not.toBeInTheDocument();
-    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
-    expect(localStorage.getItem('dashboard-view')).toBe('journey');
-    await user.click(viewButton('Breakdown'));
-    expect(barHeading()).toBeInTheDocument();
+    expect(await journeyHeading()).toBeInTheDocument();
     expect(localStorage.getItem('dashboard-view')).toBe('breakdown');
   });
 
-  it('lets a stored choice win over the count', async () => {
-    localStorage.setItem('dashboard-view', 'breakdown');
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
-    renderPage();
-    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
-    expect(journeyHeading()).not.toBeInTheDocument();
-  });
-
-  // The graph's labels are only readable from 1280 px windows (SOW-0037 Decision 7).
-  const stubWidth = (width: number) => {
-    vi.stubGlobal('innerWidth', width);
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn(() => ({ matches: width >= 1280, addEventListener: () => {}, removeEventListener: () => {} })),
-    );
-  };
-
-  it('shows only Breakdown, without the switch, below 1280 px', async () => {
-    stubWidth(1279);
-    localStorage.setItem('dashboard-view', 'journey');
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
-    renderPage();
-    expect(await screen.findByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
-    expect(journeyHeading()).not.toBeInTheDocument();
-    expect(switcher()).not.toBeInTheDocument();
-  });
-
-  it('offers the switch and Journey from 1280 px', async () => {
-    stubWidth(1280);
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(200));
-    renderPage();
-    expect(await screen.findByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
-    expect(viewButton('Journey')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('hides the switch for a profile without applications', async () => {
+  it('shows Journey with nothing sent but saved applications (SOW-0052 Decision 2)', async () => {
     vi.mocked(client.getDashboard).mockResolvedValue(
       summary({
-        total: 0,
+        total: 2,
+        status_counts: { saved: 2, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0, withdrawn: 0, no_response: 0 },
         funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
         stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
       }),
     );
     renderPage();
-    expect(await screen.findByText('No applications yet')).toBeInTheDocument();
-    expect(switcher()).not.toBeInTheDocument();
+    expect(await journeyHeading()).toBeInTheDocument();
+    expect(screen.getByText('0 sent · 2 saved, not applied yet')).toBeInTheDocument();
+    const graph = screen.getByRole('img', { name: '0 sent.' });
+    expect([...graph.querySelectorAll('[data-part="count"]')].map((t) => t.textContent)).toEqual(['0', '0', '0', '0']);
+    expect(graph.querySelectorAll('[data-part="node"], [data-part="moved"], [data-exit]')).toHaveLength(0);
   });
 });

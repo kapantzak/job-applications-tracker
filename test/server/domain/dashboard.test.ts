@@ -37,7 +37,6 @@ describe('summarizeDashboard', () => {
     expect(Object.keys(s.status_counts).sort()).toEqual([...APPLICATION_STATUSES].sort());
     for (const status of APPLICATION_STATUSES) expect(s.status_counts[status]).toBe(0);
     expect(s.funnel).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
-    expect(s.rejected_at).toEqual({ applied: 0, screening: 0, interview: 0, offer: 0 });
     const none = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
     expect(s.stopped_at).toEqual({ applied: none, screening: none, interview: none, offer: none });
     expect(s.quiet).toEqual([]);
@@ -60,7 +59,7 @@ describe('summarizeDashboard', () => {
       row(stillInterviewing.id, 'applied', 'interview', ago(3)),
     ];
     const s = summarizeDashboard([afterApplying, afterInterview, created, skipped, stillInterviewing], history, 0, NOW);
-    expect(s.rejected_at).toEqual({ applied: 2, screening: 0, interview: 2, offer: 0 });
+    expect(FUNNEL_STAGES.map((stage) => s.stopped_at[stage].rejected)).toEqual([2, 0, 2, 0]);
     // Rejections stay inside the reach counts, so the funnel itself is unchanged.
     expect(s.funnel).toEqual({ applied: 5, screening: 3, interview: 3, offer: 0 });
   });
@@ -140,7 +139,6 @@ describe('summarizeDashboard', () => {
       const stopped = s.stopped_at[stage];
       const sum = stopped.waiting + stopped.rejected + stopped.no_response + stopped.withdrawn;
       expect(sum).toBe(s.funnel[stage] - (next ? s.funnel[next] : 0));
-      expect(stopped.rejected).toBe(s.rejected_at[stage]);
     });
     // Past the offer: four active statuses via the offer path plus three offers by the other paths.
     expect(s.stopped_at.offer).toEqual({ waiting: 7, rejected: 1, no_response: 1, withdrawn: 1 });

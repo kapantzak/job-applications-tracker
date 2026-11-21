@@ -3,16 +3,12 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ApplicationStatus } from '../../src/server/domain/types.js';
 import type { FunnelStage, QuietApplication, StageStops } from '../../src/server/domain/dashboard.js';
 import { AttentionCard } from '../../src/ui/components/dashboard/AttentionCard.js';
-import { FunnelCard } from '../../src/ui/components/dashboard/FunnelCard.js';
-import { JourneyCard } from '../../src/ui/components/dashboard/JourneyCard.js';
-import { StatusBarCard } from '../../src/ui/components/dashboard/StatusBarCard.js';
+import { JOURNEY_MIN_WIDTH_PX, JourneyCard } from '../../src/ui/components/dashboard/JourneyCard.js';
 import { InProfile } from './profile-shell.js';
 
 const href = (p: string) => '/profiles/platform-roles' + p;
-const NONE = { applied: 0, screening: 0, interview: 0, offer: 0 };
 
 function renderCard(card: ReactNode) {
   return render(
@@ -22,189 +18,11 @@ function renderCard(card: ReactNode) {
   );
 }
 
-function counts(partial: Partial<Record<ApplicationStatus, number>>): Record<ApplicationStatus, number> {
-  return {
-    saved: 0,
-    applied: 0,
-    screening: 0,
-    interview: 0,
-    offer: 0,
-    rejected: 0,
-    withdrawn: 0,
-    no_response: 0,
-    ...partial,
-  };
-}
-
-const FULL = counts({
-  saved: 4,
-  applied: 12,
-  screening: 3,
-  interview: 2,
-  offer: 1,
-  rejected: 6,
-  withdrawn: 1,
-  no_response: 5,
-});
-
 function quiet(n: number, status: QuietApplication['status'], days: number, company = 'Acme'): QuietApplication {
   return { id: `app-${n}`, company, role: `Role ${n}`, status, since: '2026-10-01T00:00:00.000Z', days };
 }
 
 afterEach(cleanup);
-
-describe('StatusBarCard', () => {
-  it('status bar title and legend', () => {
-    renderCard(<StatusBarCard total={34} counts={FULL} href={href} />);
-    expect(screen.getByRole('heading', { name: 'Where your 34 applications stand' })).toBeInTheDocument();
-    const items = within(screen.getByRole('list', { name: 'Statuses' })).getAllByRole('listitem');
-    expect(items.map((i) => i.textContent)).toEqual([
-      'Saved 4',
-      'Applied 12',
-      'Screening 3',
-      'Interview 2',
-      'Offer 1',
-      'Rejected 6',
-      'Withdrawn 1',
-      'No response 5',
-    ]);
-    expect(screen.getByRole('link', { name: 'Applied 12' })).toHaveAttribute(
-      'href',
-      '/profiles/platform-roles/applications?status=applied',
-    );
-  });
-
-  it('singular title and zero entries', () => {
-    renderCard(<StatusBarCard total={1} counts={counts({ applied: 1 })} href={href} />);
-    expect(screen.getByRole('heading', { name: 'Where your 1 application stands' })).toBeInTheDocument();
-    expect(screen.getByText('Offer').closest('li')).toHaveTextContent('Offer 0');
-    expect(screen.queryByRole('link', { name: 'Offer 0' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('link')).toHaveLength(1);
-  });
-
-  it('bar image label lists non-zero statuses', () => {
-    renderCard(<StatusBarCard total={34} counts={FULL} href={href} />);
-    expect(screen.getByRole('img')).toHaveAttribute(
-      'aria-label',
-      'Saved: 4, Applied: 12, Screening: 3, Interview: 2, Offer: 1, Rejected: 6, Withdrawn: 1, No response: 5',
-    );
-  });
-
-  it('one status fills the bar', () => {
-    const { container } = renderCard(<StatusBarCard total={3} counts={counts({ applied: 3 })} href={href} />);
-    const segments = container.querySelectorAll('[data-status]');
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toHaveAttribute('data-status', 'applied');
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'Applied: 3');
-    expect(segments[0]).toHaveClass('rounded-l', 'rounded-r');
-  });
-
-  it('segment widths follow the counts', () => {
-    const { container } = renderCard(<StatusBarCard total={34} counts={FULL} href={href} />);
-    const segment = (s: string) => container.querySelector<HTMLElement>(`[data-status="${s}"]`)!;
-    expect(segment('applied').style.flexGrow).toBe('12');
-    expect(segment('rejected').style.flexGrow).toBe('6');
-    expect(segment('saved')).toHaveClass('rounded-l');
-    expect(segment('saved')).not.toHaveClass('rounded-r');
-    expect(segment('no_response')).toHaveClass('rounded-r');
-    // Hover-only tooltips (SOW-0034 Decision 7): the legend links are the keyboard path.
-    expect(container.querySelectorAll('[data-status][tabindex]')).toHaveLength(0);
-  });
-
-  it('segment tooltip', async () => {
-    const user = userEvent.setup();
-    const { container } = renderCard(<StatusBarCard total={34} counts={FULL} href={href} />);
-    await user.hover(container.querySelector('[data-status="applied"]')!);
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Applied: 12 (35%)');
-  });
-});
-
-describe('FunnelCard', () => {
-  const rows = () => within(screen.getByRole('list', { name: 'Funnel steps' })).getAllByRole('listitem');
-
-  it('funnel rows', () => {
-    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
-    expect(screen.getByRole('heading', { name: 'How far applications get' })).toBeInTheDocument();
-    const expected = [
-      ['Applied', '30', null],
-      ['Screening', '14', '47%'],
-      ['Interview', '6', '43%'],
-      ['Offer', '1', '17%'],
-    ] as const;
-    expect(rows()).toHaveLength(4);
-    expected.forEach(([label, count, share], i) => {
-      const row = within(rows()[i]);
-      expect(row.getByText(label)).toBeInTheDocument();
-      expect(row.getByText(count)).toBeInTheDocument();
-      if (share) expect(row.getByText(share)).toBeInTheDocument();
-      else expect(row.queryByText(/%$/)).not.toBeInTheDocument();
-    });
-    expect(screen.getByText('% = share of the step above')).toBeInTheDocument();
-  });
-
-  it('funnel with all zero counts', () => {
-    const { container } = renderCard(<FunnelCard funnel={{ applied: 0, screening: 0, interview: 0, offer: 0 }} rejectedAt={NONE} />);
-    for (const row of rows()) {
-      expect(within(row).queryByText(/%$/)).not.toBeInTheDocument();
-    }
-    expect(container.innerHTML).not.toContain('NaN');
-  });
-
-  it('funnel hides % after an empty step', () => {
-    renderCard(<FunnelCard funnel={{ applied: 3, screening: 0, interview: 0, offer: 0 }} rejectedAt={NONE} />);
-    expect(rows()[1]).toHaveTextContent('0%');
-    expect(rows()[2].textContent).toBe('Interview0');
-  });
-
-  it('row tooltip names the step above', async () => {
-    const user = userEvent.setup();
-    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
-    await user.hover(within(rows()[2]).getByTestId('funnel-track'));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('6 of 14 that reached screening');
-  });
-
-  it('shows no rejection parts or line without rejections', () => {
-    renderCard(<FunnelCard funnel={{ applied: 30, screening: 14, interview: 6, offer: 1 }} rejectedAt={NONE} />);
-    expect(screen.queryAllByTestId('funnel-rejected')).toHaveLength(0);
-    expect(screen.queryByText(/^Rejected after/)).not.toBeInTheDocument();
-  });
-
-  it('marks rejections inside each step and lists them as text', () => {
-    renderCard(
-      <FunnelCard
-        funnel={{ applied: 20, screening: 10, interview: 4, offer: 1 }}
-        rejectedAt={{ applied: 5, screening: 2, interview: 0, offer: 1 }}
-      />,
-    );
-    // Widths are shares of the Applied count; the blue part is what was not rejected at that step.
-    const reached = (i: number) => within(rows()[i]).getByTestId('funnel-reached') as HTMLElement;
-    const rejected = (i: number) => within(rows()[i]).queryByTestId('funnel-rejected') as HTMLElement | null;
-    expect(reached(0).style.width).toBe('75%');
-    expect(rejected(0)?.style.width).toBe('25%');
-    expect(reached(1).style.width).toBe('40%');
-    expect(rejected(1)?.style.width).toBe('10%');
-    expect(rejected(2)).toBeNull();
-    expect(reached(2).style.width).toBe('20%');
-    expect(reached(3).style.width).toBe('0%');
-    expect(rejected(3)?.style.width).toBe('5%');
-    // Row counts and shares are unchanged by rejections.
-    expect(within(rows()[1]).getByText('10')).toBeInTheDocument();
-    expect(within(rows()[1]).getByText('50%')).toBeInTheDocument();
-    expect(screen.getByText(/^Rejected after/)).toHaveTextContent('Rejected after: applying 5 · screening 2 · the offer 1');
-  });
-
-  it('row tooltip adds the rejections at that step', async () => {
-    const user = userEvent.setup();
-    renderCard(
-      <FunnelCard
-        funnel={{ applied: 20, screening: 10, interview: 4, offer: 1 }}
-        rejectedAt={{ applied: 5, screening: 2, interview: 0, offer: 0 }}
-      />,
-    );
-    await user.hover(within(rows()[0]).getByTestId('funnel-track'));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('20 applications sent; 5 rejected after applying');
-  });
-});
 
 describe('AttentionCard', () => {
   it('attention lists proposals and quiet applications', () => {
@@ -416,6 +234,25 @@ describe('JourneyCard', () => {
     );
     expect(height).toBeGreaterThanOrEqual(lowest);
     expect(height - lowest).toBeLessThan(40);
+  });
+
+  // Narrow windows scroll the card instead of shrinking the labels (SOW-0052 Decision 1).
+  it('keeps a minimum drawing width inside a sideways-scrolling area', () => {
+    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const svg = screen.getByRole('img');
+    expect(svg).toHaveStyle({ minWidth: `${JOURNEY_MIN_WIDTH_PX}px` });
+    expect(JOURNEY_MIN_WIDTH_PX).toBe(910);
+    expect(svg.closest('[data-slot="card-content"]')).toHaveClass('overflow-x-auto');
+  });
+
+  // Safari gives a scroll area without focusable content no keyboard access (SOW-0052 Decision 6).
+  it('makes the scroll area a labelled region that the keyboard can reach', async () => {
+    const user = userEvent.setup();
+    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const region = screen.getByRole('region', { name: 'Journey graph' });
+    expect(region).toContainElement(screen.getByRole('img'));
+    await user.tab();
+    expect(region).toHaveFocus();
   });
 
   it.each([

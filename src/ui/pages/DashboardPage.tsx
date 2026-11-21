@@ -12,21 +12,17 @@ import {
   startSync,
 } from '../api/client.js';
 import { AttentionCard } from '../components/dashboard/AttentionCard.js';
-import { FunnelCard } from '../components/dashboard/FunnelCard.js';
 import { JourneyCard } from '../components/dashboard/JourneyCard.js';
-import { StatusBarCard } from '../components/dashboard/StatusBarCard.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { FindJobsButton } from '../components/FindJobsButton.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { RUN_SUFFIXES, selectionSummary } from '../agent-choices.js';
-import { chooseView, readStoredView, storeView, useJourneyFits, type DashboardView } from '../dashboard-view.js';
 import { formatTime } from '../format.js';
 import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
-import { ButtonGroup } from '@/components/ui/button-group';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -82,14 +78,6 @@ export function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const narrow = !useJourneyFits();
-  const [storedView, setStoredView] = useState<DashboardView | null>(readStoredView);
-
-  // Only an explicit choice is stored, so the automatic rule keeps applying until the user picks.
-  const pickView = (next: DashboardView) => {
-    storeView(next);
-    setStoredView(next);
-  };
 
   useEffect(() => {
     let active = true;
@@ -134,15 +122,6 @@ export function DashboardPage() {
   const counts = summary?.status_counts;
   const inProgress = counts ? counts.applied + counts.screening + counts.interview : null;
   const listLink = (query: string) => href(`/applications?${query}`);
-  const view = summary ? chooseView(storedView, summary.funnel.applied, narrow) : 'breakdown';
-  const attention = summary && (
-    <AttentionCard
-      pendingProposals={summary.pending_proposals}
-      newApplications={summary.pending_new_applications}
-      quiet={summary.quiet}
-      href={href}
-    />
-  );
 
   return (
     <div>
@@ -240,45 +219,13 @@ export function DashboardPage() {
             </Empty>
           ) : (
             <>
-              {/* The graph needs the width, so windows under 1280 px get Breakdown only (SOW-0037 Decision 7). */}
-              {!narrow && (
-                <div className="-mb-2 flex justify-end">
-                  <ButtonGroup aria-label="Dashboard view">
-                    {(['journey', 'breakdown'] as const).map((option) => (
-                      <Button
-                        key={option}
-                        type="button"
-                        size="sm"
-                        variant={view === option ? 'default' : 'outline'}
-                        aria-pressed={view === option}
-                        onClick={() => pickView(option)}
-                      >
-                        {option === 'journey' ? 'Journey' : 'Breakdown'}
-                      </Button>
-                    ))}
-                  </ButtonGroup>
-                </div>
-              )}
-              {view === 'journey' ? (
-                <>
-                  <JourneyCard
-                    funnel={summary.funnel}
-                    stoppedAt={summary.stopped_at}
-                    saved={summary.status_counts.saved}
-                  />
-                  {attention}
-                </>
-              ) : (
-                <>
-                  <StatusBarCard total={summary.total} counts={summary.status_counts} href={href} />
-                  <div className="grid gap-4 sm:grid-cols-5">
-                    <div className="min-w-0 sm:col-span-3">
-                      <FunnelCard funnel={summary.funnel} rejectedAt={summary.rejected_at} />
-                    </div>
-                    <div className="min-w-0 sm:col-span-2">{attention}</div>
-                  </div>
-                </>
-              )}
+              <JourneyCard funnel={summary.funnel} stoppedAt={summary.stopped_at} saved={summary.status_counts.saved} />
+              <AttentionCard
+                pendingProposals={summary.pending_proposals}
+                newApplications={summary.pending_new_applications}
+                quiet={summary.quiet}
+                href={href}
+              />
             </>
           ))}
         <Card>

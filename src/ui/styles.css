@@ -135,14 +135,6 @@
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-text: var(--warning-text);
-  --color-status-saved: var(--status-saved);
-  --color-status-applied: var(--status-applied);
-  --color-status-screening: var(--status-screening);
-  --color-status-interview: var(--status-interview);
-  --color-status-offer: var(--status-offer);
-  --color-status-rejected: var(--status-rejected);
-  --color-status-withdrawn: var(--status-withdrawn);
-  --color-status-no-response: var(--status-no-response);
   /* Indeterminate progress bar (SOW-0023); see components/ui/progress.tsx. */
   --animate-progress-indeterminate: progress-indeterminate 1.6s ease-in-out infinite;
 

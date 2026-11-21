@@ -143,6 +143,13 @@ describe('Layout', () => {
     expect(document.cookie).not.toContain('sidebar_state');
   });
 
+  // jsdom does no layout; the class is the guard that wide content scrolls in its own box (SOW-0052 Decision 5).
+  it('lets the main area shrink below its widest content', async () => {
+    renderShell();
+    await screen.findByRole('link', { name: 'Review, 3 pending' });
+    expect(screen.getByRole('main')).toHaveClass('min-w-0');
+  });
+
   it('switches to the dark theme from the sidebar menu and remembers it', async () => {
     const user = userEvent.setup();
     renderShell();
