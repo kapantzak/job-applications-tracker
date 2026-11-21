@@ -2,11 +2,11 @@
 
 ## Status
 
-Status: in-progress
+Status: completed
 
 `completed` is the successful terminal status. `done` is a directory name, not a status value. Do not use `Status: done` or `Status: complete`.
 
-Sub-state: implementation, docs and validation done and committed; waiting for the new demo video attachment to be visible to visitors, then the README links are swapped and the SOW closes.
+Sub-state: delivered in PR #41 (work commit plus the README video link swap and this close).
 
 ## Requirements
 
@@ -158,7 +158,7 @@ Acceptance criteria evidence:
 - Journey + Needs attention for every profile with applications, no switch, any width: `test/ui/DashboardPage.test.tsx` "shows the journey graph with the attention card below it", "shows Journey for a single sent application, with no view switch", "shows Journey in a window narrower than 1280 px", "ignores a view choice stored by an earlier version", "shows Journey with nothing sent but saved applications" (caption, four 0 headers, no bars or exits).
 - Minimum width and card scrolling: `test/ui/dashboard-cards.test.tsx` "keeps a minimum drawing width inside a sideways-scrolling area"; `test/ui/Layout.test.tsx` "lets the main area shrink below its widest content"; browser measurements in the Execution Log (910 px at 1280; card 702 px scrolling to 958 px at 1024; page overflow 0 on every page at 1024 and 800 px).
 - Removals: `StatusBarCard.tsx`, `FunnelCard.tsx`, `dashboard-view.ts`, `test/ui/dashboard-view.test.ts` deleted; `STATUS_COLOR_CLASS`, `--color-status-*`, `rejected_at` removed; `test/server/api/dashboard.test.ts` asserts the response has no `rejected_at`.
-- Docs and media: spec, README, AGENTS.md updated; `docs/images/dashboard.png` retaken; demo video re-recorded (README attachment links pending the user's upload, see Follow-up mapping).
+- Docs and media: spec, README, AGENTS.md updated; `docs/images/dashboard.png` retaken; demo video re-recorded and both README attachment links swapped to the posted upload (see Follow-up mapping).
 
 Tests or equivalent validation:
 
@@ -226,19 +226,20 @@ Follow-up mapping:
 
 - README video attachment links: replaced after the user uploads the new `demo.mp4` (AGENTS.md procedure); must happen before close.
 - Keyboard scrolling of the Journey card in Safari: implemented (decision 6A).
-- Demo video attachment: the user uploaded the new `demo.mp4` (asset `e8d6f245-…`), but an anonymous `curl -L` returns 404 (the current README asset returns 200 `video/mp4`, 2 162 101 bytes, so the check itself works). Per AGENTS.md this is an attachment in an unposted comment. The README keeps the current link until the new one answers 200 anonymously; then both links are swapped and this SOW closes in that commit.
+- Demo video attachment: the user uploaded the new `demo.mp4` (asset `e8d6f245-…`), but an anonymous `curl -L` returns 404 (the current README asset returns 200 `video/mp4`, 2 162 101 bytes, so the check itself works). Per AGENTS.md this is an attachment in an unposted comment. The user then pointed to the posted comment on issue #36 holding asset `42a289b6-…`: anonymous `curl -L` returns 200 `video/mp4`, 2 258 389 bytes, SHA-256 identical to `docs/video/demo.mp4`. Both README links (player link and poster link) now use it. Implemented.
 
 ## Outcome
 
-Pending.
+The Dashboard shows only the Journey graph with Needs attention below it, at every window width. Breakdown, the view switch and its stored choice, Breakdown-only helpers and tokens, and the `rejected_at` response field are gone. Journey keeps a 910 px minimum width inside a focusable, sideways-scrolling region; the sidebar layout's main area has `min-w-0`, which also removes page-level sideways overflow on Jobs, Applications and Runs. Spec, README, AGENTS.md, the Dashboard screenshot and the demo video (with its README links) are current. Typecheck clean; 83 files / 1360 tests pass.
 
 ## Lessons Extracted
 
-Pending.
+- Width behaviour must be checked in a real browser: jsdom passed while the 910 px drawing pushed the whole page wider through the flex item `<main>` (`min-width: auto`). Recorded in the spec Dashboard section; no skill change, since the existing `AGENTS.md` sandbox and screenshot procedures already cover real-browser checks.
+- A GitHub attachment link taken from an unposted comment returns 404; take the link from the posted comment (AGENTS.md already says so, SOW-0050). Confirming with an anonymous download and a checksum against the local file proves it is the right recording.
 
 ## Followup
 
-None yet.
+None. Every item in Follow-up mapping is implemented; the accepted consequence (no Dashboard links to Saved, Withdrawn and No response lists) was reported to the user, who requested no change.
 
 ## Regression Log
 

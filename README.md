@@ -2,12 +2,12 @@
 
 A local app that finds job postings matching your profile, checks that the links work, and tracks your applications. It can also read your mailbox through your AI agent and propose status changes. Everything runs on your machine; data is stored in a local SQLite file.
 
-https://github.com/user-attachments/assets/1e6bafb7-4eca-446d-95d0-9f96840d3fb4
+https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571
 
 <details>
 <summary>Video not playing? Open it here</summary>
 
-[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/1e6bafb7-4eca-446d-95d0-9f96840d3fb4)
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571)
 
 </details>
 
