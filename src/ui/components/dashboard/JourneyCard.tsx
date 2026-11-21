@@ -35,6 +35,9 @@ const LABEL_GAP = 6;
 // shortened to keep it, since nothing follows them.
 const LABEL_ROOM = 120;
 const PAD_BOTTOM = 10;
+// The drawing's width in a 1280 px window; narrower, its labels would shrink below about 12 px
+// (SOW-0037 Decision 7), so it keeps this width and the card scrolls sideways (SOW-0052 Decision 1).
+export const JOURNEY_MIN_WIDTH_PX = 910;
 
 const EXITS = ['waiting', 'rejected', 'no_response', 'withdrawn'] as const;
 type Exit = (typeof EXITS)[number];
@@ -164,7 +167,14 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
         </CardTitle>
         <CardDescription>{caption}</CardDescription>
       </CardHeader>
-      <CardContent>
+      {/* Focusable so keyboards can scroll it in narrow windows; Safari gives scroll areas without
+          focusable content no keyboard access (SOW-0052 Decision 6). */}
+      <CardContent
+        tabIndex={0}
+        role="region"
+        aria-label="Journey graph"
+        className="overflow-x-auto rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
         {/* Page tests and the composed page render without the sidebar's provider. */}
         <TooltipProvider>
           {/* Hover-only and outside the tab order (SOW-0034 Decision 7): every number is also a
@@ -174,6 +184,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
             aria-label={journeyLabel(shapes, funnel.applied)}
             viewBox={`0 0 ${VIEW_W} ${height}`}
             width="100%"
+            style={{ minWidth: JOURNEY_MIN_WIDTH_PX }}
             className="block h-auto"
           >
             <defs>

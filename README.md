@@ -47,9 +47,9 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Profiles screen with five profile cards](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profiles.png)
 
-**Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, where every application stands, how far they get, and what needs your attention.
+**Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, the Journey graph of how far they get and where they stopped, and what needs your attention.
 
-![Dashboard with status tiles, a status bar, a funnel and a needs-attention list](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
+![Dashboard with status tiles and the Journey graph of applications from Applied to Offer](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
 
 **Jobs.** Openings your agent found, with each link checked by the app and a Fit column for location, remote and seniority. The "Found in" filter shows what one search found.
 
@@ -313,8 +313,8 @@ Commands:
 
 ## Interface
 
-- The Dashboard shows In progress, Interviews, Offers, Rejected and To review tiles (each number links to the rows behind it), a bar of every status with a legend (Rejected in red, as in the status badges), how far applications get (Applied → Screening → Interview → Offer, with the share of the step above, and in red how many were rejected after each step), and what needs attention: status proposals and new applications waiting on the Review page, and applied, screening or interview applications with no change in 14 days ("Applied 20 days ago, no reply"; five shown, "Show 3 more" for the rest). To review counts both kinds of proposal. Below them: the last successful job search and Gmail sync, and the model and effort that job searches and Gmail sync use. A profile with no applications shows "No applications yet", with a pointer to Jobs and to Sync from Gmail. Chart tooltips appear on hover; the legend links are the keyboard route to the same counts.
-- On wide windows (1280 px or more) the Dashboard offers two views under the tiles: Journey, a flow graph where applications move from Applied to Offer and those that stop at a stage branch off (waiting, rejected, no response, withdrawn), and Breakdown, the bar and funnel described above. Journey is the default from 10 sent applications; your choice is remembered in the browser.
+- The Dashboard shows In progress, Interviews, Offers, Rejected and To review tiles (each number links to the rows behind it), the Journey graph, and what needs attention: status proposals and new applications waiting on the Review page, and applied, screening or interview applications with no change in 14 days ("Applied 20 days ago, no reply"; five shown, "Show 3 more" for the rest). To review counts both kinds of proposal. Below them: the last successful job search and Gmail sync, and the model and effort that job searches and Gmail sync use. A profile with no applications shows "No applications yet", with a pointer to Jobs and to Sync from Gmail.
+- Journey is a flow graph where applications move from Applied to Offer, each stage showing its count and its share of the stage before, and those that stop at a stage branch off (waiting, rejected, no response, withdrawn). Every number is written on the graph; hovering a part adds a short tooltip. In windows narrower than about 1280 px the graph keeps its size and scrolls sideways, so its labels stay readable; Tab to it and use the arrow keys to scroll with the keyboard.
 - Every form field has an ⓘ button next to its label: click it (or press Enter on it) to see what the field asks for and how the app uses it. Esc or a click elsewhere closes it. Every screen says what it is for under its title.
 - Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository, "Star on GitHub" and "Report an issue" (a new issue on GitHub). The links open in a new tab; the app never contacts GitHub by itself.
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.

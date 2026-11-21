@@ -242,7 +242,9 @@ export function Layout() {
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      {/* A flex item grows to fit its widest child by default; min-w-0 keeps wide content (the
+          Journey graph, tables) scrolling inside its own box instead of the whole page (SOW-0052). */}
+      <SidebarInset className="min-w-0">
         <div className="mx-auto w-full max-w-6xl flex-1 px-8 py-6">
           <ProfileShellContext.Provider value={shell}>
             <Outlet />
