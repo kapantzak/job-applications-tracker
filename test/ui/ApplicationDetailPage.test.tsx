@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationDetailPage } from '../../src/ui/pages/ApplicationDetailPage.js';
 import * as client from '../../src/ui/api/client.js';
@@ -28,12 +28,23 @@ const detail: client.ApplicationDetail = {
   history: [],
 };
 
-function renderPage() {
+function ListProbe() {
+  const location = useLocation();
+  return (
+    <p data-testid="list">
+      {location.search} {JSON.stringify(location.state)}
+    </p>
+  );
+}
+
+// `state` is what the Applications page passes to its Details links.
+function renderPage(state?: unknown) {
   return render(
     <InProfile>
-      <MemoryRouter initialEntries={['/profiles/platform-roles/applications/a1']}>
+      <MemoryRouter initialEntries={[{ pathname: '/profiles/platform-roles/applications/a1', state }]}>
         <Routes>
           <Route path="/profiles/:profileSlug/applications/:id" element={<ApplicationDetailPage />} />
+          <Route path="/profiles/:profileSlug/applications" element={<ListProbe />} />
         </Routes>
       </MemoryRouter>
     </InProfile>,
@@ -48,6 +59,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('ApplicationDetailPage', () => {
+  it('goes back to a one-time list view as a one-time view (SOW-0054)', async () => {
+    const user = userEvent.setup();
+    renderPage({ listSearch: '?status=interview', listOneTimeView: true });
+    await user.click(await screen.findByRole('link', { name: 'Applications' }));
+    expect(await screen.findByTestId('list')).toHaveTextContent('?status=interview {"oneTimeView":true}');
+  });
+
+  it('goes back to a saved list view without the one-time marker', async () => {
+    const user = userEvent.setup();
+    renderPage({ listSearch: '?status=interview' });
+    await user.click(await screen.findByRole('link', { name: 'Applications' }));
+    expect(await screen.findByTestId('list')).toHaveTextContent('?status=interview null');
+  });
+
   it('describes each status change in words, saying who made it', async () => {
     vi.mocked(client.getApplication).mockResolvedValue({
       ...detail,

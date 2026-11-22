@@ -4,12 +4,12 @@ A local app that finds job postings matching your profile, checks that the links
 
 Website: [jobtrack.kapantzakis.gr](https://jobtrack.kapantzakis.gr/)
 
-https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571
+https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5
 
 <details>
 <summary>Video not playing? Open it here</summary>
 
-[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571)
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5)
 
 </details>
 
@@ -51,9 +51,9 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Profiles screen with five profile cards](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profiles.png)
 
-**Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, the Journey graph of how far they get and where they stopped, and what needs your attention.
+**Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, the Journey graph of how far they get and where they stopped, and what needs your attention. The same filters as the Applications table narrow it to some applications, for example one company.
 
-![Dashboard with status tiles and the Journey graph of applications from Applied to Offer](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
+![Dashboard with the application filters, status tiles and the Journey graph of applications from Applied to Offer](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/dashboard.png)
 
 **Jobs.** Openings your agent found, with each link checked by the app and a Fit column for location, remote and seniority. The "Found in" filter shows what one search found.
 
@@ -320,13 +320,14 @@ Commands:
 ## Interface
 
 - The Dashboard shows In progress, Interviews, Offers, Rejected and To review tiles (each number links to the rows behind it), the Journey graph, and what needs attention: status proposals and new applications waiting on the Review page, and applied, screening or interview applications with no change in 14 days ("Applied 20 days ago, no reply"; five shown, "Show 3 more" for the rest). To review counts both kinds of proposal. Below them: the last successful job search and Gmail sync, and the model and effort that job searches and Gmail sync use. A profile with no applications shows "No applications yet", with a pointer to Jobs and to Sync from Gmail.
+- The Dashboard has the Applications search and filters above its tiles. The tiles, the Journey graph and the quiet applications in Needs attention count only the applications the filters keep; To review, waiting proposals, the last runs and the agent do not change. The Dashboard and the Applications page share one set of filters per profile, saved in your browser, so they are still set when you come back. A tile opens Applications with those filters plus its own status, without changing the saved filters.
 - Journey is a flow graph where applications move from Applied to Offer, each stage showing its count and its share of the stage before, and those that stop at a stage branch off (waiting, rejected, no response, withdrawn). Every number is written on the graph; hovering a part adds a short tooltip. In windows narrower than about 1280 px the graph keeps its size and scrolls sideways, so its labels stay readable; Tab to it and use the arrow keys to scroll with the keyboard.
 - Every form field has an ⓘ button next to its label: click it (or press Enter on it) to see what the field asks for and how the app uses it. Esc or a click elsewhere closes it. Every screen says what it is for under its title.
 - Help & about, at the bottom of the sidebar, shows the app version and links to this documentation, the GitHub repository, "Star on GitHub" and "Report an issue" (a new issue on GitHub). The links open in a new tab; the app never contacts GitHub by itself. When a newer version is out, a dot marks the menu and it shows "Update available: <version>", linking to that release's notes.
 - Light, dark, or follow your system: pick it from the theme menu at the bottom of the sidebar. The choice is remembered in this browser for the port the app runs on; a different port starts from the system setting again.
 - Deleting a profile, purging run logs, dismissing a job, cancelling a run, starting a Max-effort search, accepting all new applications, cancelling or discarding a CV analysis and removing a CV ask for confirmation first.
 - A dismissed job is hidden from the Jobs list. Tick "Show dismissed" to see it again, marked Dismissed, and click Restore to bring it back.
-- The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick dates on a calendar: each date has a "from" and a "to" filter, and either can be left open, so "Applied from" alone shows everything from that day until today (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; both days are included, and rows without a date drop out); the Jobs table also filters by Fit (All match, Some not stated, Has a mismatch, No verdict), by Application (Not tracked, or a status) and by the search that found each job ("Found in"); Application and Found in have no column header, so they filter but do not sort. Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back. The Runs table loads the newest 200 runs.
+- The Jobs, Applications and Runs tables sort by any column: click a header for ascending, again for descending, and a third time for the default newest-first order. A search box and one filter per column sit above each table: tick values (with counts), type text a column must contain, or pick dates on a calendar: each date has a "from" and a "to" filter, and either can be left open, so "Applied from" alone shows everything from that day until today (Jobs by Found date, Applications by Applied date, Runs by Started or Finished date; both days are included, and rows without a date drop out); the Jobs table also filters by Fit (All match, Some not stated, Has a mismatch, No verdict), by Application (Not tracked, or a status) and by the search that found each job ("Found in"); Application and Found in have no column header, so they filter but do not sort. Reset clears search and filters. The view is kept in the page address, so it survives opening an application or run and coming back; the Applications view is also saved in your browser and shared with the Dashboard. The Runs table loads the newest 200 runs.
 - The run log shows what the agent is doing in plain words (web searches, pages opened, Gmail reads, errors, a finish summary). Tick "Show raw output" to see everything the agent printed, exactly as saved.
 - Desktop browsers only. The interface needs Chrome or Edge 111+, Safari 16.4+, or Firefox 128+.
 

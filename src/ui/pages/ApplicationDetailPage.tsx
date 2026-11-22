@@ -10,7 +10,7 @@ import { StatusBadge } from '../components/StatusBadge.js';
 import { TagInput } from '../components/TagInput.js';
 import { dayToIso, formatTime, isoToDay } from '../format.js';
 import { FIELD_HELP, SCREEN_INTROS } from '../help-text.js';
-import { useListReturnHref } from '../hooks/use-table-view.js';
+import { useListReturnHref, useListReturnState } from '../hooks/use-table-view.js';
 import { HISTORY_SOURCE_LABELS, historyChangeLabel } from '../labels.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,7 @@ export function ApplicationDetailPage() {
   const profileId = useProfileId();
   const href = useProfileHref();
   const backHref = useListReturnHref(href('/applications'));
+  const backState = useListReturnState();
   const { id = '' } = useParams();
   const [app, setApp] = useState<ApplicationDetail | null>(null);
   const [company, setCompany] = useState('');
@@ -85,7 +86,7 @@ export function ApplicationDetailPage() {
   return (
     <div>
       <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-muted-foreground">
-        <Link to={backHref}>
+        <Link to={backHref} state={backState}>
           <ArrowLeftIcon />
           Applications
         </Link>

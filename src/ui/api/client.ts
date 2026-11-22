@@ -16,7 +16,7 @@ import type {
   StatusHistoryEntry,
   UpdateStatus,
 } from '../../server/domain/types.js';
-import type { DashboardResponse } from '../../server/domain/dashboard.js';
+import type { DashboardResponse, HistoryRow } from '../../server/domain/dashboard.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -184,6 +184,9 @@ export const markApplied = (profileId: string, id: string): Promise<Application>
 
 export const listApplications = (profileId: string): Promise<Application[]> =>
   request('GET', scoped(profileId, '/applications'));
+// Every status change of the profile's applications, oldest first (SOW-0054).
+export const listApplicationHistory = (profileId: string): Promise<HistoryRow[]> =>
+  request('GET', scoped(profileId, '/applications/history'));
 export const createApplication = (profileId: string, input: NewApplicationInput): Promise<Application> =>
   request('POST', scoped(profileId, '/applications'), input);
 export const getApplication = (profileId: string, id: string): Promise<ApplicationDetail> =>

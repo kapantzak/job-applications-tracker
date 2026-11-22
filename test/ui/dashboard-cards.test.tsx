@@ -80,6 +80,15 @@ describe('AttentionCard', () => {
     expect(screen.queryByRole('button', { name: /Show \d+ more/ })).not.toBeInTheDocument();
   });
 
+  it('says the proposal counts are unknown instead of nothing to do, and keeps the quiet list (SOW-0054)', () => {
+    renderCard(<AttentionCard pendingProposals={null} newApplications={null} quiet={[quiet(1, 'screening', 20)]} href={href} />);
+    const list = screen.getByRole('list', { name: 'Needs attention' });
+    expect(within(list).getByText('Waiting proposals could not be loaded.')).toBeInTheDocument();
+    expect(within(list).queryByText(/waiting$|found$/)).not.toBeInTheDocument();
+    expect(within(list).getAllByRole('link')).toHaveLength(1);
+    expect(screen.queryByText('Nothing needs you right now.')).not.toBeInTheDocument();
+  });
+
   it('nothing to do', () => {
     renderCard(<AttentionCard pendingProposals={0} newApplications={0} quiet={[]} href={href} />);
     expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument();
