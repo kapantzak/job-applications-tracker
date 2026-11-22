@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 const VISIBLE = 5;
 
 interface AttentionCardProps {
-  pendingProposals: number;
+  // Null when the counts could not be loaded (SOW-0054): the card must not claim nothing is waiting.
+  pendingProposals: number | null;
   // Applications Gmail sync found that the app does not track yet (SOW-0045).
-  newApplications: number;
+  newApplications: number | null;
   quiet: QuietApplication[];
   href: (path: string) => string;
 }
@@ -39,14 +40,17 @@ export function AttentionCard({ pendingProposals, newApplications, quiet, href }
           <p className="text-muted-foreground">Nothing needs you right now.</p>
         ) : (
           <ul aria-label="Needs attention" className="flex flex-col divide-y">
-            {pendingProposals > 0 && (
+            {(pendingProposals === null || newApplications === null) && (
+              <li className="py-2 text-muted-foreground first:pt-0">Waiting proposals could not be loaded.</li>
+            )}
+            {pendingProposals !== null && pendingProposals > 0 && (
               <li className="py-2 first:pt-0">
                 <Link to={href('/review')} className="font-medium hover:underline">
                   {pendingProposals} {pendingProposals === 1 ? 'status proposal' : 'status proposals'} waiting
                 </Link>
               </li>
             )}
-            {newApplications > 0 && (
+            {newApplications !== null && newApplications > 0 && (
               <li className="py-2 first:pt-0">
                 <Link to={href('/review')} className="font-medium hover:underline">
                   {newApplications} {newApplications === 1 ? 'new application' : 'new applications'} found

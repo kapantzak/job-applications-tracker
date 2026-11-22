@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { inferSenderDomain, type ApplicationPatch, type NewApplication } from '../db/applications-repo.js';
+import type { HistoryRow } from '../domain/dashboard.js';
 import { APPLICATION_STATUSES, type Application } from '../domain/types.js';
 import { HttpError, readJson } from './errors.js';
 import { requireProfileStill, type ProfileEnv } from './profiles.js';
@@ -68,6 +69,15 @@ export function createApplicationsRouter(deps: AppDeps): Hono<ProfileEnv> {
       input.sender_domains = domain ? [domain] : [];
     }
     return c.json(deps.applicationsRepo.create(input), 201);
+  });
+
+  // Every status change of the profile, oldest first: the Dashboard rebuilds its summary for the
+  // applications its filters keep (SOW-0054). Registered before `/:id`, which would read "history" as an id.
+  router.get('/history', (c) => {
+    const rows: HistoryRow[] = deps.applicationsRepo
+      .historyForProfile(c.get('profile').id)
+      .map(({ application_id, from_status, to_status, changed_at }) => ({ application_id, from_status, to_status, changed_at }));
+    return c.json(rows);
   });
 
   router.get('/:id', (c) => {

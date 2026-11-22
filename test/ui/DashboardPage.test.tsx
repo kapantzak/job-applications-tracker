@@ -1,16 +1,19 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
 import type { DashboardResponse } from '../../src/server/domain/dashboard.js';
+import type { Application, ApplicationStatus } from '../../src/server/domain/types.js';
 import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   getDashboard: vi.fn(),
+  listApplications: vi.fn(),
+  listApplicationHistory: vi.fn(),
   listJobs: vi.fn(),
   listRuns: vi.fn(),
   getSettings: vi.fn(),
@@ -27,14 +30,58 @@ function renderPage() {
         <Routes>
           <Route path="/profiles/:profileSlug" element={<DashboardPage />} />
           <Route path="/profiles/:profileSlug/runs/:id" element={<p>Run page</p>} />
+          <Route path="/profiles/:profileSlug/applications" element={<ApplicationsProbe />} />
         </Routes>
       </MemoryRouter>
     </InProfile>,
   );
 }
 
+// Stands in for the Applications page: shows the query and whether it opened as a one-time view.
+function ApplicationsProbe() {
+  const location = useLocation();
+  return (
+    <p data-testid="applications">
+      {location.search} {JSON.stringify(location.state)}
+    </p>
+  );
+}
+
 const BASE = '/profiles/platform-roles';
-const NO_STOPS = { waiting: 0, rejected: 0, no_response: 0, withdrawn: 0 };
+const STORAGE_KEY = 'application-filters:pf1';
+// Changed today, so none of them is quiet unless a test says so.
+const TODAY = new Date().toISOString();
+
+function makeApp(over: Partial<Application> & { id: string; status: ApplicationStatus }): Application {
+  return {
+    profile_id: 'pf1',
+    job_id: null,
+    company: 'Acme',
+    role: 'Engineer',
+    url: null,
+    applied_at: null,
+    status_changed_at: TODAY,
+    notes: null,
+    sender_domains: [],
+    created_at: TODAY,
+    ...over,
+  };
+}
+
+// Applications with these statuses, spread over three invented companies; no history, so each
+// reached the funnel step of its current status.
+function appsOf(mix: Partial<Record<ApplicationStatus, number>>): Application[] {
+  const companies = ['Acme', 'Globex', 'Initech'];
+  let n = 0;
+  return (Object.entries(mix) as [ApplicationStatus, number][]).flatMap(([status, count]) =>
+    Array.from({ length: count }, () => {
+      n += 1;
+      return makeApp({ id: `a${n}`, status, company: companies[n % companies.length]! });
+    }),
+  );
+}
+
+const MIX = { saved: 5, applied: 12, screening: 3, interview: 2, offer: 1, rejected: 6, withdrawn: 2, no_response: 3 };
 
 function summary(over: Partial<DashboardResponse> = {}): DashboardResponse {
   return {
@@ -73,6 +120,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.resetAllMocks();
   vi.mocked(client.getDashboard).mockResolvedValue(summary());
+  vi.mocked(client.listApplications).mockResolvedValue(appsOf(MIX));
+  vi.mocked(client.listApplicationHistory).mockResolvedValue([]);
   vi.mocked(client.listJobs).mockResolvedValue([{}, {}, {}] as never);
   vi.mocked(client.listRuns).mockResolvedValue([]);
   vi.mocked(client.getSettings).mockResolvedValue({
@@ -157,25 +206,9 @@ describe('DashboardPage', () => {
 
   it('empty profile shows the empty state', async () => {
     vi.mocked(client.getDashboard).mockResolvedValue(
-      summary({
-        total: 0,
-        status_counts: {
-          saved: 0,
-          applied: 0,
-          screening: 0,
-          interview: 0,
-          offer: 0,
-          rejected: 0,
-          withdrawn: 0,
-          no_response: 0,
-        },
-        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
-        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
-        pending_proposals: 0,
-        pending_new_applications: 0,
-        quiet: [],
-      }),
+      summary({ total: 0, pending_proposals: 0, pending_new_applications: 0, quiet: [] }),
     );
+    vi.mocked(client.listApplications).mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText('No applications yet')).toBeInTheDocument();
     expect(screen.getByText(/or sync from Gmail to find applications you already made/)).toBeInTheDocument();
@@ -183,20 +216,15 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('heading', { name: "Your applications' journey" })).not.toBeInTheDocument();
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('0');
+    // Nothing to filter yet.
+    expect(screen.queryByRole('group', { name: 'Filter applications' })).not.toBeInTheDocument();
   });
 
   it('points an empty profile to Review when new applications are waiting (decision 17A)', async () => {
     vi.mocked(client.getDashboard).mockResolvedValue(
-      summary({
-        total: 0,
-        status_counts: { saved: 0, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0, withdrawn: 0, no_response: 0 },
-        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
-        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
-        pending_proposals: 0,
-        pending_new_applications: 2,
-        quiet: [],
-      }),
+      summary({ total: 0, pending_proposals: 0, pending_new_applications: 2, quiet: [] }),
     );
+    vi.mocked(client.listApplications).mockResolvedValue([]);
     renderPage();
     expect(await screen.findByText('No applications yet')).toBeInTheDocument();
     expect(screen.getByText(/Sync from Gmail found 2 new applications\./)).toBeInTheDocument();
@@ -204,15 +232,39 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('2');
   });
 
-  it('a failed summary still shows runs and agent', async () => {
-    vi.mocked(client.getDashboard).mockRejectedValue(new Error('Summary failed'));
+  it('failed applications still show runs and agent, with one alert for both list requests', async () => {
+    vi.mocked(client.listApplications).mockRejectedValue(new Error('Applications failed'));
+    vi.mocked(client.listApplicationHistory).mockRejectedValue(new Error('Applications failed'));
     renderPage();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Summary failed');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Applications failed');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByTestId('count-in-progress')).toHaveTextContent('–');
     expect(screen.getByTestId('count-interviews')).toHaveTextContent('–');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('5');
     expect(screen.getByRole('heading', { name: 'Last successful runs' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Agent' })).toBeInTheDocument();
     expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Filter applications' })).not.toBeInTheDocument();
+  });
+
+  it('a failed history alone also leaves the tiles unavailable', async () => {
+    vi.mocked(client.listApplicationHistory).mockRejectedValue(new Error('History failed'));
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('History failed');
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('–');
+    expect(screen.queryByRole('heading', { name: "Your applications' journey" })).not.toBeInTheDocument();
+  });
+
+  it('a failed dashboard route leaves only To review unavailable', async () => {
+    vi.mocked(client.getDashboard).mockRejectedValue(new Error('Summary failed'));
+    renderPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Summary failed');
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('17');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('–');
+    expect(screen.getByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    // Decision 11A: unknown counts are said to be unknown, never "nothing".
+    expect(screen.getByText('Waiting proposals could not be loaded.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing needs you right now.')).not.toBeInTheDocument();
   });
 
   it('shows the selected agent with its model and effort per run kind', async () => {
@@ -330,7 +382,6 @@ describe('DashboardPage search buttons', () => {
 
 // Journey is the only view (SOW-0052): no switch, no stored choice, no count or width rule.
 describe('DashboardPage journey view', () => {
-  const sent = (applied: number) => summary({ funnel: { applied, screening: 0, interview: 0, offer: 0 } });
   const journeyHeading = () => screen.findByRole('heading', { name: "Your applications' journey" });
 
   afterEach(() => {
@@ -338,7 +389,7 @@ describe('DashboardPage journey view', () => {
   });
 
   it('shows Journey for a single sent application, with no view switch', async () => {
-    vi.mocked(client.getDashboard).mockResolvedValue(sent(1));
+    vi.mocked(client.listApplications).mockResolvedValue(appsOf({ applied: 1 }));
     renderPage();
     expect(await journeyHeading()).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Dashboard view' })).not.toBeInTheDocument();
@@ -364,19 +415,182 @@ describe('DashboardPage journey view', () => {
   });
 
   it('shows Journey with nothing sent but saved applications (SOW-0052 Decision 2)', async () => {
-    vi.mocked(client.getDashboard).mockResolvedValue(
-      summary({
-        total: 2,
-        status_counts: { saved: 2, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0, withdrawn: 0, no_response: 0 },
-        funnel: { applied: 0, screening: 0, interview: 0, offer: 0 },
-        stopped_at: { applied: NO_STOPS, screening: NO_STOPS, interview: NO_STOPS, offer: NO_STOPS },
-      }),
-    );
+    vi.mocked(client.listApplications).mockResolvedValue(appsOf({ saved: 2 }));
     renderPage();
     expect(await journeyHeading()).toBeInTheDocument();
     expect(screen.getByText('0 sent · 2 saved, not applied yet')).toBeInTheDocument();
     const graph = screen.getByRole('img', { name: '0 sent.' });
     expect([...graph.querySelectorAll('[data-part="count"]')].map((t) => t.textContent)).toEqual(['0', '0', '0', '0']);
     expect(graph.querySelectorAll('[data-part="node"], [data-part="moved"], [data-exit]')).toHaveLength(0);
+  });
+});
+
+// The Applications filters on the Dashboard, shared through localStorage (SOW-0054).
+describe('DashboardPage filters', () => {
+  const toolbar = () => screen.getByRole('group', { name: 'Filter applications' });
+  const DAYS_AGO_30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const apps = [
+    makeApp({ id: 'a1', company: 'Acme', role: 'Platform Engineer', status: 'interview' }),
+    makeApp({ id: 'a2', company: 'Acme', role: 'SRE', status: 'rejected' }),
+    makeApp({ id: 'a3', company: 'Globex', role: 'Data Engineer', status: 'applied', status_changed_at: DAYS_AGO_30 }),
+    makeApp({ id: 'a4', company: 'Initech', role: 'SRE', status: 'offer' }),
+    makeApp({ id: 'a5', company: 'Initech', role: 'Analyst', status: 'saved' }),
+  ];
+
+  beforeEach(() => {
+    vi.mocked(client.listApplications).mockResolvedValue(apps);
+    // a1 went through screening before its interview; a2 was rejected after screening.
+    vi.mocked(client.listApplicationHistory).mockResolvedValue([
+      { application_id: 'a1', from_status: 'applied', to_status: 'screening', changed_at: '2026-11-02T10:00:00Z' },
+      { application_id: 'a1', from_status: 'screening', to_status: 'interview', changed_at: '2026-11-05T10:00:00Z' },
+      { application_id: 'a2', from_status: 'screening', to_status: 'rejected', changed_at: '2026-11-06T10:00:00Z' },
+    ]);
+  });
+
+  async function pickCompany(user: ReturnType<typeof userEvent.setup>, company: string) {
+    await user.click(within(toolbar()).getByRole('button', { name: 'Filter by company' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Filter by company' });
+    await user.click(within(dialog).getByRole('checkbox', { name: new RegExp(`^${company}`) }));
+    await user.keyboard('{Escape}');
+  }
+
+  it('shows the Applications filter bar above the tiles with the shown count', async () => {
+    renderPage();
+    const tile = await screen.findByTestId('count-in-progress');
+    const bar = toolbar();
+    expect(bar.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const name of ['Search applications', 'Filter by company', 'Filter by role', 'Filter by status', 'Filter by applied from', 'Filter by applied to']) {
+      expect(within(bar).getByRole(name.startsWith('Search') ? 'searchbox' : 'button', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByText('Showing 5 of 5 applications')).toBeInTheDocument();
+  });
+
+  it('filters the tiles, the journey and the quiet list, and leaves To review alone', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByTestId('count-in-progress')).toHaveTextContent('2');
+    expect(screen.getByText('Globex · Data Engineer')).toBeInTheDocument();
+
+    await pickCompany(user, 'Acme');
+    expect(screen.getByText('Showing 2 of 5 applications')).toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-interviews')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-offers')).toHaveTextContent('0');
+    expect(screen.getByTestId('count-rejected')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('5');
+    // Both Acme applications reached screening through their history.
+    expect(screen.getByText('2 sent')).toBeInTheDocument();
+    const graph = screen.getByRole('img', { name: /^2 sent\./ });
+    expect([...graph.querySelectorAll('[data-part="count"]')].map((t) => t.textContent)).toEqual(['2', '2 · 100%', '1 · 50%', '0 · 0%']);
+    expect(screen.queryByText('Globex · Data Engineer')).not.toBeInTheDocument();
+    expect(screen.getByText('3 status proposals waiting')).toBeInTheDocument();
+  });
+
+  it('saves the filters for the profile and loads them on the next visit', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderPage();
+    await screen.findByTestId('count-in-progress');
+    await pickCompany(user, 'Initech');
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('company=Initech');
+    unmount();
+
+    renderPage();
+    expect(await screen.findByText('Showing 2 of 5 applications')).toBeInTheDocument();
+    expect(screen.getByTestId('count-offers')).toHaveTextContent('1');
+    expect(within(toolbar()).getByRole('button', { name: 'Filter by company: Initech' })).toBeInTheDocument();
+  });
+
+  it('drops stored values that are not a filter of this table', async () => {
+    localStorage.setItem(STORAGE_KEY, 'status=interview&bogus=1&applied=not-a-range&sort=nope');
+    renderPage();
+    expect(await screen.findByText('Showing 1 of 5 applications')).toBeInTheDocument();
+    expect(within(toolbar()).queryByRole('button', { name: /^Filter by applied from:/ })).not.toBeInTheDocument();
+  });
+
+  it('links each tile to Applications with the filters and the tile status, as a one-time view', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'company=Acme&sort=-applied');
+    renderPage();
+    const tile = await screen.findByTestId('count-interviews');
+    expect(tile).toHaveAttribute('href', `${BASE}/applications?sort=-applied&company=Acme&status=interview`);
+    expect(screen.getByTestId('count-in-progress')).toHaveAttribute(
+      'href',
+      `${BASE}/applications?sort=-applied&company=Acme&status=applied&status=screening&status=interview`,
+    );
+    await user.click(tile);
+    expect(await screen.findByTestId('applications')).toHaveTextContent(
+      '?sort=-applied&company=Acme&status=interview {"oneTimeView":true}',
+    );
+    // A tile click is not a filter change.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('company=Acme&sort=-applied');
+  });
+
+  it('narrows a tile to the statuses the status filter keeps, and shows no link when it keeps none', async () => {
+    localStorage.setItem(STORAGE_KEY, 'status=applied&status=rejected');
+    renderPage();
+    expect(await screen.findByTestId('count-in-progress')).toHaveAttribute('href', `${BASE}/applications?status=applied`);
+    expect(screen.getByTestId('count-rejected')).toHaveAttribute('href', `${BASE}/applications?status=rejected`);
+    const interviews = screen.getByTestId('count-interviews');
+    expect(interviews).toHaveTextContent('0');
+    expect(interviews).not.toHaveAttribute('href');
+    expect(screen.getByTestId('count-proposals')).toHaveAttribute('href', `${BASE}/review`);
+  });
+
+  it('shows no matches in place of Journey only, keeps the proposal lines, and Clear filters brings everything back', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'q=nothing-matches&sort=company');
+    renderPage();
+    expect(await screen.findByText('No rows match your filters')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Your applications' journey" })).not.toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('0');
+    expect(screen.getByTestId('count-proposals')).toHaveTextContent('5');
+    // Decision 10A: waiting proposals ignore the filters, so Needs attention stays.
+    const attention = screen.getByRole('list', { name: 'Needs attention' });
+    expect(within(attention).getByRole('link', { name: '3 status proposals waiting' })).toHaveAttribute('href', `${BASE}/review`);
+    expect(within(attention).getByRole('link', { name: '2 new applications found' })).toBeInTheDocument();
+    expect(within(attention).queryByText('Globex · Data Engineer')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
+    expect(screen.getByTestId('count-in-progress')).toHaveTextContent('2');
+    // Reset keeps the sort, as on the Applications page.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('sort=company');
+  });
+
+  it('keeps quiet applications with the same age in newest-first order whatever the saved sort', async () => {
+    vi.mocked(client.listApplications).mockResolvedValue([
+      makeApp({ id: 'q1', company: 'Zeta Labs', status: 'applied', status_changed_at: DAYS_AGO_30 }),
+      makeApp({ id: 'q2', company: 'Acme', status: 'applied', status_changed_at: DAYS_AGO_30 }),
+    ]);
+    localStorage.setItem(STORAGE_KEY, 'sort=company');
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Needs attention' });
+    const links = within(list).getAllByRole('link').map((l) => l.textContent);
+    expect(links.filter((t) => t!.includes(' · '))).toEqual(['Zeta Labs · Engineer', 'Acme · Engineer']);
+  });
+
+  it('keeps filters per profile', async () => {
+    localStorage.setItem('application-filters:other-profile', 'company=Acme');
+    renderPage();
+    expect(await screen.findByText('Showing 5 of 5 applications')).toBeInTheDocument();
+  });
+
+  it('still works when localStorage throws', async () => {
+    const user = userEvent.setup();
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      renderPage();
+      await screen.findByTestId('count-in-progress');
+      await pickCompany(user, 'Acme');
+      expect(screen.getByText('Showing 2 of 5 applications')).toBeInTheDocument();
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
   });
 });

@@ -235,3 +235,12 @@ export function withDateBound(range: DateRange | undefined, bound: DateBound, da
   const next: DateRange = { from: range?.from ?? null, to: range?.to ?? null, [bound]: day };
   return next.from || next.to ? next : null;
 }
+
+// The query string of a view alone; empty when nothing is searched, filtered or sorted.
+export function viewQuery<Row>(state: ViewState, columns: ColumnDef<Row>[]): URLSearchParams {
+  return writeView(state, columns, new URLSearchParams());
+}
+
+export function hasView<Row>(params: URLSearchParams, columns: ColumnDef<Row>[]): boolean {
+  return viewQuery(parseView(params, columns), columns).toString() !== '';
+}

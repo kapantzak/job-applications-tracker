@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ExternalLinkIcon, MailIcon, PlusIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '../../server/domain/types.js';
+import type { Application, ApplicationStatus } from '../../server/domain/types.js';
 import { listApplications, setApplicationStatus, startSync } from '../api/client.js';
+import { APPLICATION_COLUMNS, applicationViewKey } from '../application-view.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -12,10 +13,8 @@ import { StatusSelect } from '../components/StatusSelect.js';
 import { NoMatches, SortableHead, TableToolbar } from '../components/TableView.js';
 import { formatTime } from '../format.js';
 import { FIELD_HELP } from '../help-text.js';
-import { useListLinkState, useTableView } from '../hooks/use-table-view.js';
-import { STATUS_LABELS } from '../labels.js';
+import { useListLinkState, useSharedTableView } from '../hooks/use-table-view.js';
 import { useProfileHref, useProfileId } from '../profile-route.js';
-import { type ColumnDef, orderIndex } from '../table-view.js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
@@ -33,39 +32,6 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Stored URLs are untrusted; never render javascript: and friends as links.
 const isHttp = (url: string | null): url is string => !!url && /^https?:\/\//i.test(url);
 
-const COLUMNS: ColumnDef<Application>[] = [
-  {
-    id: 'company',
-    label: 'Company',
-    sortValue: (a) => a.company,
-    searchText: (a) => a.company,
-    filter: { kind: 'values', value: (a) => a.company },
-  },
-  {
-    id: 'role',
-    label: 'Role',
-    sortValue: (a) => a.role,
-    searchText: (a) => a.role,
-    filter: { kind: 'text', value: (a) => a.role },
-  },
-  {
-    id: 'status',
-    label: 'Status',
-    sortValue: (a) => orderIndex(APPLICATION_STATUSES, a.status),
-    filter: {
-      kind: 'values',
-      value: (a) => a.status,
-      order: APPLICATION_STATUSES,
-      optionLabel: (v) => STATUS_LABELS[v as ApplicationStatus] ?? v,
-    },
-  },
-  {
-    id: 'applied',
-    label: 'Applied',
-    sortValue: (a) => a.applied_at,
-    filter: { kind: 'date', value: (a) => a.applied_at },
-  },
-];
 const NO_APPS: Application[] = [];
 
 export function ApplicationsPage() {
@@ -77,7 +43,8 @@ export function ApplicationsPage() {
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const view = useTableView(COLUMNS, apps ?? NO_APPS);
+  // Shared with the Dashboard and saved per profile (SOW-0054).
+  const view = useSharedTableView(APPLICATION_COLUMNS, apps ?? NO_APPS, applicationViewKey(profileId));
   const linkState = useListLinkState();
 
   useEffect(() => {

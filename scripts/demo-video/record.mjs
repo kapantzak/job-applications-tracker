@@ -473,7 +473,16 @@ async function storyboard(page, d, base) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const box = await graph.boundingBox();
   if (!box || box.y + box.height > VIEWPORT.height - 150) {
-    await graph.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Start at the tiles, so the filter toolbar above them is fully out of view rather than cut through
+    // (SOW-0054, decision 13A); centre the graph only if it still does not fit.
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="count-in-progress"]')?.closest('[data-slot="card"]');
+      if (tile) window.scrollTo(0, tile.getBoundingClientRect().top + window.scrollY - 24);
+    });
+    const moved = await graph.boundingBox();
+    if (!moved || moved.y < 0 || moved.y + moved.height > VIEWPORT.height - 150) {
+      await graph.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    }
   }
   await sleep(Math.max(0, 3000 - (Date.now() - shown)));
   await d.card('');

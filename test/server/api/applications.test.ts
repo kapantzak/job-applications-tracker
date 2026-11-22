@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Application, StatusHistoryEntry } from '../../../src/server/domain/types.js';
-import { json, makeHarness, type Harness } from './harness.js';
+import type { HistoryRow } from '../../../src/server/domain/dashboard.js';
+import { json, makeHarness, SAMPLE_PROFILE, type Harness } from './harness.js';
 
 let h: Harness;
 
@@ -90,6 +91,34 @@ describe('applications', () => {
 
     const missing = await h.app.request(`${h.base}/applications/nope`);
     expect(missing.status).toBe(404);
+  });
+
+  it("GET history lists the profile's status changes oldest first, without other profiles' rows", async () => {
+    const a = seed('applied');
+    const b = seed('applied');
+    h.deps.applicationsRepo.setStatus(a.id, 'screening', 'user');
+    h.deps.applicationsRepo.setStatus(b.id, 'rejected', 'user');
+    h.deps.applicationsRepo.setStatus(a.id, 'interview', 'user');
+    const other = h.deps.profilesRepo.create({ ...SAMPLE_PROFILE, name: 'Data roles' });
+    const foreign = h.deps.applicationsRepo.create({ profile_id: other.id, company: 'Globex', role: 'SRE', status: 'applied' });
+    h.deps.applicationsRepo.setStatus(foreign.id, 'offer', 'user');
+
+    const res = await h.app.request(`${h.base}/applications/history`);
+    expect(res.status).toBe(200);
+    const rows = (await res.json()) as HistoryRow[];
+    expect(rows.map((r) => [r.application_id, r.from_status, r.to_status])).toEqual([
+      [a.id, 'applied', 'screening'],
+      [b.id, 'applied', 'rejected'],
+      [a.id, 'screening', 'interview'],
+    ]);
+    // Only the fields the Dashboard reads.
+    expect(Object.keys(rows[0]!).sort()).toEqual(['application_id', 'changed_at', 'from_status', 'to_status']);
+  });
+
+  it('GET history of an unknown profile is 404', async () => {
+    const res = await h.app.request('/api/profiles/no-such-profile/applications/history');
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe('Profile not found');
   });
 
   it('PATCH updates allowed fields and rejects unknown keys', async () => {

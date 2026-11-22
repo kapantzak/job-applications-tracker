@@ -1,11 +1,12 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationsPage } from '../../src/ui/pages/ApplicationsPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
-import { useListReturnHref } from '../../src/ui/hooks/use-table-view.js';
+import { useListReturnHref, useListReturnState } from '../../src/ui/hooks/use-table-view.js';
+import { ONE_TIME_VIEW } from '../../src/ui/view-storage.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -26,17 +27,24 @@ const app = {
 
 // Stands in for the detail page's back link.
 function BackLinkProbe() {
-  return <p data-testid="back">{useListReturnHref('/profiles/platform-roles/applications')}</p>;
+  const href = useListReturnHref('/profiles/platform-roles/applications');
+  const state = useListReturnState();
+  return (
+    <>
+      <p data-testid="back">{href}</p>
+      <p data-testid="back-state">{JSON.stringify(state ?? null)}</p>
+    </>
+  );
 }
 
 function SearchProbe() {
   return <output data-testid="search">{useLocation().search}</output>;
 }
 
-function renderPage(search = '') {
+function renderPage(search = '', state?: unknown) {
   return render(
     <InProfile>
-      <MemoryRouter initialEntries={[`/profiles/platform-roles/applications${search}`]}>
+      <MemoryRouter initialEntries={[{ pathname: '/profiles/platform-roles/applications', search, state }]}>
         <SearchProbe />
         <Routes>
           <Route path="/profiles/:profileSlug/applications" element={<ApplicationsPage />} />
@@ -298,5 +306,103 @@ describe('ApplicationsPage sorting and filters', () => {
     await screen.findByText('Acme');
     await user.click(within(screen.getByText('Acme').closest('tr')!).getByRole('link', { name: 'Details' }));
     expect(await screen.findByTestId('back')).toHaveTextContent(/^\/profiles\/platform-roles\/applications$/);
+  });
+});
+
+// One filter set per profile, shared with the Dashboard (SOW-0054, decisions 7A, 8B, 9A).
+describe('ApplicationsPage shared view', () => {
+  const STORAGE_KEY = 'application-filters:pf1';
+  const apps = [
+    { ...app, id: 'a2', company: 'Globex', role: 'Data Engineer', status: 'interview', url: null },
+    { ...app, id: 'a1', company: 'Acme', role: 'Platform Engineer', status: 'applied', url: null },
+  ];
+  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0]!.textContent);
+  const bar = () => within(screen.getByRole('group', { name: 'Filter applications' }));
+  const search = () => screen.getByTestId('search');
+
+  beforeEach(() => {
+    vi.mocked(client.listApplications).mockResolvedValue(apps as never);
+  });
+
+  it('opens without a view on the saved one, sort included', async () => {
+    localStorage.setItem(STORAGE_KEY, 'sort=-company&status=applied&status=interview&company=Acme');
+    renderPage();
+    await waitFor(() => expect(search()).toHaveTextContent('?sort=-company&company=Acme&status=applied&status=interview'));
+    expect(companies()).toEqual(['Acme']);
+  });
+
+  it('saves a view that arrives in the URL', async () => {
+    localStorage.setItem(STORAGE_KEY, 'company=Acme');
+    renderPage('?status=interview');
+    await screen.findByText('Globex');
+    await waitFor(() => expect(localStorage.getItem(STORAGE_KEY)).toBe('status=interview'));
+    expect(companies()).toEqual(['Globex']);
+  });
+
+  it('saves every change, sort included', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Acme');
+    await user.click(within(screen.getByRole('columnheader', { name: /^Company/ })).getByRole('button'));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('sort=company');
+    await user.click(bar().getByRole('button', { name: 'Filter by company' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Filter by company' })).getByRole('checkbox', { name: /^Globex/ }));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('sort=company&company=Globex');
+  });
+
+  it('Reset clears the saved filters and does not load them back', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'company=Acme');
+    renderPage();
+    await waitFor(() => expect(search()).toHaveTextContent('?company=Acme'));
+    await user.click(bar().getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(search()).toHaveTextContent(/^$/));
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(companies()).toEqual(['Globex', 'Acme']);
+  });
+
+  it('shows a one-time view from a Dashboard tile without saving it', async () => {
+    localStorage.setItem(STORAGE_KEY, 'company=Acme');
+    renderPage('?company=Acme&status=interview', ONE_TIME_VIEW);
+    expect(await screen.findByText('No rows match your filters')).toBeInTheDocument();
+    expect(search()).toHaveTextContent('?company=Acme&status=interview');
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('company=Acme');
+  });
+
+  it('saves a one-time view once the user changes it', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'company=Acme');
+    renderPage('?status=interview', ONE_TIME_VIEW);
+    await screen.findByText('Globex');
+    await user.click(within(screen.getByRole('columnheader', { name: /^Company/ })).getByRole('button'));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('sort=company&status=interview');
+  });
+
+  it('Reset in a one-time view clears the saved filters too', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'company=Acme');
+    renderPage('?status=interview', ONE_TIME_VIEW);
+    await screen.findByText('Globex');
+    await user.click(bar().getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(search()).toHaveTextContent(/^$/));
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(companies()).toEqual(['Globex', 'Acme']);
+  });
+
+  it('keeps a one-time view one-time on the way back from Details', async () => {
+    const user = userEvent.setup();
+    renderPage('?status=interview', ONE_TIME_VIEW);
+    await screen.findByText('Globex');
+    await user.click(within(screen.getByText('Globex').closest('tr')!).getByRole('link', { name: 'Details' }));
+    expect(await screen.findByTestId('back')).toHaveTextContent('/profiles/platform-roles/applications?status=interview');
+    expect(screen.getByTestId('back-state')).toHaveTextContent('{"oneTimeView":true}');
+  });
+
+  it('a back link from a saved view carries no one-time marker', async () => {
+    const user = userEvent.setup();
+    renderPage('?status=interview');
+    await screen.findByText('Globex');
+    await user.click(within(screen.getByText('Globex').closest('tr')!).getByRole('link', { name: 'Details' }));
+    expect(await screen.findByTestId('back-state')).toHaveTextContent('null');
   });
 });
