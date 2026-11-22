@@ -2,11 +2,11 @@
 
 ## Status
 
-Status: in-progress
+Status: completed
 
 `completed` is the successful terminal status. `done` is a directory name, not a status value. Do not use `Status: done` or `Status: complete`.
 
-Sub-state: implemented, validated and reviewed; waiting for the user to upload the re-recorded `docs/video/demo.mp4` as a GitHub attachment, so both README attachment links can be replaced before the closing commit.
+Sub-state: delivered in PR #44; README video links point to the new upload.
 
 ## Requirements
 
@@ -144,6 +144,8 @@ See the Pre-Implementation Gate implementation plan.
 
 - Analysis and decisions 1-6 recorded.
 - Decisions 7A, 8B, 9A recorded; SOW moved to current.
+- Work committed and PR #44 opened at the user's request before the video upload (the user asked for the PR, so the closing commit is separate); CI `Test (Node 22)` and `Test (Node lts/*)` passed on it.
+- The user posted the new video as an attachment in an issue comment; the link answers 200 `video/mp4` without a login and its SHA-256 matches `docs/video/demo.mp4`; both README attachment links (lines 7 and 12) replaced; SOW closed.
 - Decisions 10A-13A recorded and implemented: `NoMatches` replaces only the Journey card; `AttentionCard` takes nullable counts and says "Waiting proposals could not be loaded."; spec records Back/Forward saving; `scripts/demo-video/record.mjs` scrolls the Journey scene to the tiles (graph centred only when it still does not fit); video re-recorded (90.4 s).
 - Implemented: `GET /api/profiles/:pid/applications/history` (`src/server/api/applications.ts`), `listApplicationHistory` (`src/ui/api/client.ts`), `src/ui/application-view.ts` (columns, key, `tileQuery`), `src/ui/view-storage.ts` (guarded storage, one-time marker), `viewQuery`/`hasView` in `src/ui/table-view.ts`, `useSharedTableView`/`useStoredTableView`/`useListReturnState` in `src/ui/hooks/use-table-view.ts`, Dashboard, Applications and application page changes; `test/ui/setup.ts` clears `localStorage` after every UI test (three existing Applications tests leaked saved filters into later ones without it).
 - Real use: `npm run sandbox:mock` checked with a scripted headless Chromium (company filter changes tiles and Journey, saved under the profile key, sidebar Applications loads it, a tile opens a one-time view without saving, Reset removes the key, no console errors). `docs/images/dashboard.png` re-taken from it; demo video re-recorded with `npm run demo:video` (89.7 s).
@@ -186,9 +188,9 @@ Artifact maintenance gate:
 - AGENTS.md: no update; no new command, workflow or guardrail (the video re-record and upload flow is unchanged).
 - Runtime project skills: `.agents/skills/project-testing/SKILL.md` records the `localStorage` reset in `test/ui/setup.ts`, seeding saved views and one-time router state. `project-local-api` unchanged: the new route is read-only under the applications router, which the skill already covers.
 - Specs: `.agents/sow/specs/product-v1.md` (API list, Dashboard section, failure states, table view sharing, decisions 10A-12A).
-- End-user/operator docs: `README.md` (Dashboard tour text and alt text, Dashboard reference line, table view line), `docs/images/dashboard.png`, `docs/video/demo.mp4`, `docs/video/demo-poster.png`; README attachment links pending the user's upload.
+- End-user/operator docs: `README.md` (Dashboard tour text and alt text, Dashboard reference line, table view line), `docs/images/dashboard.png`, `docs/video/demo.mp4`, `docs/video/demo-poster.png`; README attachment links replaced with the new upload (checked anonymously, identical to `docs/video/demo.mp4`).
 - End-user/operator skills: none exist in this repository.
-- SOW lifecycle: single SOW, in `current/` as `in-progress` until the attachment links are replaced; then `completed`, moved to `done/`, one commit with the work.
+- SOW lifecycle: single SOW; `completed` and moved to `done/` in the commit that replaces the attachment links. The work itself was committed earlier because the user asked to open the PR before the upload; the PR is squash-merged, so `main` gets one commit.
 
 Specs update:
 
@@ -200,7 +202,7 @@ Project skills update:
 
 End-user/operator docs update:
 
-- README, dashboard screenshot and demo video updated; attachment links follow the upload.
+- README, dashboard screenshot, demo video and both README attachment links updated.
 
 End-user/operator skills update:
 
@@ -214,12 +216,12 @@ Lessons:
 
 Follow-up mapping:
 
-- README attachment links: tracked in this SOW (blocks its close; needs the user's upload).
+- README attachment links: implemented (new upload linked).
 - Leftover `application-filters:<id>` keys after a profile is deleted: rejected as harmless (a few bytes, never read for another profile); the user was told during analysis.
 
 ## Outcome
 
-Pending the README attachment links.
+The Dashboard has the Applications filters; tiles, Journey and the quiet list follow them, the pending items do not, and the filter set is saved per profile and shared with the Applications page, with tiles opening one-time views. Delivered in PR #44 with spec, README, screenshot, video and testing skill updated.
 
 ## Lessons Extracted
 

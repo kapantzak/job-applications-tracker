@@ -4,12 +4,12 @@ A local app that finds job postings matching your profile, checks that the links
 
 Website: [jobtrack.kapantzakis.gr](https://jobtrack.kapantzakis.gr/)
 
-https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571
+https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5
 
 <details>
 <summary>Video not playing? Open it here</summary>
 
-[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/42a289b6-ed2f-4cbc-bd00-f53ff35dc571)
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5)
 
 </details>
 
