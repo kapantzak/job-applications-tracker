@@ -807,3 +807,66 @@ describe('mail sync handler: scoped syncs', () => {
   });
 });
 
+
+describe('mail sync handler: aliases of merged applications (SOW-0055)', () => {
+  // A merge leaves the kept application with the removed one's name as an alias.
+  function merged(status: 'applied' | 'saved' | 'rejected', keptRole = 'Senior Engineer', aliasRole = 'Engineer (React)') {
+    const kept = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: keptRole, status, applied_at: '2026-09-01T00:00:00.000Z' });
+    const other = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: aliasRole, status: 'applied' });
+    return applicationsRepo.merge(kept.id, [other.id]);
+  }
+
+  it('passes each open application\'s aliases to the mail source and closed ones\' as already tracked', async () => {
+    const open = merged('applied');
+    const closedKept = applicationsRepo.create({ profile_id: pid, company: 'Globex', role: 'SRE', status: 'rejected' });
+    const closedOther = applicationsRepo.create({ profile_id: pid, company: 'Globex', role: 'Site Reliability', status: 'applied' });
+    applicationsRepo.merge(closedKept.id, [closedOther.id]);
+    const seen: Parameters<MailSource['sync']>[0][] = [];
+    await handlerFor({
+      sync: async (input) => {
+        seen.push(input);
+        return { mail_access: true, findings: [], new_applications: [], notes: '', scope_message_count: null } as MailSyncFindings;
+      },
+    })(ctx());
+    expect(seen[0]!.applications).toEqual([
+      expect.objectContaining({ id: open.id, aliases: [{ company: 'Acme', role: 'Engineer (React)' }] }),
+    ]);
+    expect(seen[0]!.tracked).toEqual(
+      expect.arrayContaining([
+        { company: 'Globex', role: 'SRE' },
+        { company: 'Globex', role: 'Site Reliability' },
+      ]),
+    );
+  });
+
+  it('skips a new application under a closed application\'s alias as already tracked', async () => {
+    merged('rejected');
+    const res = await returningNew([newApp('acme', 'engineer (react)', 'msg-010')])(ctx());
+    expect(res.summary).toBe('0 proposals created, 0 new applications found, 1 skipped');
+    expect(logs).toContain('Skipping new application already tracked: acme - engineer (react)');
+  });
+
+  it('turns mail under a saved application\'s alias into a status proposal for it', async () => {
+    const saved = merged('saved');
+    const res = await returningNew([newApp('Acme', 'Engineer (React)', 'msg-010', { status: 'interview' })])(ctx());
+    expect(res.summary).toBe('1 proposals created, 0 new applications found, 0 skipped');
+    expect(proposalsRepo.listPending(pid).map((p) => [p.application_id, p.proposed_status])).toEqual([[saved.id, 'interview']]);
+  });
+
+  it('matches a new application to the application whose own name it is before an alias of a newer one', async () => {
+    const saved = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Dev', status: 'saved' });
+    merged('rejected', 'Senior Engineer', 'Dev');
+    const res = await returningNew([newApp('Acme', 'Dev', 'msg-010', { status: 'interview' })])(ctx());
+    expect(res.summary).toBe('1 proposals created, 0 new applications found, 0 skipped');
+    expect(proposalsRepo.listPending(pid).map((p) => p.application_id)).toEqual([saved.id]);
+  });
+
+  it('gives a scoped thread under an open application\'s alias its status finding', async () => {
+    scopedProfile();
+    const open = merged('applied');
+    const reply = thread({ company: 'Acme', role: 'Engineer (React)', status: 'interview' });
+    const res = await handlerFor({ sync: async () => scopedResult([reply]) })(ctx());
+    expect(res.summary).toBe('1 proposals created, 0 new applications found, 0 skipped');
+    expect(proposalsRepo.listPending(pid).map((p) => [p.application_id, p.proposed_status])).toEqual([[open.id, 'interview']]);
+  });
+});

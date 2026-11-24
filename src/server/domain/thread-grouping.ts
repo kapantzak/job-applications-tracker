@@ -4,14 +4,21 @@
 // rules as the single-run sync.
 import type { MailFindingResult, NewApplicationResult, ThreadRecordResult } from '../tasks/schemas.js';
 import { cleanName, mailTime, matchKey } from './new-application.js';
+import type { ApplicationAlias } from './types.js';
 
 export interface GroupingInput {
   records: ThreadRecordResult[];
-  // The open applications the read prompt listed.
-  open: { id: string; company: string; role: string; applied_at: string }[];
+  // The open applications the read prompt listed. Aliases are names of applications merged into one
+  // (SOW-0055) and match like the application's own name.
+  open: { id: string; company: string; role: string; applied_at: string; aliases?: ApplicationAlias[] }[];
   // Every application of the profile, for threads that name no role (decision 9).
-  applications: { company: string; role: string }[];
+  applications: { company: string; role: string; aliases?: ApplicationAlias[] }[];
 }
+
+const namesOf = (a: { company: string; role: string; aliases?: ApplicationAlias[] }): ApplicationAlias[] => [
+  { company: a.company, role: a.role },
+  ...(a.aliases ?? []),
+];
 
 export type GroupedNewApplication = NewApplicationResult & { thread_ids: string[] };
 
@@ -59,7 +66,13 @@ export function groupThreadRecords(input: GroupingInput): GroupingOutput {
   const logs: string[] = [];
   const openById = new Map(input.open.map((a) => [a.id, a]));
   const openByKey = new Map<string, string>();
-  for (const a of input.open) if (!openByKey.has(matchKey(a.company, a.role))) openByKey.set(matchKey(a.company, a.role), a.id);
+  // Own names first, so an alias never takes mail from an application with that very name (decision 9A).
+  const ownNames = input.open.map((a) => [a.id, { company: a.company, role: a.role }] as const);
+  const aliasNames = input.open.flatMap((a) => (a.aliases ?? []).map((n) => [a.id, n] as const));
+  for (const [id, name] of [...ownNames, ...aliasNames]) {
+    const key = matchKey(name.company, name.role);
+    if (!openByKey.has(key)) openByKey.set(key, id);
+  }
 
   const byApp = new Map<string, ThreadRecordResult[]>();
   const groups = new Map<string, Group>();
@@ -98,8 +111,9 @@ export function groupThreadRecords(input: GroupingInput): GroupingOutput {
   for (const { company, record } of roleless) {
     const key = companyKey(company);
     const sameGroups = [...groups.values()].filter((g) => companyKey(g.company) === key);
-    const sameOpen = input.open.filter((a) => companyKey(a.company) === key);
-    const sameApps = input.applications.filter((a) => companyKey(a.company) === key);
+    const hasCompany = (a: GroupingInput['applications'][number]) => namesOf(a).some((n) => companyKey(n.company) === key);
+    const sameOpen = input.open.filter(hasCompany);
+    const sameApps = input.applications.filter(hasCompany);
     if (sameGroups.length === 1) sameGroups[0]!.records.push(record);
     else if (sameGroups.length === 0 && sameOpen.length === 1) toApp(sameOpen[0]!.id, record);
     else if (sameGroups.length === 0 && sameOpen.length === 0 && sameApps.length === 1) {

@@ -10,6 +10,8 @@ import type { createProposalsRepo, NewProposal } from '../db/proposals-repo.js';
 import type { createSettingsRepo } from '../db/settings-repo.js';
 import { mailScopeQuery } from '../domain/mail-filter.js';
 import { cleanName, cleanSenderDomain, gmailDay, matchKey, toAppliedAt } from '../domain/new-application.js';
+// Findings never propose a stage not past the application's (decision 13B).
+import { stageOf } from '../domain/stage.js';
 import { groupThreadRecords } from '../domain/thread-grouping.js';
 import {
   batchesFailedNote,
@@ -17,12 +19,12 @@ import {
   SCOPE_MATCHED_NOTHING_NOTE,
   UNLISTED_MAIL_NOTE,
   type Application,
-  type ApplicationStatus,
+  type ApplicationAlias,
   type Settings,
 } from '../domain/types.js';
 import type { MailSource } from '../mail/types.js';
 import { RUN_INPUT_FILE, type RunContext, type RunHandler } from '../runs/queue.js';
-import type { MailFindingResult, NewApplicationResult } from '../tasks/schemas.js';
+import type { NewApplicationResult } from '../tasks/schemas.js';
 
 export interface MailSyncDeps {
   db: Db;
@@ -36,21 +38,16 @@ export interface MailSyncDeps {
   mailSourceFactory: (settings: Settings) => MailSource;
 }
 
+// An application's own name, then the names of applications merged into it (SOW-0055, decision 6C).
+const namesOf = (app: Application, aliases: Map<string, ApplicationAlias[]>): ApplicationAlias[] => [
+  { company: app.company, role: app.role },
+  ...(aliases.get(app.id) ?? []),
+];
+
 // Without a Gmail scope, new applications are searched this far back (decision 3).
 const NEW_APPLICATION_LOOKBACK_DAYS = 90;
 // A safety net against a runaway agent, not a page size (SOW-0051, decision 2B; was 50 in SOW-0045).
 const NEW_APPLICATION_MAX = 500;
-
-// How far an application has got, for findings (decision 13B). No response is still at the applied stage.
-const FINDING_STAGE: Partial<Record<ApplicationStatus | MailFindingResult['proposed_status'], number>> = {
-  applied: 1,
-  no_response: 1,
-  screening: 2,
-  interview: 3,
-  offer: 4,
-  rejected: 5,
-};
-const stageOf = (status: string): number => FINDING_STAGE[status as keyof typeof FINDING_STAGE] ?? 0;
 
 // A scheduled sync carries a run input file (decision 14B); a click on Sync has none.
 function isScheduled(runDir: string): boolean {
@@ -88,12 +85,12 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
 
   // What the agent must not report as new (decision 14A): applications that are neither open (listed in the
   // prompt) nor saved (10A needs those reported), and every new-application proposal of the profile.
-  function trackedNames(profileId: string, open: Set<string>): { company: string; role: string }[] {
+  function trackedNames(profileId: string, open: Set<string>, aliases: Map<string, ApplicationAlias[]>): ApplicationAlias[] {
     const apps = applicationsRepo.list(profileId);
-    const saved = new Set(apps.filter((a) => a.status === 'saved').map((a) => matchKey(a.company, a.role)));
-    const closed = apps
-      .filter((a) => a.status !== 'saved' && !open.has(a.id))
-      .map((a) => ({ company: a.company, role: a.role }));
+    const saved = new Set(
+      apps.filter((a) => a.status === 'saved').flatMap((a) => namesOf(a, aliases).map((n) => matchKey(n.company, n.role))),
+    );
+    const closed = apps.filter((a) => a.status !== 'saved' && !open.has(a.id)).flatMap((a) => namesOf(a, aliases));
     // A proposal that shares a saved application's company and role must not hide that application's mail.
     const proposed = applicationProposalsRepo.names(profileId).filter((p) => !saved.has(matchKey(p.company, p.role)));
     return [...closed, ...proposed];
@@ -110,9 +107,15 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
   ): { items: NewApplicationProposal[]; skipped: number; unread: Set<string> } {
     const now = new Date();
     const tracked = new Map<string, Application>();
-    // Newest first, so the newest application with a key wins.
-    for (const app of applicationsRepo.list(profileId)) {
-      const key = matchKey(app.company, app.role);
+    const aliases = applicationsRepo.aliasesForProfile(profileId);
+    // Newest first, so the newest application with a key wins; an alias counts like the name (SOW-0055), after
+    // every own name, so it never hides an application with that very name (decision 9A).
+    const apps = applicationsRepo.list(profileId);
+    for (const [app, name] of [
+      ...apps.map((a) => [a, { company: a.company, role: a.role }] as const),
+      ...apps.flatMap((a) => (aliases.get(a.id) ?? []).map((n) => [a, n] as const)),
+    ]) {
+      const key = matchKey(name.company, name.role);
       if (!tracked.has(key)) tracked.set(key, app);
     }
     // Any earlier proposal, pending or decided, blocks its company and role (decision 12A).
@@ -221,6 +224,7 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
     if (!profile) throw new Error('Profile not found');
     // No early exit without open applications: the same run finds new ones (SOW-0045).
     const open = applicationsRepo.list(profileId, { open: true });
+    const aliases = applicationsRepo.aliasesForProfile(profileId);
     const now = new Date();
     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - NEW_APPLICATION_LOOKBACK_DAYS);
 
@@ -248,11 +252,12 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
           // Open applications always have applied_at; fall back to be safe.
           applied_at: a.applied_at ?? a.created_at,
           sender_domains: a.sender_domains,
+          aliases: aliases.get(a.id) ?? [],
         })),
         reviewed_message_ids: reviewed,
         mail_scope: scope,
         new_applications_since: gmailDay(since),
-        tracked: trackedNames(profileId, new Set(open.map((a) => a.id))),
+        tracked: trackedNames(profileId, new Set(open.map((a) => a.id)), aliases),
         known_threads: scope === null ? new Map() : mailThreadsRepo.known(profileId),
         today: gmailDay(now),
         list_since: listSince,
@@ -277,8 +282,16 @@ export function createMailSyncHandler(deps: MailSyncDeps): RunHandler {
     if (threads) {
       const grouped = groupThreadRecords({
         records: threads.records,
-        open: open.map((a) => ({ id: a.id, company: a.company, role: a.role, applied_at: a.applied_at ?? a.created_at })),
-        applications: applicationsRepo.list(profileId).map((a) => ({ company: a.company, role: a.role })),
+        open: open.map((a) => ({
+          id: a.id,
+          company: a.company,
+          role: a.role,
+          applied_at: a.applied_at ?? a.created_at,
+          aliases: aliases.get(a.id) ?? [],
+        })),
+        applications: applicationsRepo
+          .list(profileId)
+          .map((a) => ({ company: a.company, role: a.role, aliases: aliases.get(a.id) ?? [] })),
       });
       for (const line of grouped.logs) ctx.log(line);
       statusFindings = grouped.findings;

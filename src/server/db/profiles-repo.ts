@@ -116,6 +116,8 @@ export function createProfilesRepo(db: Db) {
     // New-application proposals (SOW-0045) point at applications, jobs and runs.
     `DELETE FROM application_proposals WHERE profile_id = @id
        OR run_id IN (SELECT id FROM runs WHERE profile_id = @id)`,
+    // Names kept from merged applications (SOW-0055).
+    'DELETE FROM application_aliases WHERE application_id IN (SELECT id FROM applications WHERE profile_id = @id)',
     // Threads a scoped sync has read (SOW-0051).
     'DELETE FROM mail_threads WHERE profile_id = @id',
     'DELETE FROM mail_listings WHERE profile_id = @id',

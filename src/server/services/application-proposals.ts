@@ -42,7 +42,12 @@ export function createApplicationProposalService({
     const viaJob = p.job_id ? applicationsRepo.findByJobId(p.job_id) : null;
     if (viaJob) return viaJob;
     const key = matchKey(p.company, p.role);
-    return applicationsRepo.list(p.profile_id).find((a) => matchKey(a.company, a.role) === key) ?? null;
+    const apps = applicationsRepo.list(p.profile_id);
+    const own = apps.find((a) => matchKey(a.company, a.role) === key);
+    if (own) return own;
+    // An alias is a name of an application merged into this one; it counts after every own name (SOW-0055, 9A).
+    const aliases = applicationsRepo.aliasesForProfile(p.profile_id);
+    return apps.find((a) => (aliases.get(a.id) ?? []).some((n) => matchKey(n.company, n.role) === key)) ?? null;
   }
 
   function acceptOne(id: string): AcceptResult {

@@ -1,5 +1,5 @@
 ---
-version: 6
+version: 7
 ---
 # Task: check email for application updates
 
@@ -45,6 +45,7 @@ Do not report these as new applications:
 - Set `confidence` between 0 and 1.
 - Quote at most a two-sentence snippet from the message as evidence.
 - `application_id` must be copied exactly from the `id` field of the applications list above.
+- An application's `also_known_as` names are the same application under other names: mail about any of them belongs to that application and uses its `id`.
 - `evidence.message_id` must be the Gmail message id as returned by your Gmail tool (the id used in Gmail URLs), not the RFC Message-ID header.
 
 ## New applications

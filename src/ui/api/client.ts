@@ -1,5 +1,6 @@
 import type {
   Application,
+  ApplicationAlias,
   ApplicationProposal,
   ApplicationStatus,
   CvAnalysis,
@@ -70,7 +71,7 @@ export interface ApplicationPatchInput {
   applied_at?: string | null;
 }
 
-export type ApplicationDetail = Application & { history: StatusHistoryEntry[] };
+export type ApplicationDetail = Application & { history: StatusHistoryEntry[]; aliases: ApplicationAlias[] };
 export type ProposalWithApplication = Proposal & { application: Application | null };
 
 export interface JobFilters {
@@ -195,6 +196,9 @@ export const patchApplication = (profileId: string, id: string, patch: Applicati
   request('PATCH', scoped(profileId, `/applications/${enc(id)}`), patch);
 export const setApplicationStatus = (profileId: string, id: string, status: ApplicationStatus): Promise<Application> =>
   request('POST', scoped(profileId, `/applications/${enc(id)}/status`), { status });
+// Merges the others into the kept application and returns it as the detail route does (SOW-0055).
+export const mergeApplications = (profileId: string, keepId: string, mergeIds: string[]): Promise<ApplicationDetail> =>
+  request('POST', scoped(profileId, '/applications/merge'), { keep_id: keepId, merge_ids: mergeIds });
 
 export const listProposals = (profileId: string): Promise<ProposalWithApplication[]> =>
   request('GET', scoped(profileId, '/proposals'));

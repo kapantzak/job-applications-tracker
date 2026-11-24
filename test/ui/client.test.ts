@@ -20,6 +20,7 @@ import {
   getCvAnalysis,
   getDashboard,
   listApplicationHistory,
+  mergeApplications,
   retryCvAnalysis,
   updateProfile,
   uploadCv,
@@ -130,6 +131,16 @@ describe('api client', () => {
     await expect(listApplicationHistory('pf1')).resolves.toEqual(body);
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/profiles/pf1/applications/history');
     expect(fetchMock.mock.calls[0]![1]!.method).toBe('GET');
+  });
+
+  it('mergeApplications posts the kept id and the ids to merge (SOW-0055)', async () => {
+    const body = { id: 'a1', history: [], aliases: [{ company: 'Acme', role: 'Dev' }] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(body));
+    await expect(mergeApplications('pf1', 'a1', ['a2', 'a3'])).resolves.toEqual(body);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/profiles/pf1/applications/merge');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ keep_id: 'a1', merge_ids: ['a2', 'a3'] });
   });
 
   it('getModelCatalogs calls GET /api/setup/models', async () => {

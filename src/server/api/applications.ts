@@ -46,6 +46,16 @@ const ApplicationPatchBody = z
 
 const StatusBody = z.object({ status: z.enum(APPLICATION_STATUSES) }).strict();
 
+// Applications the user knows are one (SOW-0055): the kept one plus 1 to 50 others, each named once.
+const MergeBody = z
+  .object({
+    keep_id: z.string().min(1),
+    merge_ids: z.array(z.string().min(1)).min(1).max(50),
+  })
+  .strict()
+  .refine((b) => new Set(b.merge_ids).size === b.merge_ids.length, 'merge_ids must not repeat an id')
+  .refine((b) => !b.merge_ids.includes(b.keep_id), 'merge_ids must not include keep_id');
+
 export function createApplicationsRouter(deps: AppDeps): Hono<ProfileEnv> {
   const router = new Hono<ProfileEnv>();
 
@@ -55,6 +65,12 @@ export function createApplicationsRouter(deps: AppDeps): Hono<ProfileEnv> {
     if (!app || app.profile_id !== c.get('profile').id) throw new HttpError(404, 'Application not found');
     return app;
   }
+
+  const detail = (app: Application) => ({
+    ...app,
+    history: deps.applicationsRepo.history(app.id),
+    aliases: deps.applicationsRepo.aliases(app.id),
+  });
 
   router.get('/', (c) =>
     c.json(deps.applicationsRepo.list(c.get('profile').id, { open: c.req.query('open') === '1' })),
@@ -80,10 +96,20 @@ export function createApplicationsRouter(deps: AppDeps): Hono<ProfileEnv> {
     return c.json(rows);
   });
 
-  router.get('/:id', (c) => {
-    const app = requireApplication(c, c.req.param('id'));
-    return c.json({ ...app, history: deps.applicationsRepo.history(app.id) });
+  // Registered before `/:id` routes, like `/history`.
+  router.post('/merge', async (c) => {
+    const { keep_id, merge_ids } = await readJson(c, MergeBody);
+    const kept = requireApplication(c, keep_id);
+    for (const id of merge_ids) requireApplication(c, id);
+    // A sync saves proposals for the applications it read when it started; a merge in between would remove one
+    // and fail the whole save. Check and merge stay synchronous, so the queue cannot start a sync in between.
+    if (deps.runsRepo.hasActive('sync_mail', kept.profile_id)) {
+      throw new HttpError(409, 'A Gmail sync of this profile is queued or running; wait for it to finish');
+    }
+    return c.json(detail(deps.applicationsRepo.merge(kept.id, merge_ids)));
   });
+
+  router.get('/:id', (c) => c.json(detail(requireApplication(c, c.req.param('id')))));
 
   router.patch('/:id', async (c) => {
     const app = requireApplication(c, c.req.param('id'));

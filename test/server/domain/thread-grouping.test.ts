@@ -184,3 +184,49 @@ describe('groupThreadRecords: furthest stage wins (decision 13B)', () => {
   });
 });
 
+
+describe('groupThreadRecords: aliases of merged applications (SOW-0055)', () => {
+  const open = (over: Partial<GroupingInput['open'][number]> = {}) => ({
+    id: 'app-1',
+    company: 'Acme',
+    role: 'Senior Engineer',
+    applied_at: '2026-09-01T00:00:00.000Z',
+    ...over,
+  });
+
+  it('gives a thread named by an alias to that open application', () => {
+    const r = rec({ role: 'engineer (react)', status: 'interview' });
+    const out = groupThreadRecords(input([r], { open: [open({ aliases: [{ company: 'Acme', role: 'Engineer (React)' }] })] }));
+    expect(out.findings).toEqual([expect.objectContaining({ application_id: 'app-1', proposed_status: 'interview' })]);
+    expect(out.newApplications).toEqual([]);
+  });
+
+  it('matches a thread without a role to an open application by an alias company', () => {
+    const r = rec({ company: 'Acme Labs', role: '', status: 'screening' });
+    const aliased = open({ aliases: [{ company: 'Acme Labs', role: 'Engineer' }] });
+    const out = groupThreadRecords(input([r], { open: [aliased], applications: [aliased] }));
+    expect(out.findings).toEqual([expect.objectContaining({ application_id: 'app-1', proposed_status: 'screening' })]);
+  });
+
+  it('matches a thread without a role to a closed application by an alias company', () => {
+    const r = rec({ company: 'Acme Labs', role: '', status: 'rejected' });
+    const closed = { company: 'Acme', role: 'Senior Engineer', aliases: [{ company: 'Acme Labs', role: 'Engineer' }] };
+    const out = groupThreadRecords(input([r], { applications: [closed] }));
+    expect(out.newApplications).toEqual([expect.objectContaining({ company: 'Acme', role: 'Senior Engineer', status: 'rejected' })]);
+  });
+
+  it('gives a thread to the application whose own name it is before one that has it as an alias', () => {
+    const r = rec({ role: 'Dev', status: 'interview' });
+    const aliased = open({ id: 'app-new', aliases: [{ company: 'Acme', role: 'Dev' }] });
+    const own = open({ id: 'app-old', role: 'Dev' });
+    const out = groupThreadRecords(input([r], { open: [aliased, own] }));
+    expect(out.findings).toEqual([expect.objectContaining({ application_id: 'app-old' })]);
+  });
+
+  it('treats a thread under a name that is no alias as before', () => {
+    const r = rec({ role: 'Engineer (React)', status: 'interview' });
+    const out = groupThreadRecords(input([r], { open: [open()] }));
+    expect(out.findings).toEqual([]);
+    expect(out.newApplications).toEqual([expect.objectContaining({ role: 'Engineer (React)' })]);
+  });
+});

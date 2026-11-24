@@ -157,3 +157,92 @@ describe('applications', () => {
     expect(missing.status).toBe(404);
   });
 });
+
+describe('POST applications/merge (SOW-0055)', () => {
+  const merge = (body: unknown, base = h.base) => h.app.request(`${base}/applications/merge`, json('POST', body));
+  const make = (role: string, over: Partial<Parameters<Harness['deps']['applicationsRepo']['create']>[0]> = {}) =>
+    h.deps.applicationsRepo.create({ profile_id: h.profile.id, company: 'Initrode', role, ...over });
+
+  it('merges into the kept application and returns it with its history and aliases', async () => {
+    const kept = make('SRE', { status: 'interview' });
+    const other = make('Site Reliability Engineer', { url: 'https://initrode.example/j/1' });
+    h.deps.applicationsRepo.setStatus(other.id, 'screening', 'user');
+
+    const res = await merge({ keep_id: kept.id, merge_ids: [other.id] });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Application & { history: StatusHistoryEntry[]; aliases: unknown[] };
+    expect(body).toMatchObject({ id: kept.id, status: 'interview', url: 'https://initrode.example/j/1' });
+    expect(body.history.map((e) => [e.from_status, e.to_status])).toEqual([['applied', 'screening']]);
+    expect(body.aliases).toEqual([{ company: 'Initrode', role: 'Site Reliability Engineer' }]);
+    expect(h.deps.applicationsRepo.list(h.profile.id).map((a) => a.id)).toEqual([kept.id]);
+  });
+
+  it('GET of an application includes its aliases', async () => {
+    const kept = make('SRE');
+    const other = make('Ops');
+    h.deps.applicationsRepo.merge(kept.id, [other.id]);
+    const body = (await (await h.app.request(`${h.base}/applications/${kept.id}`)).json()) as { aliases: unknown[] };
+    expect(body.aliases).toEqual([{ company: 'Initrode', role: 'Ops' }]);
+  });
+
+  it.each([
+    ['no ids to merge', (k: string) => ({ keep_id: k, merge_ids: [] })],
+    ['more than 50 ids', (k: string) => ({ keep_id: k, merge_ids: Array.from({ length: 51 }, (_, i) => `app-${i}`) })],
+    ['a repeated id', (k: string, o: string) => ({ keep_id: k, merge_ids: [o, o] })],
+    ['the kept id among the merged', (k: string, o: string) => ({ keep_id: k, merge_ids: [o, k] })],
+    ['an unknown key', (k: string, o: string) => ({ keep_id: k, merge_ids: [o], force: true })],
+  ])('is 400 and merges nothing for %s', async (_name, body) => {
+    const kept = make('SRE');
+    const other = make('Ops');
+    const res = await merge(body(kept.id, other.id));
+    expect(res.status).toBe(400);
+    expect(h.deps.applicationsRepo.list(h.profile.id)).toHaveLength(2);
+  });
+
+  it('is 404 and merges nothing for an unknown id or another profile\'s application', async () => {
+    const other = h.deps.profilesRepo.create({ ...SAMPLE_PROFILE, name: 'Data roles' });
+    const kept = make('SRE');
+    const mine = make('Ops');
+    const theirs = h.deps.applicationsRepo.create({ profile_id: other.id, company: 'Initrode', role: 'SRE' });
+    for (const body of [
+      { keep_id: kept.id, merge_ids: [mine.id, 'nope'] },
+      { keep_id: kept.id, merge_ids: [mine.id, theirs.id] },
+      { keep_id: theirs.id, merge_ids: [mine.id] },
+    ]) {
+      const res = await merge(body);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Application not found' });
+    }
+    expect(h.deps.applicationsRepo.list(h.profile.id)).toHaveLength(2);
+    expect(h.deps.applicationsRepo.get(theirs.id)).not.toBeNull();
+  });
+
+  it.each(['queued', 'running'] as const)('is 409 while a Gmail sync of the profile is %s', async (status) => {
+    const kept = make('SRE');
+    const other = make('Ops');
+    const run = h.deps.runsRepo.create('sync_mail', h.profile.id, { adapter_id: '', prompt_version: null });
+    h.deps.runsRepo.update(run.id, { status });
+    const res = await merge({ keep_id: kept.id, merge_ids: [other.id] });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'A Gmail sync of this profile is queued or running; wait for it to finish' });
+    expect(h.deps.applicationsRepo.list(h.profile.id)).toHaveLength(2);
+  });
+
+  it('merges while a job search or another profile\'s Gmail sync is queued', async () => {
+    const other = h.deps.profilesRepo.create({ ...SAMPLE_PROFILE, name: 'Data roles' });
+    h.deps.runsRepo.create('sync_mail', other.id, { adapter_id: '', prompt_version: null });
+    h.deps.runsRepo.create('discover_jobs', h.profile.id, { adapter_id: '', prompt_version: null });
+    const kept = make('SRE');
+    const res = await merge({ keep_id: kept.id, merge_ids: [make('Ops').id] });
+    expect(res.status).toBe(200);
+  });
+
+  it('is 415 without a JSON content type', async () => {
+    const kept = make('SRE');
+    const res = await h.app.request(`${h.base}/applications/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ keep_id: kept.id, merge_ids: [make('Ops').id] }),
+    });
+    expect(res.status).toBe(415);
+  });
+});

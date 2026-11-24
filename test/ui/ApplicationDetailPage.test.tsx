@@ -26,6 +26,7 @@ const detail: client.ApplicationDetail = {
   sender_domains: ['example.com'],
   created_at: '2026-03-04T00:00:00.000Z',
   history: [],
+  aliases: [],
 };
 
 function ListProbe() {
@@ -59,6 +60,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('ApplicationDetailPage', () => {
+  it('lists the names of merged applications as Also known as (SOW-0055)', async () => {
+    vi.mocked(client.getApplication).mockResolvedValue({
+      ...detail,
+      aliases: [
+        { company: 'Acme', role: 'Platform Dev' },
+        { company: 'Acme Labs', role: 'Engineer' },
+      ],
+    });
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Also known as' });
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Acme - Platform Dev', 'Acme Labs - Engineer']);
+  });
+
+  it('shows no Also known as without aliases', async () => {
+    renderPage();
+    await screen.findByDisplayValue('Platform Engineer');
+    expect(screen.queryByText('Also known as')).toBeNull();
+  });
+
   it('goes back to a one-time list view as a one-time view (SOW-0054)', async () => {
     const user = userEvent.setup();
     renderPage({ listSearch: '?status=interview', listOneTimeView: true });

@@ -13,6 +13,7 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listApplications: vi.fn(),
   createApplication: vi.fn(),
   setApplicationStatus: vi.fn(),
+  mergeApplications: vi.fn(),
   startSync: vi.fn(),
 }));
 
@@ -182,7 +183,7 @@ describe('ApplicationsPage sorting and filters', () => {
     { ...app, id: 'a2', company: 'Globex', role: 'Data Engineer', status: 'interview', applied_at: '2026-11-04T09:00:00' },
     { ...app, id: 'a1', company: 'Acme', role: 'Platform Engineer', status: 'applied', applied_at: '2026-11-01T09:00:00' },
   ];
-  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0]!.textContent);
+  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[1]!.textContent);
   const dateButton = (bound: 'from' | 'to') =>
     within(screen.getByRole('group', { name: 'Filter applications' })).getByRole('button', { name: new RegExp(`^Filter by applied ${bound}($|:)`) });
   const dayText = (y: number, m: number, d: number) => new Date(y, m, d).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -316,7 +317,7 @@ describe('ApplicationsPage shared view', () => {
     { ...app, id: 'a2', company: 'Globex', role: 'Data Engineer', status: 'interview', url: null },
     { ...app, id: 'a1', company: 'Acme', role: 'Platform Engineer', status: 'applied', url: null },
   ];
-  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0]!.textContent);
+  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[1]!.textContent);
   const bar = () => within(screen.getByRole('group', { name: 'Filter applications' }));
   const search = () => screen.getByTestId('search');
 
@@ -404,5 +405,128 @@ describe('ApplicationsPage shared view', () => {
     await screen.findByText('Globex');
     await user.click(within(screen.getByText('Globex').closest('tr')!).getByRole('link', { name: 'Details' }));
     expect(await screen.findByTestId('back-state')).toHaveTextContent('null');
+  });
+});
+
+describe('ApplicationsPage merging (SOW-0055)', () => {
+  const base = { ...app, url: null, job_id: null, notes: null, sender_domains: [], profile_id: 'pf1', status_changed_at: '2026-11-01T09:00:00' };
+  const apps = [
+    { ...base, id: 'a3', company: 'Initech', role: 'SRE', status: 'applied', applied_at: '2026-11-03T09:00:00', created_at: '2026-11-03T09:00:00' },
+    { ...base, id: 'a2', company: 'acme ', role: 'Engineer (React)', status: 'screening', applied_at: '2026-11-02T09:00:00', created_at: '2026-11-02T09:00:00' },
+    { ...base, id: 'a1', company: 'Acme', role: 'Senior Engineer', status: 'interview', applied_at: '2026-11-01T09:00:00', created_at: '2026-11-01T09:00:00' },
+  ];
+  const rows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2]!.textContent);
+  const select = (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(screen.getByRole('checkbox', { name: `Select ${name}` }));
+
+  beforeEach(() => {
+    vi.mocked(client.listApplications).mockResolvedValue(apps as never);
+  });
+
+  it('offers Merge once two applications are selected', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    expect(screen.queryByText(/selected$/)).toBeNull();
+    await select(user, 'Acme - Senior Engineer');
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeDisabled();
+    await select(user, 'acme - Engineer (React)');
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.queryByText(/selected$/)).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Select Acme - Senior Engineer' })).not.toBeChecked();
+  });
+
+  it('preselects the furthest stage and warns only when companies differ', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'acme - Engineer (React)');
+    await select(user, 'Acme - Senior Engineer');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Merge 2 applications' }));
+    expect(dialog.getByRole('radio', { name: /^Acme - Senior Engineer/ })).toBeChecked();
+    expect(dialog.getByRole('radio', { name: /^acme - Engineer \(React\)/ })).not.toBeChecked();
+    expect(dialog.queryByText(/name different companies/)).toBeNull();
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
+    await select(user, 'Initech - SRE');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    const three = within(await screen.findByRole('dialog', { name: 'Merge 3 applications' }));
+    expect(three.getByText('These applications name different companies: Initech, acme.')).toBeInTheDocument();
+  });
+
+  it('does nothing when the dialog is cancelled', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'acme - Engineer (React)');
+    await select(user, 'Acme - Senior Engineer');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Merge 2 applications' })).getByRole('button', { name: 'Cancel' }));
+    expect(client.mergeApplications).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(3);
+  });
+
+  it('merges into the chosen application, removes the others and says so', async () => {
+    const user = userEvent.setup();
+    const kept = { ...apps[1]!, notes: 'joined', history: [], aliases: [{ company: 'Acme', role: 'Senior Engineer' }] };
+    vi.mocked(client.mergeApplications).mockResolvedValue(kept as never);
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'acme - Engineer (React)');
+    await select(user, 'Acme - Senior Engineer');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Merge 2 applications' }));
+    await user.click(dialog.getByRole('radio', { name: /^acme - Engineer \(React\)/ }));
+    await user.click(dialog.getByRole('button', { name: 'Merge applications' }));
+    expect(client.mergeApplications).toHaveBeenCalledWith('pf1', 'a2', ['a1']);
+    expect(await screen.findByText('Merged 2 applications into acme - Engineer (React).')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(rows()).toEqual(['SRE', 'Engineer (React)']);
+    expect(screen.queryByText(/selected$/)).toBeNull();
+  });
+
+  it('announces the selected count and clears the merged line on the next selection', async () => {
+    const user = userEvent.setup();
+    const kept = { ...apps[1]!, history: [], aliases: [] };
+    vi.mocked(client.mergeApplications).mockResolvedValue(kept as never);
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'acme - Engineer (React)');
+    expect(screen.getByText('1 selected')).toHaveAttribute('role', 'status');
+    await select(user, 'Acme - Senior Engineer');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Merge 2 applications' })).getByRole('button', { name: 'Merge applications' }));
+    expect(await screen.findByText(/^Merged 2 applications into/)).toBeInTheDocument();
+    await select(user, 'Initech - SRE');
+    expect(screen.queryByText(/^Merged 2 applications into/)).toBeNull();
+  });
+
+  it('shows a failed merge in the dialog and keeps every row', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.mergeApplications).mockRejectedValue(new Error('A Gmail sync of this profile is queued or running; wait for it to finish'));
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'acme - Engineer (React)');
+    await select(user, 'Acme - Senior Engineer');
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Merge 2 applications' }));
+    await user.click(dialog.getByRole('button', { name: 'Merge applications' }));
+    expect(await dialog.findByText('A Gmail sync of this profile is queued or running; wait for it to finish')).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
+    expect(rows()).toHaveLength(3);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('drops selected rows that a filter hides', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Initech');
+    await select(user, 'Initech - SRE');
+    await select(user, 'Acme - Senior Engineer');
+    await user.type(screen.getByRole('searchbox', { name: 'Search applications' }), 'Initech');
+    await waitFor(() => expect(screen.getByText('1 selected')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeDisabled();
   });
 });

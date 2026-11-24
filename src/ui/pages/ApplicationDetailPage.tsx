@@ -129,6 +129,21 @@ export function ApplicationDetailPage() {
                     <Input id={`${fieldId}-role`} value={role} onChange={(e) => setRole(e.target.value)} required />
                   </Field>
                 </div>
+                {app.aliases.length > 0 && (
+                  // Names of applications merged into this one; Gmail sync matches them too (SOW-0055).
+                  <div className="flex flex-col gap-1.5">
+                    <p id={`${fieldId}-aliases`} className="text-sm font-medium">
+                      Also known as
+                    </p>
+                    <ul aria-labelledby={`${fieldId}-aliases`} className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+                      {app.aliases.map((n) => (
+                        <li key={`${n.company}\u0000${n.role}`}>
+                          {n.company} - {n.role}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <Field>
                   <WithInfo topic="URL" text={FIELD_HELP.url}>
                     <FieldLabel htmlFor={`${fieldId}-url`}>URL</FieldLabel>

@@ -1,6 +1,6 @@
 // Rules for applications a Gmail sync proposes (SOW-0045). Agent output is untrusted, so names, domains
 // and dates are cleaned here before anything is stored.
-import { ATS_DOMAINS } from '../db/applications-repo.js';
+import { ATS_DOMAINS } from './ats-domains.js';
 
 export function cleanName(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
