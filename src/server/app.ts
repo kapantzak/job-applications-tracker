@@ -1,6 +1,6 @@
 import { join, resolve, sep } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AgentAdapter } from './agents/index.js';
 import { createCvAnalysisRouter } from './api/cv-analysis.js';
 import { onError } from './api/errors.js';
@@ -52,6 +52,8 @@ export interface AppDeps {
   allowedHosts?: string[];
 }
 
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+
 function isApiPath(path: string): boolean {
   return path === '/api' || path.startsWith('/api/');
 }
@@ -94,10 +96,26 @@ export function createApp(deps: AppDeps): Hono {
       if (!staysInside(root, c.req.path)) return c.json({ error: 'Not found' }, 404);
       await next();
     });
+    // Without Cache-Control browsers cache index.html heuristically and keep the old
+    // bundle after an upgrade. Vite content-hashes everything under assets/, so only
+    // those files may be cached for good; the rest revalidate on every load.
+    // @hono/node-server calls onFound after building the response: a header set there is
+    // lost with the standard Response and kept only by an internal detail of node-server's
+    // own Response. So onFound only records the file and this middleware sets the header.
+    const assetsDir = join(root, 'assets') + sep;
+    const servedFiles = new WeakMap<Context, string>();
+    const recordFile = (path: string, c: Context): void => {
+      servedFiles.set(c, resolve(path));
+    };
+    app.use('*', async (c, next) => {
+      await next();
+      const file = servedFiles.get(c);
+      if (file !== undefined) c.header('Cache-Control', file.startsWith(assetsDir) ? IMMUTABLE : 'no-cache');
+    });
     // serveStatic joins root with the request path, so an absolute root works as is.
-    app.use('*', serveStatic({ root }));
+    app.use('*', serveStatic({ root, onFound: recordFile }));
     // SPA fallback: client-side routes resolve to the app shell.
-    app.get('*', serveStatic({ path: join(root, 'index.html') }));
+    app.get('*', serveStatic({ path: join(root, 'index.html'), onFound: recordFile }));
   }
 
   return app;

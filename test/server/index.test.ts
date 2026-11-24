@@ -71,6 +71,24 @@ describe('startApp', () => {
     expect(await res.text()).toBe('<h1>shell</h1>');
   });
 
+  // The real server uses node-server's own Response class, which app.request tests never reach.
+  it('sends the UI cache headers over a real connection', async () => {
+    const ui = tmp();
+    writeFileSync(join(ui, 'index.html'), '<h1>shell</h1>');
+    mkdirSync(join(ui, 'assets'));
+    writeFileSync(join(ui, 'assets', 'app-1234.js'), 'console.log("invented");');
+    const app = await start({ dataDir: tmp(), port: 0, uiDir: ui });
+    const shell = await fetch(`${app.url}/`);
+    expect(shell.headers.get('cache-control')).toBe('no-cache');
+    await shell.text();
+    const asset = await fetch(`${app.url}/assets/app-1234.js`);
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    await asset.text();
+    const health = await fetch(`${app.url}/api/health`);
+    expect(health.headers.get('cache-control')).toBeNull();
+    await health.text();
+  });
+
   it('returns 404 at / when uiDir is null', async () => {
     const app = await start({ dataDir: tmp(), port: 0, uiDir: null });
     expect((await fetch(`${app.url}/`)).status).toBe(404);
