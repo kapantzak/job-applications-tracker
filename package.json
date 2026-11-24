@@ -1,6 +1,6 @@
 {
   "name": "job-applications-tracker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local job applications tracker that uses your own agent CLI to find openings and sync application status from Gmail",
   "license": "MIT",
   "repository": {
