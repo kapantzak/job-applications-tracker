@@ -32,7 +32,7 @@ jobtrack
 
 The app starts on `http://127.0.0.1:4173` (or the next free port) and opens your browser.
 
-When a newer version is published, the app tells you: a notice at the top of every page (close it and it stays closed until the next version), a line in Help & about, and one line in the terminal. To update, run `npm i -g job-applications-tracker@latest` (or start it with `npx job-applications-tracker@latest`), then restart the app. Your data folder and settings are kept.
+When a newer version is published, the app tells you: a notice at the top of every page (close it and it stays closed until the next version), a line in Help & about, and one line in the terminal. To update, run `npm i -g job-applications-tracker@latest` (or start it with `npx job-applications-tracker@latest`), then restart the app and reload any app tab still open from before. Your data folder and settings are kept.
 
 ## First run
 
