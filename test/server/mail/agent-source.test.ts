@@ -10,8 +10,8 @@ import { MailAccessError, type MailSyncRequest } from '../../../src/server/mail/
 
 const req: MailSyncRequest = {
   applications: [
-    { id: 'app-1', company: 'Acme', role: 'Engineer', applied_at: '2026-01-01', sender_domains: ['acme.example.com'] },
-    { id: 'app-2', company: 'Globex', role: 'Dev', applied_at: '2026-01-02', sender_domains: [] },
+    { id: 'app-1', company: 'Acme', role: 'Engineer', applied_at: '2026-01-01', sender_domains: ['acme.example.com'], aliases: [] },
+    { id: 'app-2', company: 'Globex', role: 'Dev', applied_at: '2026-01-02', sender_domains: [], aliases: [] },
   ],
   reviewed_message_ids: ['msg-001', 'msg-002'],
   mail_scope: null,
@@ -89,7 +89,7 @@ describe('agent mail source', () => {
     expect(tasks[0]?.kind).toBe('sync_mail');
     expect(tasks[0]?.prompt).toContain('msg-001, msg-002');
     expect(tasks[0]?.prompt).toContain(
-      '- id: app-1 | company: Acme | role: Engineer | applied_at: 2026-01-01 | sender_domains: acme.example.com',
+      '- id: app-1 | company: Acme | role: Engineer | also_known_as: (none) | applied_at: 2026-01-01 | sender_domains: acme.example.com',
     );
     expect(tasks[0]?.prompt).toContain('sender_domains: (none)');
     expect(logs).toContain('Using adapter custom');
@@ -288,7 +288,7 @@ describe('agent mail source with a scope', () => {
     expect(res.threads?.batches).toEqual({ total: 5, failed: 0 });
     expect(res.findings).toEqual([]);
     expect(res.new_applications).toEqual([]);
-    expect(res.promptVersion).toBe('list 1 + read 1');
+    expect(res.promptVersion).toBe('list 1 + read 2');
     expect(logs).toContain('Listed 85 threads');
     expect(logs).toContain('Reading 84 of 85 threads in 5 batches of up to 20, 3 at a time');
   });
@@ -303,13 +303,34 @@ describe('agent mail source with a scope', () => {
     expect(prompt).toContain('## Date ranges\n\n- all dates (after: empty, before: empty)\n');
   });
 
+  it('lists an application\'s aliases on its line in the read prompt (SOW-0055)', async () => {
+    const calls: Call[] = [];
+    const source = createAgentMailSource(router(() => listOut(ids(1, 1)), readAll, calls));
+    const aliased = {
+      ...scoped,
+      applications: [
+        {
+          ...scoped.applications[0]!,
+          aliases: [
+            { company: 'Acme', role: 'Engineer (React)' },
+            { company: 'Acme Labs', role: 'Dev' },
+          ],
+        },
+      ],
+    };
+    await source.sync(aliased, ctx().c);
+    expect(calls[1]!.task.prompt).toContain(
+      '- id: app-1 | company: Acme | role: Engineer | also_known_as: Acme - Engineer (React); Acme Labs - Dev | applied_at: 2026-01-01',
+    );
+  });
+
   it('gives the read call its threads, the open applications and the ATS domains', async () => {
     const calls: Call[] = [];
     const source = createAgentMailSource(router(() => listOut(ids(1, 1)), readAll, calls));
     await source.sync(scoped, ctx().c);
     const prompt = calls[1]!.task.prompt;
     expect(prompt).toContain('## Threads\n\n- thr-001\n');
-    expect(prompt).toContain('- id: app-1 | company: Acme | role: Engineer | applied_at: 2026-01-01 | sender_domains: acme.example.com');
+    expect(prompt).toContain('- id: app-1 | company: Acme | role: Engineer | also_known_as: (none) | applied_at: 2026-01-01 | sender_domains: acme.example.com');
     expect(prompt).toMatch(/## ATS domains\n\ngreenhouse\.io, /);
   });
 

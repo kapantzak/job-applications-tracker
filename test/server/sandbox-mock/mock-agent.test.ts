@@ -106,9 +106,9 @@ describe('mock agent', () => {
   }
 
   const threeApps = [
-    { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: ['acme.example.com'] },
-    { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [] },
-    { id: 'app-003', company: 'Initech', role: 'Designer', applied_at: '2026-10-03', sender_domains: [] },
+    { id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: ['acme.example.com'], aliases: [] },
+    { id: 'app-002', company: 'Globex', role: 'Developer', applied_at: '2026-10-02', sender_domains: [], aliases: [] },
+    { id: 'app-003', company: 'Initech', role: 'Designer', applied_at: '2026-10-03', sender_domains: [], aliases: [] },
   ];
 
   it('without a scope, proposes changes only for applications listed in the prompt', async () => {
@@ -123,8 +123,31 @@ describe('mock agent', () => {
     expect(logs.some((l) => l.includes('mock agent'))).toBe(true);
   });
 
+  // Merged applications list their other names after the role (SOW-0055); the mock must still read the line.
+  it('reads application lines that carry also-known-as names, with and without a scope', async () => {
+    const aliased = threeApps.map((a) => ({
+      ...a,
+      aliases: [
+        { company: a.company, role: `${a.role} (Remote)` },
+        { company: `${a.company} Labs`, role: 'Contractor' },
+      ],
+    }));
+    const plain = await sync(threeApps, null);
+    expect((await sync(aliased, null)).findings.findings.map((f) => [f.application_id, f.proposed_status])).toEqual(
+      plain.findings.findings.map((f) => [f.application_id, f.proposed_status]),
+    );
+    const scopedPlain = await sync(threeApps);
+    const scopedAliased = await sync(aliased);
+    expect(scopedAliased.grouped.findings.map((f) => [f.application_id, f.proposed_status])).toEqual(
+      scopedPlain.grouped.findings.map((f) => [f.application_id, f.proposed_status]),
+    );
+    // The mock replies with the company and role it read from the line, so a misread shows here.
+    const names = (r: typeof scopedPlain) => r.findings.threads?.records.map((t) => [t.application_id, t.company, t.role]);
+    expect(names(scopedAliased)).toEqual(names(scopedPlain));
+  });
+
   it('without a scope, leaves out new applications the prompt lists as open or tracked', async () => {
-    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [] };
+    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [], aliases: [] };
     expect((await sync([listed], null)).findings.new_applications.map((a) => a.company)).toEqual(['Fabrikam Games']);
     const tracked = [{ company: 'fabrikam games', role: 'UI Developer' }];
     expect((await sync([], null, tracked)).findings.new_applications.map((a) => a.company)).toEqual(['Contoso Pharma']);
@@ -157,7 +180,7 @@ describe('mock agent', () => {
   });
 
   it('matches a listed open application by name, so it is not proposed as new', async () => {
-    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [] };
+    const listed = { id: 'app-001', company: 'Contoso Pharma', role: 'Frontend Engineer', applied_at: '2026-10-01', sender_domains: [], aliases: [] };
     const { grouped } = await sync([listed]);
     expect(grouped.newApplications.map((a) => a.company)).toEqual(['Fabrikam Games']);
   });
@@ -246,7 +269,7 @@ describe('mock agent --demo', () => {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
       {
-        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] }],
+        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [], aliases: [] }],
         reviewed_message_ids: [],
         mail_scope: null,
         new_applications_since: '2026/08/13',
@@ -276,7 +299,7 @@ describe('mock agent --demo', () => {
     const logs: string[] = [];
     const findings = await createAgentMailSource(createAdapter(settings, 'sync_mail')).sync(
       {
-        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [] }],
+        applications: [{ id: 'app-001', company: 'Acme', role: 'Engineer', applied_at: '2026-10-01', sender_domains: [], aliases: [] }],
         reviewed_message_ids: [],
         mail_scope: 'label:Jobs-Frontend',
         new_applications_since: '2026/08/13',

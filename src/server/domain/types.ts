@@ -283,6 +283,12 @@ export interface Application {
   created_at: string;
 }
 
+// Another name of an application, kept when an application with that name was merged into it (SOW-0055).
+export interface ApplicationAlias {
+  company: string;
+  role: string;
+}
+
 export interface StatusHistoryEntry {
   id: string;
   application_id: string;

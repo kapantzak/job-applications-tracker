@@ -37,7 +37,9 @@ function renderApplications(apps: MailSyncRequest['applications']): string {
   return apps
     .map((a) => {
       const domains = a.sender_domains.length ? a.sender_domains.join(', ') : '(none)';
-      return `- id: ${a.id} | company: ${a.company} | role: ${a.role} | applied_at: ${a.applied_at} | sender_domains: ${domains}`;
+      // Names of applications merged into this one (SOW-0055), so the agent links their mail here.
+      const aliases = a.aliases.length ? a.aliases.map((n) => `${n.company} - ${n.role}`).join('; ') : '(none)';
+      return `- id: ${a.id} | company: ${a.company} | role: ${a.role} | also_known_as: ${aliases} | applied_at: ${a.applied_at} | sender_domains: ${domains}`;
     })
     .join('\n');
 }

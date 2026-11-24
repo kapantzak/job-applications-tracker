@@ -40,6 +40,31 @@ const item = (company: string, overrides: Partial<NewApplicationProposal> = {}):
 });
 
 describe('application proposal service', () => {
+  it('accept treats an application whose alias matches as already tracked (SOW-0055)', () => {
+    const { pid, runId, repo, applicationsRepo, service } = setup();
+    const kept = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'interview' });
+    const other = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Engineer (React)' });
+    applicationsRepo.merge(kept.id, [other.id]);
+    const [p] = repo.createMany(runId, pid, [item('ACME', { role: 'engineer  (react)' })]);
+
+    const { proposal, application, outcome } = service.accept(p!.id);
+
+    expect(outcome).toBe('already_tracked');
+    expect(application.id).toBe(kept.id);
+    expect(proposal).toMatchObject({ state: 'accepted', application_id: kept.id });
+    expect(applicationsRepo.list(pid)).toHaveLength(1);
+  });
+
+  it('accept prefers the application whose own name matches over an alias of a newer one (SOW-0055)', () => {
+    const { pid, runId, repo, applicationsRepo, service } = setup();
+    const own = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Dev', status: 'interview' });
+    const kept = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'interview' });
+    const other = applicationsRepo.create({ profile_id: pid, company: 'Acme', role: 'Dev' });
+    applicationsRepo.merge(kept.id, [other.id]);
+    const [p] = repo.createMany(runId, pid, [item('Acme', { role: 'Dev' })]);
+    expect(service.accept(p!.id).application.id).toBe(own.id);
+  });
+
   it('accept creates the application with the proposed fields and no history row', () => {
     const { pid, runId, repo, applicationsRepo, service } = setup();
     const [p] = repo.createMany(runId, pid, [item('Acme', { url: 'https://acme.example.com/jobs/1' })]);

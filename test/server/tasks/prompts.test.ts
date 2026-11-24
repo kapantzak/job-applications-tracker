@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { renderPrompt } from '../../../src/server/tasks/prompts.js';
 
+
+// Names of merged applications (SOW-0055, decision 6C).
+const ALIAS_RULE =
+  '- An application\'s `also_known_as` names are the same application under other names: mail about any of them belongs to that application and uses its `id`.';
+
 describe('renderPrompt', () => {
   it('renders discover_jobs', () => {
     const r = renderPrompt('discover_jobs', { profile: 'PROFILE_X', known_urls: 'URLS_Y', scope: 'SCOPE_Z', custom_prompt: 'CUSTOM_W' });
@@ -62,7 +67,8 @@ describe('renderPrompt', () => {
       tracked: 'TRACKED_Y',
     });
     expect(r.text).toContain('## Already tracked\n\nDo not report these as new applications:\n\nTRACKED_Y\n');
-    expect(r.version).toBe('6');
+    expect(r.version).toBe('7');
+    expect(r.text).toContain(ALIAS_RULE);
     expect(r.text).toContain('## Mailbox scope\n\nSCOPE_X\n');
     expect(r.text).toContain('- Search only the messages the mailbox scope above allows.');
     expect(r.text).toContain('set `mail_access` to false and return empty `findings` and `new_applications` arrays.');
@@ -71,7 +77,7 @@ describe('renderPrompt', () => {
     expect(r.text).toContain('A search that returns 45 threads or more, or as many as the page size allows, is cut off');
     expect(r.text).toContain('Ignore job alerts, newsletters');
     expect(r.text).toContain('Gmail message id');
-    expect(r.text).not.toContain('version: 6');
+    expect(r.text).not.toContain('version: 7');
     expect(r.text).toContain('- Set `scope_message_count` as the mailbox scope above says.');
     expect(r.text.toLowerCase()).toContain('read only');
   });
@@ -95,7 +101,8 @@ describe('renderPrompt', () => {
 
   it('renders sync_mail_read with the threads, the open applications and the classification rules', () => {
     const r = renderPrompt('sync_mail_read', { threads: 'THREADS_X', applications: 'APPS_Y', ats_domains: 'ATS_Z' });
-    expect(r.version).toBe('1');
+    expect(r.version).toBe('2');
+    expect(r.text).toContain(ALIAS_RULE);
     expect(r.text).toMatch(/^# Task: read Gmail threads$/m);
     expect(r.text).toContain('## Threads\n\nTHREADS_X\n');
     expect(r.text).toContain('## Open applications\n\nAPPS_Y\n');

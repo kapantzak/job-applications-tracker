@@ -302,6 +302,21 @@ CREATE TABLE mail_listings (
 );
 `,
   },
+  {
+    // Names of applications merged into another one (SOW-0055, decision 6C), so Gmail sync still matches mail
+    // that uses a merged name.
+    id: 14,
+    sql: `
+CREATE TABLE application_aliases (
+  id TEXT PRIMARY KEY,
+  application_id TEXT NOT NULL REFERENCES applications (id),
+  company TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_application_aliases_application_id ON application_aliases (application_id);
+`,
+  },
 ];
 
 // Frozen for migration 3; the live rule is in domain/profile-name.ts.

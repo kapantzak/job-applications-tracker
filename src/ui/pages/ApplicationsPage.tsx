@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLinkIcon, MailIcon, PlusIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Application, ApplicationStatus } from '../../server/domain/types.js';
-import { listApplications, setApplicationStatus, startSync } from '../api/client.js';
+import { listApplications, setApplicationStatus, startSync, type ApplicationDetail } from '../api/client.js';
 import { APPLICATION_COLUMNS, applicationViewKey } from '../application-view.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
-import { ErrorAlert, LoadingState } from '../components/feedback.js';
+import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { MergeApplicationsDialog } from '../components/MergeApplicationsDialog.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncScopeNote } from '../components/SyncScopeNote.js';
 import { StatusSelect } from '../components/StatusSelect.js';
@@ -17,6 +18,7 @@ import { useListLinkState, useSharedTableView } from '../hooks/use-table-view.js
 import { useProfileHref, useProfileId } from '../profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 import {
   Sheet,
@@ -43,9 +45,39 @@ export function ApplicationsPage() {
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Rows ticked for a merge (SOW-0055); only rows the filters show count.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [merging, setMerging] = useState(false);
+  const [merged, setMerged] = useState<string | null>(null);
   // Shared with the Dashboard and saved per profile (SOW-0054).
   const view = useSharedTableView(APPLICATION_COLUMNS, apps ?? NO_APPS, applicationViewKey(profileId));
   const linkState = useListLinkState();
+  const chosen = useMemo(() => view.visible.filter((a) => selected.has(a.id)), [view.visible, selected]);
+
+  // A row the filters hide leaves the selection, so a merge never includes rows the user cannot see.
+  useEffect(() => {
+    if (chosen.length !== selected.size) setSelected(new Set(chosen.map((a) => a.id)));
+  }, [chosen, selected]);
+
+  const toggle = (id: string, on: boolean) => {
+    // A new selection starts a new merge; the last one's message no longer applies.
+    setMerged(null);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const onMerged = (kept: ApplicationDetail, removedIds: string[]) => {
+    const { history: _history, aliases: _aliases, ...app } = kept;
+    const removed = new Set(removedIds);
+    setApps((prev) => prev?.filter((a) => !removed.has(a.id)).map((a) => (a.id === app.id ? app : a)) ?? null);
+    setSelected(new Set());
+    setMerging(false);
+    setMerged(`Merged ${removedIds.length + 1} applications into ${app.company} - ${app.role}.`);
+  };
 
   useEffect(() => {
     let active = true;
@@ -140,6 +172,28 @@ export function ApplicationsPage() {
         ) : (
           <>
             <TableToolbar view={view} noun="applications" />
+            {merged && <SuccessMessage>{merged}</SuccessMessage>}
+            {/* Always mounted, so screen readers announce the count as it changes. */}
+            <div className={chosen.length > 0 ? 'flex items-center gap-2 text-sm' : 'sr-only'}>
+              <span role="status">{chosen.length > 0 ? `${chosen.length} selected` : ''}</span>
+              {chosen.length > 0 && (
+                <>
+                  <Button type="button" size="sm" disabled={chosen.length < 2} onClick={() => setMerging(true)}>
+                    Merge
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                    Clear selection
+                  </Button>
+                </>
+              )}
+            </div>
+            <MergeApplicationsDialog
+              profileId={profileId}
+              applications={chosen}
+              open={merging}
+              onOpenChange={setMerging}
+              onMerged={onMerged}
+            />
             {view.visible.length === 0 ? (
               <NoMatches onClear={view.reset} />
             ) : (
@@ -147,7 +201,10 @@ export function ApplicationsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <SortableHead view={view} id="company" className="pl-4">
+                      <TableHead className="w-10 pl-4">
+                        <span className="sr-only">Select</span>
+                      </TableHead>
+                      <SortableHead view={view} id="company">
                         Company
                       </SortableHead>
                       <SortableHead view={view} id="role">
@@ -167,7 +224,14 @@ export function ApplicationsPage() {
                   <TableBody>
                     {view.visible.map((a) => (
                       <TableRow key={a.id}>
-                        <TableCell className="pl-4 font-medium">{a.company}</TableCell>
+                        <TableCell className="pl-4">
+                          <Checkbox
+                            aria-label={`Select ${a.company} - ${a.role}`}
+                            checked={selected.has(a.id)}
+                            onCheckedChange={(on) => toggle(a.id, on === true)}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{a.company}</TableCell>
                         <TableCell>{a.role}</TableCell>
                         <TableCell>
                           <StatusSelect

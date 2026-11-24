@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type {
   Application,
+  ApplicationAlias,
   ApplicationStatus,
   HistorySource,
   StatusHistoryEntry,
 } from '../domain/types.js';
+import { aliasesToKeep, mergedFields } from '../domain/merge.js';
+import { stageOf } from '../domain/stage.js';
+import { ATS_DOMAINS } from '../domain/ats-domains.js';
 import type { Db } from './connection.js';
 
 export type NewApplication = {
@@ -25,22 +29,8 @@ export type ApplicationPatch = Partial<
   Pick<Application, 'company' | 'role' | 'url' | 'notes' | 'sender_domains' | 'applied_at'>
 >;
 
-// Job boards and ATS hosts send mail from their own domains, so they say nothing about the employer.
-export const ATS_DOMAINS: readonly string[] = [
-  'greenhouse.io',
-  'lever.co',
-  'ashbyhq.com',
-  'myworkday.com',
-  'workdayjobs.com',
-  'smartrecruiters.com',
-  'linkedin.com',
-  'indeed.com',
-  // Common senders that were missing (SOW-0045, decision 20B).
-  'myworkdayjobs.com',
-  'icims.com',
-  'jobvite.com',
-  'teamtailor.com',
-];
+// Kept here for existing importers; the list lives in a domain module so the UI bundle never loads this file.
+export { ATS_DOMAINS };
 
 const OPEN_STATUSES = ['applied', 'screening', 'interview', 'no_response'];
 const OFFER_WINDOW_MS = 30 * 24 * 3600 * 1000;
@@ -89,6 +79,15 @@ export function createApplicationsRepo(db: Db) {
   const selectProfileHistory = db.prepare(
     `SELECT h.* FROM status_history h JOIN applications a ON a.id = h.application_id
      WHERE a.profile_id = ? ORDER BY h.changed_at ASC, h.rowid ASC`,
+  );
+
+  const selectAliases = db.prepare(
+    'SELECT company, role FROM application_aliases WHERE application_id = ? ORDER BY created_at ASC, rowid ASC',
+  );
+  const selectProfileAliases = db.prepare(
+    `SELECT l.application_id, l.company, l.role FROM application_aliases l
+     JOIN applications a ON a.id = l.application_id
+     WHERE a.profile_id = ? ORDER BY l.created_at ASC, l.rowid ASC`,
   );
 
   function get(id: string): Application | null {
@@ -222,5 +221,83 @@ export function createApplicationsRepo(db: Db) {
     return selectProfileHistory.all(profileId) as StatusHistoryEntry[];
   }
 
-  return { create, get, findByJobId, list, profileIdsToSync, update, setStatus, history, historyForProfile };
+  function aliases(applicationId: string): ApplicationAlias[] {
+    return selectAliases.all(applicationId) as ApplicationAlias[];
+  }
+
+  // One read for a sync: application id -> its other names; applications without any are absent.
+  function aliasesForProfile(profileId: string): Map<string, ApplicationAlias[]> {
+    const rows = selectProfileAliases.all(profileId) as (ApplicationAlias & { application_id: string })[];
+    const byApp = new Map<string, ApplicationAlias[]>();
+    for (const { application_id, company, role } of rows) {
+      byApp.set(application_id, [...(byApp.get(application_id) ?? []), { company, role }]);
+    }
+    return byApp;
+  }
+
+  const insertAlias = db.prepare(
+    `INSERT INTO application_aliases (id, application_id, company, role, created_at)
+     VALUES (@id, @application_id, @company, @role, @created_at)`,
+  );
+  const updateMergedFields = db.prepare(
+    `UPDATE applications SET url = @url, job_id = @job_id, applied_at = @applied_at,
+       sender_domains = @sender_domains, notes = @notes WHERE id = @id`,
+  );
+  // Each statement moves one table's rows from a removed application to the kept one.
+  const moveRows = [
+    'UPDATE status_history SET application_id = @keep WHERE application_id = @from',
+    'UPDATE proposals SET application_id = @keep WHERE application_id = @from',
+    'UPDATE application_proposals SET application_id = @keep WHERE application_id = @from',
+    'DELETE FROM application_aliases WHERE application_id = @from',
+    'DELETE FROM applications WHERE id = @from',
+  ].map((sql) => db.prepare(sql));
+  const selectPendingProposals = db.prepare(
+    "SELECT id, proposed_status FROM proposals WHERE application_id = ? AND state = 'pending'",
+  );
+  const rejectProposal = db.prepare("UPDATE proposals SET state = 'rejected', decided_at = ? WHERE id = ?");
+
+  // Joins applications the user knows are one into the kept one (SOW-0055): its own details stay, gaps are
+  // filled from the others, every row that pointed at them moves to it and their names become its aliases.
+  function merge(keepId: string, mergeIds: string[]): Application {
+    return db.transaction(() => {
+      const kept = require(keepId);
+      const removed = mergeIds.map(require);
+      if (removed.some((a) => a.profile_id !== kept.profile_id)) {
+        throw new Error('Applications belong to different profiles');
+      }
+      const now = new Date().toISOString();
+      const fields = mergedFields(kept, removed);
+      const names = aliasesToKeep(
+        kept,
+        aliases(keepId),
+        removed.map((app) => ({ app, aliases: aliases(app.id) })),
+      );
+      updateMergedFields.run({ ...fields, sender_domains: JSON.stringify(fields.sender_domains), id: keepId });
+      for (const name of names) {
+        insertAlias.run({ id: randomUUID(), application_id: keepId, ...name, created_at: now });
+      }
+      for (const app of removed) for (const stmt of moveRows) stmt.run({ keep: keepId, from: app.id });
+      // Decision 7B: accepting one of these would move the kept application backwards.
+      const rows = selectPendingProposals.all(keepId) as { id: string; proposed_status: string }[];
+      for (const row of rows) {
+        if (stageOf(row.proposed_status) <= stageOf(kept.status)) rejectProposal.run(now, row.id);
+      }
+      return get(keepId) as Application;
+    })();
+  }
+
+  return {
+    create,
+    get,
+    findByJobId,
+    list,
+    profileIdsToSync,
+    update,
+    setStatus,
+    history,
+    historyForProfile,
+    aliases,
+    aliasesForProfile,
+    merge,
+  };
 }

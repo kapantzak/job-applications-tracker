@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 ---
 # Task: read Gmail threads
 
@@ -31,6 +31,7 @@ If you have no tool that can read Gmail, set `mail_access` to false and return e
 - A thread is about an application when it shows the user applied: an application confirmation, or a reply, assessment, interview invitation, offer or rejection about that application. Ignore job alerts, newsletters, job recommendations and recruiter outreach about jobs the user did not apply to: those go in `not_applications`.
 - Put each listed thread in exactly one of `threads` or `not_applications`, with `thread_id` copied exactly from the list above.
 - `application_id` is the `id` of the open application above that the thread is about, copied exactly, or an empty string when it is about none of them.
+- An application's `also_known_as` names are the same application under other names: mail about any of them belongs to that application and uses its `id`.
 - `company` is the hiring company, never the job board or the ATS. `role` is the job title as the mail states it, or an empty string when the mail does not say.
 - `status` is the stage the thread's newest message shows: `applied`, `screening`, `interview`, `offer` or `rejected`.
 - `first_date` is the date of the thread's earliest message, as YYYY-MM-DD.

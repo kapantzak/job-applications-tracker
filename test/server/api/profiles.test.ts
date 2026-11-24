@@ -238,6 +238,10 @@ describe('profiles: delete', () => {
       { ...fresh, company: 'Hooli', job_id: null },
     ]);
     h.deps.applicationProposalService.accept(accepted!.id);
+    // Names kept from merged applications (SOW-0055).
+    h.deps.db
+      .prepare("INSERT INTO application_aliases (id, application_id, company, role, created_at) VALUES (?, ?, 'Acme', 'Developer', 't')")
+      .run(`alias-${profileId}`, app.id);
     // Threads a scoped sync has read (SOW-0051).
     createMailThreadsRepo(h.deps.db).upsertMany(profileId, [{ thread_id: 'thr-001', last_message_id: 'msg-003' }]);
     createMailThreadsRepo(h.deps.db).setListing(profileId, 'label:jobs', '2026/11/20');
@@ -265,6 +269,7 @@ describe('profiles: delete', () => {
     expect(count('SELECT COUNT(*) AS n FROM applications')).toBe(2);
     expect(count('SELECT COUNT(*) AS n FROM application_proposals')).toBe(2);
     expect(count('SELECT COUNT(*) AS n FROM mail_threads')).toBe(1);
+    expect(count('SELECT COUNT(*) AS n FROM application_aliases')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM mail_listings')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM proposals')).toBe(1);
     expect(count('SELECT COUNT(*) AS n FROM status_history')).toBe(1);

@@ -50,11 +50,15 @@ Do not use this skill for:
 - `insertTestProfile(db, name)` also writes `slug` (from `slugBase(name)`), so give each test profile a distinct name.
 - The UI project resolves the `@/` alias to `src/ui` (`vitest.config.ts`). Tests import pages by relative path as before. Pages are tested without `Layout`, so the sidebar and `matchMedia` stay out of page tests; `test/ui/theme.test.ts` stubs `matchMedia` with `vi.stubGlobal` and restores it in `afterEach`.
 
+- jsdom runs no CSS exit animations, so a Radix dialog unmounts at once in tests but stays on screen while it animates closed in a browser (SOW-0055). A dialog whose props change when its action succeeds (for example the page clears the list it was opened with) shows the changed content during that animation. Keep what the dialog shows in its own state, captured when it opens, test that by re-rendering it open with new props (`test/ui/MergeApplicationsDialog.test.tsx`), and check such flows once in a real browser.
+- The UI bundle may import pure modules from `src/server/domain/`, never anything that reaches `src/server/db/` (it pulls in `node:crypto`; `npm run build` then warns "externalized for browser compatibility"). Run `npm run build` when a UI file starts importing server code; `test/server/domain/merge.test.ts` ("reach no module under src/server/db") walks the imports of the modules the merge dialog uses (SOW-0055).
+
 ## Best Practices
 
 - Assert stored rows and exact call arguments, not just status codes or "was called".
 - Poll with a bounded `waitFor` helper for async settlement; no fixed sleeps longer than needed.
 - One behaviour per test name; the name states the expected outcome.
+- A test that pins behaviour which already works passes on its first run; prove it can fail by breaking the code on purpose for one run and restoring it. In SOW-0055 a mock-agent drift test checked only ids and could not fail when the prompt line changed shape; it now also compares the names the mock read.
 
 ## Bad Practices
 

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createJobsRepo } from '../../../src/server/db/jobs-repo.js';
 import { createRunsRepo } from '../../../src/server/db/runs-repo.js';
+import { createApplicationProposalsRepo } from '../../../src/server/db/application-proposals-repo.js';
+import { createProposalsRepo } from '../../../src/server/db/proposals-repo.js';
+import { summarizeDashboard } from '../../../src/server/domain/dashboard.js';
 import {
   ATS_DOMAINS,
   createApplicationsRepo,
@@ -223,5 +226,184 @@ describe('inferSenderDomain', () => {
     repo.create({ profile_id: scoped, company: 'Acme', role: 'R', status: 'saved' });
     expect(repo.profileIdsToSync()).toEqual([scoped]);
     expect(repo.profileIdsToSync()).not.toContain(pid);
+  });
+});
+
+describe('application aliases', () => {
+  const addAlias = (db: ReturnType<typeof setup>['db'], applicationId: string, company: string, role: string) =>
+    db
+      .prepare('INSERT INTO application_aliases (id, application_id, company, role, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(`${applicationId}-${role}`, applicationId, company, role, '2026-11-01T00:00:00.000Z');
+
+  it('aliases lists only that application\'s names, oldest first', () => {
+    const { db, repo, pid } = setup();
+    const a = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    const b = repo.create({ profile_id: pid, company: 'Globex', role: 'SRE' });
+    addAlias(db, a.id, 'Acme', 'Developer');
+    addAlias(db, a.id, 'Acme Inc', 'Engineer II');
+    addAlias(db, b.id, 'Globex', 'Ops');
+    expect(repo.aliases(a.id)).toEqual([
+      { company: 'Acme', role: 'Developer' },
+      { company: 'Acme Inc', role: 'Engineer II' },
+    ]);
+    expect(repo.aliases('missing')).toEqual([]);
+  });
+
+  it('aliasesForProfile maps the profile\'s applications to their names and skips other profiles', () => {
+    const { db, repo, pid } = setup();
+    const other = insertTestProfile(db, 'Other profile');
+    const a = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    repo.create({ profile_id: pid, company: 'Initech', role: 'Dev' });
+    const theirs = repo.create({ profile_id: other, company: 'Globex', role: 'SRE' });
+    addAlias(db, a.id, 'Acme', 'Developer');
+    addAlias(db, theirs.id, 'Globex', 'Ops');
+    expect([...repo.aliasesForProfile(pid)]).toEqual([[a.id, [{ company: 'Acme', role: 'Developer' }]]]);
+  });
+});
+
+describe('merge', () => {
+  const evidence = { message_id: 'msg-001', date: '2026-11-01', from: 'hr@acme.example', subject: 's', snippet: 'x' };
+
+  function world() {
+    const base = setup();
+    const { db, pid } = base;
+    const run = createRunsRepo(db).create('sync_mail', pid, { adapter_id: '', prompt_version: null });
+    return {
+      ...base,
+      run,
+      proposals: createProposalsRepo(db),
+      appProposals: createApplicationProposalsRepo(db),
+      count: (sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { n: number }).n,
+    };
+  }
+
+  const propose = (w: ReturnType<typeof world>, applicationId: string, status: 'screening' | 'interview' | 'offer') =>
+    w.proposals.createMany(w.run.id, [
+      { application_id: applicationId, proposed_status: status, confidence: 0.9, reason: 'invented', evidence },
+    ])[0]!;
+
+  it('keeps the kept application\'s own details and fills its gaps from the others', () => {
+    const { repo, pid } = world();
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'interview', sender_domains: ['acme.example'], notes: 'Panel next week' });
+    const other = repo.create({
+      profile_id: pid, company: 'Acme', role: 'Engineer (React)', url: 'https://acme.example/jobs/1',
+      applied_at: '2026-10-30T00:00:00.000Z', sender_domains: ['jobs.acme.example'], notes: 'Applied via site',
+    });
+    const merged = repo.merge(kept.id, [other.id]);
+    expect(merged).toEqual({
+      ...kept,
+      url: 'https://acme.example/jobs/1',
+      applied_at: '2026-10-30T00:00:00.000Z',
+      sender_domains: ['acme.example', 'jobs.acme.example'],
+      notes: 'Panel next week\n\nApplied via site',
+    });
+    expect(repo.get(other.id)).toBeNull();
+    expect(repo.list(pid).map((a) => a.id)).toEqual([kept.id]);
+  });
+
+  it('moves history, status proposals and new-application proposals to the kept application', () => {
+    const w = world();
+    const { repo, pid } = w;
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'interview' });
+    const other = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    repo.setStatus(other.id, 'screening', 'user');
+    const accepted = propose(w, other.id, 'offer');
+    w.proposals.decide(accepted.id, 'accepted');
+    const [found] = w.appProposals.createMany(w.run.id, pid, [
+      { company: 'Acme', role: 'Engineer', status: 'applied', applied_at: 't', job_id: null, url: null, sender_domains: [], confidence: 0.8, reason: 'r', evidence },
+    ]);
+    w.appProposals.decide(found!.id, 'accepted', other.id);
+
+    repo.merge(kept.id, [other.id]);
+    expect(repo.history(kept.id).map((h) => [h.from_status, h.to_status])).toEqual([['applied', 'screening']]);
+    expect(w.proposals.get(accepted.id)!.application_id).toBe(kept.id);
+    expect(w.appProposals.get(found!.id)!.application_id).toBe(kept.id);
+    for (const table of ['status_history', 'proposals', 'application_proposals']) {
+      expect(w.count(`SELECT COUNT(*) AS n FROM ${table} WHERE application_id = ?`, other.id), table).toBe(0);
+    }
+  });
+
+  it('remembers every removed name as an alias of the kept application', () => {
+    const w = world();
+    const { repo, pid, db } = w;
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer' });
+    const a = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer (React)' });
+    const b = repo.create({ profile_id: pid, company: 'acme', role: 'senior engineer' });
+    db.prepare("INSERT INTO application_aliases (id, application_id, company, role, created_at) VALUES ('al-1', ?, 'Acme', 'Frontend Dev', 't')").run(a.id);
+    repo.merge(kept.id, [a.id, b.id]);
+    expect(repo.aliases(kept.id)).toEqual([
+      { company: 'Acme', role: 'Frontend Dev' },
+      { company: 'Acme', role: 'Engineer (React)' },
+    ]);
+    expect(w.count('SELECT COUNT(*) AS n FROM application_aliases')).toBe(2);
+  });
+
+  it('rejects moved pending proposals that would not move the kept application forward', () => {
+    const w = world();
+    const { repo, pid } = w;
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'interview' });
+    const other = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    const back = propose(w, other.id, 'screening');
+    const same = propose(w, other.id, 'interview');
+    const forward = propose(w, other.id, 'offer');
+    repo.merge(kept.id, [other.id]);
+    expect(w.proposals.get(back.id)).toMatchObject({ state: 'rejected', application_id: kept.id, decided_at: expect.any(String) });
+    expect(w.proposals.get(same.id)!.state).toBe('rejected');
+    expect(w.proposals.get(forward.id)).toMatchObject({ state: 'pending', decided_at: null });
+  });
+
+  it('rejects a moved offer for a rejected application but keeps it for a withdrawn one', () => {
+    const w = world();
+    const { repo, pid } = w;
+    const rejected = repo.create({ profile_id: pid, company: 'Acme', role: 'A', status: 'rejected' });
+    const withdrawn = repo.create({ profile_id: pid, company: 'Globex', role: 'B', status: 'withdrawn' });
+    const one = repo.create({ profile_id: pid, company: 'Acme', role: 'A2' });
+    const two = repo.create({ profile_id: pid, company: 'Globex', role: 'B2' });
+    const p1 = propose(w, one.id, 'offer');
+    const p2 = propose(w, two.id, 'offer');
+    repo.merge(rejected.id, [one.id]);
+    repo.merge(withdrawn.id, [two.id]);
+    expect(w.proposals.get(p1.id)!.state).toBe('rejected');
+    expect(w.proposals.get(p2.id)!.state).toBe('pending');
+  });
+
+  it('counts a merged application once on the Dashboard, with the stages its moved history reached', () => {
+    const { repo, pid } = world();
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'Senior Engineer', status: 'screening' });
+    const other = repo.create({ profile_id: pid, company: 'Acme', role: 'Engineer' });
+    repo.setStatus(other.id, 'interview', 'user');
+    repo.merge(kept.id, [other.id]);
+    const summary = summarizeDashboard(repo.list(pid), repo.historyForProfile(pid), 0, new Date());
+    expect(summary.total).toBe(1);
+    expect(summary.funnel.interview).toBe(1);
+  });
+
+  it('throws and changes nothing for an unknown id or another profile\'s application', () => {
+    const { repo, pid, db } = world();
+    const other = insertTestProfile(db, 'Other profile');
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'A' });
+    const mine = repo.create({ profile_id: pid, company: 'Acme', role: 'B' });
+    const theirs = repo.create({ profile_id: other, company: 'Acme', role: 'C' });
+    expect(() => repo.merge(kept.id, [mine.id, 'missing'])).toThrow('Application not found: missing');
+    expect(() => repo.merge(kept.id, [mine.id, theirs.id])).toThrow('Applications belong to different profiles');
+    expect(repo.get(mine.id)).not.toBeNull();
+    expect(repo.get(theirs.id)).not.toBeNull();
+    expect(repo.aliases(kept.id)).toEqual([]);
+  });
+
+  it('changes nothing when it fails part-way', () => {
+    const w = world();
+    const { repo, pid, db } = w;
+    const kept = repo.create({ profile_id: pid, company: 'Acme', role: 'A', status: 'interview' });
+    const other = repo.create({ profile_id: pid, company: 'Acme', role: 'B', url: 'https://acme.example/1' });
+    repo.setStatus(other.id, 'screening', 'user');
+    const pending = propose(w, other.id, 'screening');
+    db.exec("CREATE TEMP TRIGGER stop BEFORE DELETE ON applications BEGIN SELECT RAISE(ABORT, 'stop'); END");
+    expect(() => repo.merge(kept.id, [other.id])).toThrow('stop');
+    expect(repo.get(kept.id)).toEqual(kept);
+    expect(repo.get(other.id)!.status).toBe('screening');
+    expect(repo.history(other.id)).toHaveLength(1);
+    expect(w.proposals.get(pending.id)).toMatchObject({ application_id: other.id, state: 'pending' });
+    expect(w.count('SELECT COUNT(*) AS n FROM application_aliases')).toBe(0);
   });
 });

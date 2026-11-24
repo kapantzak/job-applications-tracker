@@ -1,3 +1,4 @@
+import type { ApplicationAlias } from '../domain/types.js';
 import type { ReadThread } from '../db/mail-threads-repo.js';
 import type { AgentRunRecord, UsageRecord } from '../db/runs-repo.js';
 import type { DateRange } from '../domain/mail-coverage.js';
@@ -10,6 +11,8 @@ export interface MailSyncRequest {
     role: string;
     applied_at: string;
     sender_domains: string[];
+    // Names of applications merged into this one (SOW-0055); the prompts list them on its line.
+    aliases: ApplicationAlias[];
   }[];
   reviewed_message_ids: string[];
   // The profile's Gmail search (SOW-0031); null searches by company and ATS sender.
@@ -17,7 +20,7 @@ export interface MailSyncRequest {
   // Without a scope, new applications are searched from this day on, as Gmail's YYYY/MM/DD (SOW-0045).
   new_applications_since: string;
   // Applications and earlier proposals the agent must not report as new (SOW-0045, decision 14A).
-  tracked: { company: string; role: string }[];
+  tracked: ApplicationAlias[];
   // Threads a scoped sync read before: thread id -> newest message id then (SOW-0051, decision 3A).
   known_threads: Map<string, string>;
   // Gmail's YYYY/MM/DD for today, so the list call can split open date ranges.

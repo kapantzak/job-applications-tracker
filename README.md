@@ -4,12 +4,12 @@ A local app that finds job postings matching your profile, checks that the links
 
 Website: [jobtrack.kapantzakis.gr](https://jobtrack.kapantzakis.gr/)
 
-https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5
+https://github.com/user-attachments/assets/1750319f-7f78-470a-b759-9b4666c60c10
 
 <details>
 <summary>Video not playing? Open it here</summary>
 
-[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/89aba8e8-6412-432a-96ac-665f6696f5c5)
+[![Demo video: from a CV to a job search and Gmail sync](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/video/demo-poster.png)](https://github.com/user-attachments/assets/1750319f-7f78-470a-b759-9b4666c60c10)
 
 </details>
 
@@ -59,7 +59,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 ![Jobs table with verification badges and fit checks](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/jobs.png)
 
-**Applications.** Everything you applied to, with its status. Sync from Gmail proposes changes and finds applications you have not added yet; you can also change a status yourself.
+**Applications.** Everything you applied to, with its status. Sync from Gmail proposes changes and finds applications you have not added yet; you can also change a status yourself. When one application shows up twice under different job titles, tick both rows and merge them; Gmail sync keeps matching mail under either name.
 
 ![Applications table with a status per row](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/applications.png)
 
