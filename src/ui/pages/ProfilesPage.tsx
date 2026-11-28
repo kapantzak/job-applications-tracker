@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRightIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArrowRightIcon, PencilIcon, PlusIcon, StarIcon, StarOffIcon, Trash2Icon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CvAnalysisStatus, ProfileCounts, ProfileListItem } from '../../server/domain/types.js';
-import { deleteProfile, listProfiles } from '../api/client.js';
+import { deleteProfile, getSettings, listProfiles, patchSettings } from '../api/client.js';
 import { CreateProfileFlow, type CreateProfileLocationState } from '../components/CreateProfileFlow.js';
 import { CvAnalysisCard } from '../components/CvAnalysisCard.js';
+import { defaultProfile } from '../default-profile.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { useCvAnalysis } from '../hooks/use-cv-analysis.js';
@@ -118,11 +119,24 @@ function DeleteProfileButton({ profile, onDeleted }: { profile: ProfileListItem;
 export function ProfilesPage() {
   const [profiles, setProfiles] = useState<ProfileListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The stored default profile id (SOW-0059); '' when none is stored.
+  const [storedDefault, setStoredDefault] = useState('');
+  const [defaultBusy, setDefaultBusy] = useState(false);
+  const [defaultError, setDefaultError] = useState<string | null>(null);
 
+  // Settings are read with the list, so a delete that cleared the default shows at once. Without
+  // them the cards still show; only the default marking falls back to none stored.
   const load = useCallback((isActive: () => boolean = () => true) => {
-    listProfiles()
-      .then((list) => {
-        if (isActive()) setProfiles(list);
+    const stored = getSettings().then(
+      (settings) => settings.default_profile_id,
+      () => '',
+    );
+    Promise.all([listProfiles(), stored])
+      .then(([list, storedId]) => {
+        if (!isActive()) return;
+        setProfiles(list);
+        setStoredDefault(storedId);
+        setDefaultError(null);
       })
       .catch((e: unknown) => {
         if (isActive()) setError(message(e));
@@ -137,7 +151,24 @@ export function ProfilesPage() {
     };
   }, [load]);
 
+  const changeDefault = async (id: string) => {
+    setDefaultBusy(true);
+    setDefaultError(null);
+    try {
+      const settings = await patchSettings({ default_profile_id: id });
+      setStoredDefault(settings.default_profile_id);
+    } catch (e) {
+      setDefaultError(message(e));
+    } finally {
+      setDefaultBusy(false);
+    }
+  };
+
   if (!profiles) return error ? <ErrorAlert>{error}</ErrorAlert> : <LoadingState />;
+
+  const startProfile = defaultProfile(profiles, storedDefault);
+  // A lone profile is the default without a stored choice, so there is nothing to change.
+  const canChange = profiles.length > 1;
 
   if (profiles.length === 0) {
     return (
@@ -166,48 +197,89 @@ export function ProfilesPage() {
         }
       />
       <PendingCvAnalysis />
+      {defaultError && (
+        <div className="mb-4">
+          <ErrorAlert>{defaultError}</ErrorAlert>
+        </div>
+      )}
       <ul className="grid gap-4 sm:grid-cols-2" aria-label="Profiles">
-        {profiles.map((p) => (
-          <li key={p.id}>
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle>
-                  <h2>
-                    <Link to={profilePath(p.slug)} className="hover:underline">
-                      {p.name}
+        {profiles.map((p) => {
+          const isDefault = startProfile?.id === p.id;
+          return (
+            <li key={p.id}>
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle className="flex flex-wrap items-center gap-2">
+                    <h2>
+                      <Link to={profilePath(p.slug)} className="hover:underline">
+                        {p.name}
+                      </Link>
+                    </h2>
+                    {isDefault && (
+                      <Badge variant="secondary" className="-my-1" title="Opens when the app starts">
+                        Default
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription>{p.target_roles.join(', ') || 'No target roles'}</CardDescription>
+                  <CardAction>
+                    <DeleteProfileButton profile={p} onDeleted={() => load()} />
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  {countsText(p.counts)}
+                  {p.cv_analysis_status && (
+                    <Badge asChild variant={ANALYSIS_BADGES[p.cv_analysis_status].variant}>
+                      <Link to={profilePath(p.slug, '/profile')}>{ANALYSIS_BADGES[p.cv_analysis_status].text}</Link>
+                    </Badge>
+                  )}
+                </CardContent>
+                <CardFooter className="mt-auto gap-2">
+                  <Button asChild size="sm">
+                    <Link to={profilePath(p.slug)} aria-label={`Open ${p.name}`}>
+                      Open
+                      <ArrowRightIcon />
                     </Link>
-                  </h2>
-                </CardTitle>
-                <CardDescription>{p.target_roles.join(', ') || 'No target roles'}</CardDescription>
-                <CardAction>
-                  <DeleteProfileButton profile={p} onDeleted={() => load()} />
-                </CardAction>
-              </CardHeader>
-              <CardContent className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                {countsText(p.counts)}
-                {p.cv_analysis_status && (
-                  <Badge asChild variant={ANALYSIS_BADGES[p.cv_analysis_status].variant}>
-                    <Link to={profilePath(p.slug, '/profile')}>{ANALYSIS_BADGES[p.cv_analysis_status].text}</Link>
-                  </Badge>
-                )}
-              </CardContent>
-              <CardFooter className="mt-auto gap-2">
-                <Button asChild size="sm">
-                  <Link to={profilePath(p.slug)} aria-label={`Open ${p.name}`}>
-                    Open
-                    <ArrowRightIcon />
-                  </Link>
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <Link to={profilePath(p.slug, '/profile')} aria-label={`Edit ${p.name}`}>
-                    <PencilIcon />
-                    Edit
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          </li>
-        ))}
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={profilePath(p.slug, '/profile')} aria-label={`Edit ${p.name}`}>
+                      <PencilIcon />
+                      Edit
+                    </Link>
+                  </Button>
+                  {canChange &&
+                    (isDefault ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto"
+                        disabled={defaultBusy}
+                        aria-label={`Remove ${p.name} as default`}
+                        onClick={() => void changeDefault('')}
+                      >
+                        <StarOffIcon />
+                        Remove default
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto"
+                        disabled={defaultBusy}
+                        aria-label={`Set ${p.name} as default`}
+                        onClick={() => void changeDefault(p.id)}
+                      >
+                        <StarIcon />
+                        Set as default
+                      </Button>
+                    ))}
+                </CardFooter>
+              </Card>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -68,6 +68,7 @@ Do not use this skill for:
 - Bare `toThrow()` without a message match.
 - Reassigning `globalThis.fetch` without restoring it.
 - Running `npm test` and reporting counts without pasting the summary line.
+- Testing a startup redirect only from a load that starts at `/`. `StartupRedirect` in `src/ui/App.tsx` mounts only on `/`, so a page load that began on `/settings` or a profile page reaches it later through a link back to the profiles; in SOW-0059 the default-profile jump fired there and every test missed it because each started at `/`. Start such tests on an inner route too (`renderApp('/settings')`, then click Profiles) and assert that the profiles screen stays.
 
 ## Workflow Checklist
 

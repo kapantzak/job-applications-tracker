@@ -17,6 +17,10 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   listJobs: vi.fn(),
   updateProfile: vi.fn(),
   getCvAnalysis: vi.fn(),
+  getDashboard: vi.fn(),
+  listApplications: vi.fn(),
+  listApplicationHistory: vi.fn(),
+  listRuns: vi.fn(),
 }));
 
 // App keeps a once-per-load flag at module level; a fresh module per test is a fresh page load.
@@ -47,6 +51,12 @@ async function renderApp(path: string, configure?: (client: typeof ClientModule)
   });
   vi.mocked(client.listProposals).mockResolvedValue([]);
   vi.mocked(client.listApplicationProposals).mockResolvedValue([]);
+  // The Dashboard tolerates failed loads; resolving them keeps the default-profile tests quiet.
+  vi.mocked(client.getDashboard).mockRejectedValue(new Error('not loaded in this test'));
+  vi.mocked(client.listApplications).mockResolvedValue([]);
+  vi.mocked(client.listApplicationHistory).mockResolvedValue([]);
+  vi.mocked(client.listJobs).mockResolvedValue([]);
+  vi.mocked(client.listRuns).mockResolvedValue([]);
   configure?.(client);
   const { App } = await import('../../src/ui/App.js');
   render(
@@ -152,5 +162,93 @@ describe('App routing', () => {
     expect(screen.getByLabelText('Name')).toBe(name);
     expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/profiles/lead-roles/jobs');
     expect(vi.mocked(client.getProfileBySlug).mock.calls).toEqual([['platform-roles']]);
+  });
+});
+
+const listItem = (id: string, name: string, slug: string) =>
+  ({ id, name, slug, target_roles: [], counts: { jobs: 0, applications: 0, runs: 0 }, cv_analysis_status: null }) as never;
+
+describe('default profile on launch (SOW-0059)', () => {
+  it('opens the stored default profile on the first load of /, and the Profiles link then shows the list', async () => {
+    const user = userEvent.setup();
+    const client = await renderApp('/', (c) => {
+      vi.mocked(c.getSettings).mockResolvedValue({ adapter_id: 'claude', default_profile_id: 'pf1' } as never);
+      vi.mocked(c.listProfiles).mockResolvedValue([
+        listItem('pf0', 'Data roles', 'data-roles'),
+        listItem('pf1', 'Platform roles', 'platform-roles'),
+      ]);
+    });
+    expect(await screen.findByRole('link', { name: 'Back to profiles: Platform roles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).toHaveBeenCalledWith('platform-roles');
+    await user.click(screen.getByRole('link', { name: 'Back to profiles: Platform roles' }));
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Profiles' }));
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the only profile when no default is stored', async () => {
+    const client = await renderApp('/', (c) => {
+      vi.mocked(c.getSettings).mockResolvedValue({ adapter_id: 'claude', default_profile_id: '' } as never);
+      vi.mocked(c.listProfiles).mockResolvedValue([listItem('pf1', 'Platform roles', 'platform-roles')]);
+    });
+    expect(await screen.findByRole('link', { name: 'Back to profiles: Platform roles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).toHaveBeenCalledWith('platform-roles');
+  });
+
+  it('shows the profiles screen for several profiles without a valid default', async () => {
+    const client = await renderApp('/', (c) => {
+      vi.mocked(c.getSettings).mockResolvedValue({ adapter_id: 'claude', default_profile_id: 'deleted' } as never);
+      vi.mocked(c.listProfiles).mockResolvedValue([
+        listItem('pf0', 'Data roles', 'data-roles'),
+        listItem('pf1', 'Platform roles', 'platform-roles'),
+      ]);
+    });
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).not.toHaveBeenCalled();
+  });
+
+  it('sends a missing agent to Setup instead, and does not jump later in the same load', async () => {
+    const user = userEvent.setup();
+    installed = false;
+    const client = await renderApp('/', (c) => {
+      vi.mocked(c.getSettings).mockResolvedValue({ adapter_id: 'claude', default_profile_id: 'pf1' } as never);
+      vi.mocked(c.listProfiles).mockResolvedValue([listItem('pf1', 'Platform roles', 'platform-roles')]);
+    });
+    expect(await screen.findByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Profiles' }));
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).not.toHaveBeenCalled();
+  });
+
+  it('shows the profiles screen when the profile list cannot be loaded at startup', async () => {
+    const client = await renderApp('/', (c) => {
+      vi.mocked(c.listProfiles).mockRejectedValueOnce(new Error('offline'));
+      vi.mocked(c.listProfiles).mockResolvedValue([listItem('pf1', 'Platform roles', 'platform-roles')]);
+    });
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    expect(client.getProfileBySlug).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/settings', 'Settings'],
+    ['/profiles/platform-roles/jobs', 'Back to profiles: Platform roles'],
+  ])('does not jump when the page load started on %s and the user goes to the profiles screen', async (start, link) => {
+    const user = userEvent.setup();
+    const client = await renderApp(start, (c) => {
+      vi.mocked(c.getSettings).mockResolvedValue({ adapter_id: 'claude', default_profile_id: 'pf1' } as never);
+      vi.mocked(c.listProfiles).mockResolvedValue([
+        listItem('pf0', 'Data roles', 'data-roles'),
+        listItem('pf1', 'Platform roles', 'platform-roles'),
+      ]);
+    });
+    if (link === 'Settings') expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    const back = link === 'Settings' ? 'Profiles' : link;
+    await user.click(await screen.findByRole('link', { name: back }));
+    expect(await screen.findByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    // Give a wrongly started jump time to happen before checking that none did.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole('heading', { name: 'Profiles' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Back to profiles: Platform roles' })).not.toBeInTheDocument();
   });
 });

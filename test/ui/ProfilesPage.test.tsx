@@ -1,10 +1,11 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CvAnalysis, Profile, ProfileListItem } from '../../src/server/domain/types.js';
 import { NewProfilePage, ProfilesPage } from '../../src/ui/pages/ProfilesPage.js';
 import * as client from '../../src/ui/api/client.js';
+import { DEFAULT_SETTINGS } from '../../src/server/db/settings-repo.js';
 
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
@@ -13,6 +14,8 @@ vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   deleteProfile: vi.fn(),
   getCvAnalysis: vi.fn(),
   discardCvAnalysis: vi.fn(),
+  getSettings: vi.fn(),
+  patchSettings: vi.fn(),
 }));
 
 function profile(id: string, name: string, counts = { jobs: 0, applications: 0, runs: 0 }): ProfileListItem {
@@ -85,6 +88,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(client.listProfiles).mockResolvedValue([ALPHA, BETA]);
   vi.mocked(client.getCvAnalysis).mockResolvedValue(null);
+  vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS });
   vi.mocked(client.createProfile).mockResolvedValue({ ...BETA, id: 'pc', name: 'Data roles', slug: 'data-roles' } as Profile);
 });
 
@@ -224,5 +228,103 @@ describe('NewProfilePage', () => {
     await fillAndCreate(user);
     expect(client.createProfile).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('profile dashboard')).toBeInTheDocument();
+  });
+});
+
+describe('ProfilesPage default profile (SOW-0059)', () => {
+  const card = async (name: string) => (await screen.findByRole('heading', { name })).closest('li') as HTMLElement;
+
+  it('offers Set as default on every profile when none is stored, and shows no badge', async () => {
+    renderAt('/');
+    expect(within(await card('Alpha roles')).getByRole('button', { name: 'Set Alpha roles as default' })).toBeInTheDocument();
+    expect(within(await card('Beta roles')).getByRole('button', { name: 'Set Beta roles as default' })).toBeInTheDocument();
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove .* as default$/ })).not.toBeInTheDocument();
+  });
+
+  it('marks the stored default and offers to remove it', async () => {
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pb' });
+    renderAt('/');
+    const beta = await card('Beta roles');
+    expect(within(beta).getByText('Default')).toBeInTheDocument();
+    expect(within(beta).getByRole('button', { name: 'Remove Beta roles as default' })).toBeInTheDocument();
+    expect(within(beta).queryByRole('button', { name: 'Set Beta roles as default' })).not.toBeInTheDocument();
+    const alpha = await card('Alpha roles');
+    expect(within(alpha).queryByText('Default')).not.toBeInTheDocument();
+    expect(within(alpha).getByRole('button', { name: 'Set Alpha roles as default' })).toBeInTheDocument();
+  });
+
+  it('sets a profile as default and moves the badge', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pb' });
+    vi.mocked(client.patchSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pa' });
+    renderAt('/');
+    await user.click(within(await card('Alpha roles')).getByRole('button', { name: 'Set Alpha roles as default' }));
+    expect(client.patchSettings).toHaveBeenCalledWith({ default_profile_id: 'pa' });
+    expect(await within(await card('Alpha roles')).findByText('Default')).toBeInTheDocument();
+    expect(within(await card('Beta roles')).queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('removes the default', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pb' });
+    vi.mocked(client.patchSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: '' });
+    renderAt('/');
+    await user.click(within(await card('Beta roles')).getByRole('button', { name: 'Remove Beta roles as default' }));
+    expect(client.patchSettings).toHaveBeenCalledWith({ default_profile_id: '' });
+    expect(await within(await card('Beta roles')).findByRole('button', { name: 'Set Beta roles as default' })).toBeInTheDocument();
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('shows why setting the default failed and keeps the badge where it was', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pb' });
+    vi.mocked(client.patchSettings).mockRejectedValue(new Error('default_profile_id: Profile not found'));
+    renderAt('/');
+    await user.click(within(await card('Alpha roles')).getByRole('button', { name: 'Set Alpha roles as default' }));
+    expect(await screen.findByText('default_profile_id: Profile not found')).toBeInTheDocument();
+    expect(within(await card('Beta roles')).getByText('Default')).toBeInTheDocument();
+  });
+
+  it('marks a lone profile as the default without offering to change it', async () => {
+    vi.mocked(client.listProfiles).mockResolvedValue([ALPHA]);
+    renderAt('/');
+    const alpha = await card('Alpha roles');
+    expect(within(alpha).getByText('Default')).toBeInTheDocument();
+    expect(within(alpha).queryByRole('button', { name: /as default$/ })).not.toBeInTheDocument();
+  });
+
+  it('reloads the default after a delete, so the deleted default leaves a lone profile marked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: 'pb' });
+    vi.mocked(client.deleteProfile).mockResolvedValue(undefined);
+    renderAt('/');
+    await user.click(within(await card('Beta roles')).getByRole('button', { name: 'Delete Beta roles' }));
+    vi.mocked(client.listProfiles).mockResolvedValue([ALPHA]);
+    vi.mocked(client.getSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, default_profile_id: '' });
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete profile' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Beta roles' })).not.toBeInTheDocument());
+    expect(within(await card('Alpha roles')).getByText('Default')).toBeInTheDocument();
+    expect(client.getSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it('still lists the profiles when the settings cannot be loaded', async () => {
+    vi.mocked(client.getSettings).mockRejectedValue(new Error('offline'));
+    renderAt('/');
+    expect(within(await card('Alpha roles')).getByRole('button', { name: 'Set Alpha roles as default' })).toBeInTheDocument();
+    expect(screen.queryByText('offline')).not.toBeInTheDocument();
+  });
+
+  it('clears a failed default change once the list reloads after a delete', async () => {
+    const user = userEvent.setup();
+    vi.mocked(client.patchSettings).mockRejectedValue(new Error('Server unavailable'));
+    vi.mocked(client.deleteProfile).mockResolvedValue(undefined);
+    renderAt('/');
+    await user.click(within(await card('Alpha roles')).getByRole('button', { name: 'Set Alpha roles as default' }));
+    expect(await screen.findByText('Server unavailable')).toBeInTheDocument();
+    await user.click(within(await card('Beta roles')).getByRole('button', { name: 'Delete Beta roles' }));
+    vi.mocked(client.listProfiles).mockResolvedValue([ALPHA]);
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete profile' }));
+    await waitFor(() => expect(screen.queryByText('Server unavailable')).not.toBeInTheDocument());
   });
 });

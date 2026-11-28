@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, Outlet, Route, Routes } from 'react-router-dom';
-import { getAdapters, getSettings } from './api/client.js';
+import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { getAdapters, getSettings, listProfiles } from './api/client.js';
+import { defaultProfile } from './default-profile.js';
 import { Layout } from './components/Layout.js';
 import { ApplicationDetailPage } from './pages/ApplicationDetailPage.js';
 import { ApplicationsPage } from './pages/ApplicationsPage.js';
@@ -14,7 +15,7 @@ import { RunsPage } from './pages/RunsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { SetupPage } from './pages/SetupPage.js';
 import { ErrorAlert, LoadingState } from './components/feedback.js';
-import { useProfileShell } from './profile-route.js';
+import { profilePath, useProfileShell } from './profile-route.js';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 
@@ -23,8 +24,10 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '
 let startupChecked = false;
 
 // The root is the profiles screen, which shows the profile form itself when there is no profile yet.
-// On first load it sends the user to Setup when the chosen agent is not installed.
-function StartupRedirect() {
+// On first load it sends the user to Setup when the chosen agent is not installed, otherwise to the
+// default profile's Dashboard when there is one and the page load began at `/` (SOW-0059, decision 5A).
+// A load that began elsewhere reaches `/` only through a link back to the profiles, which must not jump.
+function StartupRedirect({ openDefault }: { openDefault: boolean }) {
   const [target, setTarget] = useState<string | null | undefined>(startupChecked ? null : undefined);
 
   useEffect(() => {
@@ -33,7 +36,10 @@ function StartupRedirect() {
     (async () => {
       const [settings, adapters] = await Promise.all([getSettings(), getAdapters()]);
       const chosen = adapters.find((a) => a.id === settings.adapter_id);
-      return chosen?.installed ? null : '/setup';
+      if (!chosen?.installed) return '/setup';
+      if (!openDefault) return null;
+      const start = defaultProfile(await listProfiles(), settings.default_profile_id);
+      return start ? profilePath(start.slug) : null;
     })()
       // On failure fall through to the profiles screen rather than trapping the user.
       .catch(() => null)
@@ -45,7 +51,7 @@ function StartupRedirect() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [openDefault]);
 
   if (target === undefined) return <p>Loading...</p>;
   if (target) return <Navigate to={target} replace />;
@@ -77,10 +83,13 @@ function ProfileScope() {
 }
 
 export function App() {
+  // App stays mounted for the whole page load, so this is the path the load began at.
+  const { pathname } = useLocation();
+  const [launchedAtRoot] = useState(() => pathname === '/');
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<StartupRedirect />} />
+        <Route index element={<StartupRedirect openDefault={launchedAtRoot} />} />
         <Route path="profiles/new" element={<NewProfilePage />} />
         {/* Everything a profile owns lives under its id (SOW-0014). */}
         <Route path="profiles/:profileSlug" element={<ProfileScope />}>

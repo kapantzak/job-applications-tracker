@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sync_interval: 'off',
   port: 4173,
   update_check: true,
+  default_profile_id: '',
 };
 
 export function createSettingsRepo(db: Db) {
