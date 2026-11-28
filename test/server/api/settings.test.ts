@@ -95,3 +95,32 @@ describe('settings', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 });
+
+describe('default profile setting (SOW-0058)', () => {
+  it('PATCH stores an existing profile as the default and clears it with an empty string', async () => {
+    let res = await h.app.request('/api/settings', json('PATCH', { default_profile_id: h.profile.id }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { default_profile_id: string }).default_profile_id).toBe(h.profile.id);
+    expect(h.deps.settingsRepo.getAll().default_profile_id).toBe(h.profile.id);
+
+    res = await h.app.request('/api/settings', json('PATCH', { default_profile_id: '' }));
+    expect(res.status).toBe(200);
+    expect(h.deps.settingsRepo.getAll().default_profile_id).toBe('');
+  });
+
+  it('PATCH refuses an unknown profile id and writes nothing', async () => {
+    const res = await h.app.request(
+      '/api/settings',
+      json('PATCH', { default_profile_id: 'missing', sync_interval: '6h' }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'default_profile_id: Profile not found' });
+    expect(h.deps.settingsRepo.getAll()).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('PATCH refuses a default profile id that is not a string', async () => {
+    const res = await h.app.request('/api/settings', json('PATCH', { default_profile_id: 7 }));
+    expect(res.status).toBe(400);
+    expect(h.deps.settingsRepo.getAll().default_profile_id).toBe('');
+  });
+});

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { BUDGET_PATTERN, EFFORT_PATTERN, MODEL_PATTERN } from '../agents/presets.js';
 import type { AppDeps } from '../app.js';
 import type { Settings } from '../domain/types.js';
-import { readJson } from './errors.js';
+import { HttpError, readJson } from './errors.js';
 
 // '' selects the agent's own default.
 const model = z.union([z.literal(''), z.string().regex(MODEL_PATTERN, 'Invalid model id')]);
@@ -40,6 +40,7 @@ const SettingsPatch = z
     sync_interval: z.enum(['off', '1h', '6h', '24h']),
     port: z.number().int().min(1024).max(65535),
     update_check: z.boolean(),
+    default_profile_id: z.string(),
   })
   .partial()
   .strict();
@@ -51,6 +52,10 @@ export function createSettingsRouter(deps: AppDeps): Hono {
 
   router.patch('/', async (c) => {
     const patch: Partial<Settings> = await readJson(c, SettingsPatch);
+    // Checked before any write, so a bad patch stores nothing; '' clears the default.
+    if (patch.default_profile_id && !deps.profilesRepo.get(patch.default_profile_id)) {
+      throw new HttpError(400, 'default_profile_id: Profile not found');
+    }
     const settings = deps.settingsRepo.set(patch);
     // sync_interval or update_check may have changed; both re-read settings themselves.
     deps.scheduler.refresh();

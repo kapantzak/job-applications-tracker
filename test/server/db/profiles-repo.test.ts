@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../../../src/server/db/connection.js';
 import { createProfilesRepo, ProfileNotFoundError, type ProfileInput } from '../../../src/server/db/profiles-repo.js';
+import { createSettingsRepo } from '../../../src/server/db/settings-repo.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -107,5 +108,26 @@ describe('profiles repo', () => {
     // A real rename recomputes it; digits in a name are never mistaken for a clash number.
     expect(repo.update(plain.id, { ...input, name: 'Roles 2' }).slug).toBe('roles-2');
     expect(repo.update(plain.id, { ...input, name: 'Roles' }).slug).toBe('roles');
+  });
+});
+
+describe('profiles repo and the default profile setting (SOW-0058)', () => {
+  it('clears the default profile setting when that profile is deleted', () => {
+    const { db, repo } = setup();
+    const settings = createSettingsRepo(db);
+    const lead = repo.create(input);
+    settings.set({ default_profile_id: lead.id });
+    repo.remove(lead.id);
+    expect(settings.getAll().default_profile_id).toBe('');
+  });
+
+  it('keeps the default profile setting when another profile is deleted', () => {
+    const { db, repo } = setup();
+    const settings = createSettingsRepo(db);
+    const lead = repo.create(input);
+    const data = repo.create({ ...input, name: 'Data roles' });
+    settings.set({ default_profile_id: lead.id, sync_interval: '6h' });
+    repo.remove(data.id);
+    expect(settings.getAll()).toMatchObject({ default_profile_id: lead.id, sync_interval: '6h' });
   });
 });

@@ -38,7 +38,7 @@ When a newer version is published, the app tells you: a notice at the top of eve
 
 1. Data folder: the first time you start `jobtrack` in a terminal, it asks where to keep your data. Press Enter for the default (see [Choosing the data directory](#choosing-the-data-directory)).
 2. Agent: the app uses Claude Code unless you pick another agent CLI (Codex, or a custom command). When the chosen agent is not installed, the app opens Setup, where you pick one; Setup and Settings → Agent check that it is installed and, for Claude Code and Codex, whether it is signed in. With Claude Code installed, the app skips Setup; change the agent later in Settings → Agent.
-3. Profile: the app opens on your profiles. With none yet, it offers two ways to create one: start from your CV (see below), or fill in the form by hand with a name, target roles, locations, remote preference, seniority, keywords, companies to exclude, notes, and where Gmail sync should look.
+3. Profile: the app opens on your profiles (or on your default profile, see [Profiles](#profiles)). With none yet, it offers two ways to create one: start from your CV (see below), or fill in the form by hand with a name, target roles, locations, remote preference, seniority, keywords, companies to exclude, notes, and where Gmail sync should look.
 4. Find jobs: open the profile and start a job search from its Dashboard or Jobs screen, then follow its progress.
 
 Not sure what a field asks for? Click the ⓘ next to it. Every screen also says what it is for under its title.
@@ -49,7 +49,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 
 **Profiles.** One profile per job search, each with its own jobs, applications and runs.
 
-![Profiles screen with five profile cards](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profiles.png)
+![Profiles screen with five profile cards, one marked Default](https://raw.githubusercontent.com/kapantzak/job-applications-tracker/main/docs/images/profiles.png)
 
 **Dashboard.** How a profile's applications are doing: counts that link to the applications behind them, the Journey graph of how far they get and where they stopped, and what needs your attention. The same filters as the Applications table narrow it to some applications, for example one company.
 
@@ -85,6 +85,7 @@ The screenshots use the invented data of `npm run sandbox:mock`.
 - Profile names use letters, numbers and single spaces (any alphabet), up to 80 characters, and two profiles cannot share a name. Each profile gets a short address from its name, for example `/profiles/platform-roles`; renaming a profile changes it, so old bookmarks to that profile stop working.
 - Inside a profile, the top left shows its name; click it to go back to all profiles.
 - The start screen lists every profile with how many jobs, applications and runs it holds. Open one to work inside it.
+- Default profile: click Set as default on a profile's card to have the app open that profile's Dashboard when it starts, instead of the profiles screen. Remove default on its card turns this off. With a single profile, that profile opens by default. Click Profiles in the sidebar to get back to the list; deleting the default profile clears the choice.
 - The same job posting can show up in more than one profile.
 - Gmail sync runs per profile: it looks for replies to that profile's open applications and for applications you have not added to it yet. A scheduled sync runs once for each profile that has open applications or a Gmail label or search. To keep two profiles' replies apart, give each one a Gmail label or search (see [How Gmail sync works](#how-gmail-sync-works)).
 - Open applications are the ones sync still checks for replies: applied, screening, interview, no response, and offers from the last 30 days. The Dashboard's In progress count is applied, screening and interview only.
