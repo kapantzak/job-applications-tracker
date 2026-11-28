@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { APPLICATION_COLUMNS, applicationViewKey, tileQuery } from '../../src/ui/application-view.js';
+import type { Application } from '../../src/server/domain/types.js';
+import {
+  APPLICATION_COLUMNS,
+  applicationRows,
+  applicationViewKey,
+  branchQuery,
+  tileQuery,
+} from '../../src/ui/application-view.js';
+import { applyView } from '../../src/ui/table-view.js';
 import { EMPTY_VIEW, hasView, parseView, viewQuery } from '../../src/ui/table-view.js';
 import { isOneTimeView, ONE_TIME_VIEW, readStoredView, storeView } from '../../src/ui/view-storage.js';
 
@@ -71,5 +79,48 @@ describe('tileQuery', () => {
     const chosen = view('status=screening&status=rejected&status=interview');
     expect(tileQuery(chosen, ['applied', 'screening', 'interview'])).toBe('status=screening&status=interview');
     expect(tileQuery(chosen, ['offer'])).toBeNull();
+  });
+});
+
+describe('Furthest step (SOW-0057)', () => {
+  const base = { company: 'Acme', role: 'SRE', applied_at: null } as const;
+  const apps = [
+    { ...base, id: 'a1', status: 'rejected' },
+    { ...base, id: 'a2', status: 'rejected' },
+    { ...base, id: 'a3', status: 'saved' },
+  ] as unknown as Application[];
+  const history = [
+    { application_id: 'a1', from_status: 'applied', to_status: 'interview', changed_at: '2026-11-01T09:00:00Z' },
+    { application_id: 'a1', from_status: 'interview', to_status: 'rejected', changed_at: '2026-11-02T09:00:00Z' },
+  ] as const;
+  const rows = applicationRows(apps, [...history]);
+
+  it('gives each row the furthest step it reached, or null when never sent', () => {
+    expect(rows.map((r) => r.reached)).toEqual(['interview', 'applied', null]);
+  });
+
+  it('filters by furthest step, with an empty value for not sent', () => {
+    const ids = (query: string) => applyView(rows, APPLICATION_COLUMNS, view(query)).map((r) => r.id);
+    expect(ids('reached=interview&status=rejected')).toEqual(['a1']);
+    expect(ids('reached=applied')).toEqual(['a2']);
+    expect(ids('reached=')).toEqual(['a3']);
+    expect(viewQuery(view('reached=interview&other=1'), APPLICATION_COLUMNS).toString()).toBe('reached=interview');
+  });
+});
+
+describe('branchQuery', () => {
+  it('keeps the other filters and the sort and sets the branch statuses and step', () => {
+    expect(branchQuery(view('company=Acme&sort=role'), 'interview', ['rejected'])).toBe(
+      'sort=role&company=Acme&status=rejected&reached=interview',
+    );
+  });
+
+  it('narrows to what the status and Furthest step filters keep, or gives null when they keep none', () => {
+    const chosen = view('status=applied&status=interview&reached=screening&reached=interview');
+    expect(branchQuery(chosen, 'interview', ['saved', 'applied', 'screening', 'interview', 'offer'])).toBe(
+      'status=applied&status=interview&reached=interview',
+    );
+    expect(branchQuery(chosen, 'interview', ['rejected'])).toBeNull();
+    expect(branchQuery(chosen, 'applied', ['applied'])).toBeNull();
   });
 });

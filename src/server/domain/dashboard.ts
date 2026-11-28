@@ -60,6 +60,43 @@ function isQuietStatus(status: ApplicationStatus): status is QuietStatus {
   return QUIET_STATUSES.includes(status);
 }
 
+// Statuses that end an application at its furthest step; any other status is still waiting there.
+export const STOP_STATUSES = ['rejected', 'no_response', 'withdrawn'] as const satisfies readonly ApplicationStatus[];
+export type StageExit = keyof StageStops;
+type StopStatus = (typeof STOP_STATUSES)[number];
+const isStop = (status: ApplicationStatus): status is StopStatus => (STOP_STATUSES as readonly string[]).includes(status);
+
+// The statuses a Journey branch counts (SOW-0057), so a link to the branch lists the same applications.
+export function exitStatuses(exit: StageExit): ApplicationStatus[] {
+  if (exit !== 'waiting') return [exit];
+  return APPLICATION_STATUSES.filter((s) => !isStop(s));
+}
+
+// Each application's history rows, keeping the route's oldest-first order.
+export function historyByApplication(history: HistoryRow[]): Map<string, HistoryRow[]> {
+  const byApp = new Map<string, HistoryRow[]>();
+  for (const h of history) {
+    const rows = byApp.get(h.application_id);
+    if (rows) rows.push(h);
+    else byApp.set(h.application_id, [h]);
+  }
+  return byApp;
+}
+
+// The furthest funnel step an application reached; null when it was never sent. `rows` is its own history,
+// oldest first. The Dashboard and the Applications "Furthest step" filter share this rule (SOW-0057).
+export function furthestStep(status: ApplicationStatus, rows: HistoryRow[]): FunnelStage | null {
+  // Creating an application writes no history row, so its starting status is only a from_status. Every row's
+  // from_status counts, not only the earliest: a merge interleaves histories (SOW-0057 decision 9A).
+  const held: ApplicationStatus[] = [status];
+  for (const r of rows) {
+    if (r.from_status) held.push(r.from_status);
+    held.push(r.to_status);
+  }
+  const reach = Math.max(...held.map(rank));
+  return reach >= 1 ? FUNNEL_STAGES[reach - 1]! : null;
+}
+
 // `history` arrives ordered by changed_at, then insertion; the first row per application is its earliest.
 export function summarizeDashboard(
   apps: Application[],
@@ -67,12 +104,7 @@ export function summarizeDashboard(
   pendingProposals: number,
   now: Date,
 ): DashboardSummary {
-  const byApp = new Map<string, HistoryRow[]>();
-  for (const h of history) {
-    const rows = byApp.get(h.application_id);
-    if (rows) rows.push(h);
-    else byApp.set(h.application_id, [h]);
-  }
+  const byApp = historyByApplication(history);
 
   const status_counts = Object.fromEntries(APPLICATION_STATUSES.map((s) => [s, 0])) as Record<
     ApplicationStatus,
@@ -88,18 +120,14 @@ export function summarizeDashboard(
     status_counts[a.status] += 1;
     const rows = byApp.get(a.id) ?? [];
 
-    // Creating an application writes no history row, so the starting status is the earliest row's from_status.
-    const held: ApplicationStatus[] = [a.status];
-    const first = rows[0];
-    if (first?.from_status) held.push(first.from_status);
-    for (const r of rows) held.push(r.to_status);
-    const reach = Math.max(...held.map(rank));
+    const reached = furthestStep(a.status, rows);
+    const reach = reached ? FUNNEL_STAGES.indexOf(reached) + 1 : 0;
     FUNNEL_STAGES.forEach((stage, i) => {
       if (reach >= i + 1) funnel[stage] += 1;
     });
-    if (reach >= 1) {
-      const stops = stopped_at[FUNNEL_STAGES[reach - 1]!];
-      if (a.status === 'rejected' || a.status === 'no_response' || a.status === 'withdrawn') stops[a.status] += 1;
+    if (reached) {
+      const stops = stopped_at[reached];
+      if (isStop(a.status)) stops[a.status] += 1;
       else stops.waiting += 1;
     }
 

@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ExternalLinkIcon, MailIcon, PlusIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { HistoryRow } from '../../server/domain/dashboard.js';
 import type { Application, ApplicationStatus } from '../../server/domain/types.js';
-import { listApplications, setApplicationStatus, startSync, type ApplicationDetail } from '../api/client.js';
-import { APPLICATION_COLUMNS, applicationViewKey } from '../application-view.js';
+import {
+  listApplicationHistory,
+  listApplications,
+  setApplicationStatus,
+  startSync,
+  type ApplicationDetail,
+} from '../api/client.js';
+import { APPLICATION_COLUMNS, applicationRows, applicationViewKey, type ApplicationRow } from '../application-view.js';
 import { AddApplicationForm } from '../components/AddApplicationForm.js';
 import { ErrorAlert, LoadingState, SuccessMessage } from '../components/feedback.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -34,13 +41,15 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Stored URLs are untrusted; never render javascript: and friends as links.
 const isHttp = (url: string | null): url is string => !!url && /^https?:\/\//i.test(url);
 
-const NO_APPS: Application[] = [];
+const NO_ROWS: ApplicationRow[] = [];
 
 export function ApplicationsPage() {
   const profileId = useProfileId();
   const href = useProfileHref();
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[] | null>(null);
+  // Status history gives each row its furthest step (SOW-0057); kept in step with every change made here.
+  const [history, setHistory] = useState<HistoryRow[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -49,8 +58,10 @@ export function ApplicationsPage() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const [merged, setMerged] = useState<string | null>(null);
+  // The rows wait for both loads: a furthest step read without history would be wrong.
+  const rows = useMemo(() => (apps && history ? applicationRows(apps, history) : null), [apps, history]);
   // Shared with the Dashboard and saved per profile (SOW-0054).
-  const view = useSharedTableView(APPLICATION_COLUMNS, apps ?? NO_APPS, applicationViewKey(profileId));
+  const view = useSharedTableView(APPLICATION_COLUMNS, rows ?? NO_ROWS, applicationViewKey(profileId));
   const linkState = useListLinkState();
   const chosen = useMemo(() => view.visible.filter((a) => selected.has(a.id)), [view.visible, selected]);
 
@@ -74,6 +85,16 @@ export function ApplicationsPage() {
     const { history: _history, aliases: _aliases, ...app } = kept;
     const removed = new Set(removedIds);
     setApps((prev) => prev?.filter((a) => !removed.has(a.id)).map((a) => (a.id === app.id ? app : a)) ?? null);
+    // The merge moved the removed applications' history to the kept one, which the response carries whole.
+    const moved = kept.history.map(({ application_id, from_status, to_status, changed_at }) => ({
+      application_id,
+      from_status,
+      to_status,
+      changed_at,
+    }));
+    setHistory(
+      (prev) => prev?.filter((h) => h.application_id !== app.id && !removed.has(h.application_id)).concat(moved) ?? null,
+    );
     setSelected(new Set());
     setMerging(false);
     setMerged(`Merged ${removedIds.length + 1} applications into ${app.company} - ${app.role}.`);
@@ -81,9 +102,12 @@ export function ApplicationsPage() {
 
   useEffect(() => {
     let active = true;
-    listApplications(profileId)
-      .then((list) => {
-        if (active) setApps(list);
+    // One load (decision 5A): when either fails, the page shows the error and no table.
+    Promise.all([listApplications(profileId), listApplicationHistory(profileId)])
+      .then(([list, changes]) => {
+        if (!active) return;
+        setApps(list);
+        setHistory(changes);
       })
       .catch((e: unknown) => {
         if (active) setError(message(e));
@@ -97,8 +121,14 @@ export function ApplicationsPage() {
     setBusyId(id);
     setError(null);
     try {
+      const previous = apps?.find((a) => a.id === id)?.status ?? null;
       const updated = await setApplicationStatus(profileId, id, next);
       setApps((prev) => prev?.map((a) => (a.id === id ? updated : a)) ?? null);
+      // The row the server wrote for this change (none when the status is unchanged), so the furthest step follows it.
+      if (previous !== updated.status) {
+        const change = { application_id: id, from_status: previous, to_status: updated.status, changed_at: updated.status_changed_at };
+        setHistory((prev) => (prev ? [...prev, change] : null));
+      }
     } catch (e) {
       setError(message(e));
     } finally {
@@ -160,9 +190,9 @@ export function ApplicationsPage() {
       />
       <div className="flex flex-col gap-4">
         {error && <ErrorAlert>{error}</ErrorAlert>}
-        {!apps ? (
+        {!rows ? (
           !error && <LoadingState />
-        ) : apps.length === 0 ? (
+        ) : rows.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
               <EmptyTitle>No applications yet</EmptyTitle>

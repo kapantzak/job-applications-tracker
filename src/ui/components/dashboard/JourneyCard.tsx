@@ -1,11 +1,13 @@
 import { useId, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import {
   FUNNEL_STAGES,
   type DashboardSummary,
   type FunnelStage,
-  type StageStops,
+  type StageExit,
 } from '../../../server/domain/dashboard.js';
 import { STATUS_LABELS } from '../../labels.js';
+import { ONE_TIME_VIEW } from '../../view-storage.js';
 import { STATUS_COLOR_VAR } from './status-colors.js';
 import { AFTER_STEP } from './steps.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +17,8 @@ interface JourneyCardProps {
   funnel: DashboardSummary['funnel'];
   stoppedAt: DashboardSummary['stopped_at'];
   saved: number;
+  // Where a branch links: the Applications it counts (SOW-0057). Null leaves the branch without a link.
+  branchHref: (stage: FunnelStage, exit: StageExit) => string | null;
 }
 
 // Geometry in viewBox units; the drawing scales to the card width (SOW-0037, mockup option A).
@@ -39,7 +43,7 @@ const PAD_BOTTOM = 10;
 // (SOW-0037 Decision 7), so it keeps this width and the card scrolls sideways (SOW-0052 Decision 1).
 export const JOURNEY_MIN_WIDTH_PX = 910;
 
-const EXITS = ['waiting', 'rejected', 'no_response', 'withdrawn'] as const;
+const EXITS = ['waiting', 'rejected', 'no_response', 'withdrawn'] as const satisfies readonly StageExit[];
 type Exit = (typeof EXITS)[number];
 
 // Stops are statuses and read as their labels; waiting is any other status.
@@ -131,6 +135,12 @@ function exitTip(stage: FunnelStage, exit: Exit, n: number): string {
   return `${n} ${exitWord(exit)} after ${AFTER_STEP[stage]}`;
 }
 
+// Starts with the visible label, so voice control finds the link by what it shows (WCAG 2.5.3, SOW-0057
+// decision 10A); the offer's tooltip wording would not contain it.
+function linkName(stage: FunnelStage, exit: Exit, n: number): string {
+  return stage === 'offer' && exit === 'waiting' ? exitLabel(stage, exit, n) : exitTip(stage, exit, n);
+}
+
 function journeyLabel(shapes: StageShape[], sent: number): string {
   const stages = shapes
     .filter((s) => s.count > 0)
@@ -151,7 +161,15 @@ function Hover({ tip, children }: { tip: string; children: ReactElement }) {
   );
 }
 
-export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
+// A branch link shows it is one only on hover or keyboard focus (SOW-0057 decision 7A): the ribbon fades and
+// the label is underlined. Chromium draws neither box-shadow rings nor outlines on an SVG link, so keyboard
+// focus rings the ribbon with a stroke in the ring colour.
+const BRANCH_LINK = 'group/branch cursor-pointer outline-none';
+const BRANCH_RIBBON =
+  'transition-opacity group-hover/branch:opacity-75 group-focus-visible/branch:opacity-75 group-focus-visible/branch:stroke-ring group-focus-visible/branch:stroke-2';
+const BRANCH_LABEL = 'group-hover/branch:underline group-focus-visible/branch:underline';
+
+export function JourneyCard({ funnel, stoppedAt, saved, branchHref }: JourneyCardProps) {
   const uid = useId().replace(/[^\w-]/g, '');
   const shapes = layout(funnel, stoppedAt);
   const height = Math.ceil(Math.max(TOP, ...shapes.map((s) => s.bottom)) + PAD_BOTTOM);
@@ -177,10 +195,11 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
       >
         {/* Page tests and the composed page render without the sidebar's provider. */}
         <TooltipProvider>
-          {/* Hover-only and outside the tab order (SOW-0034 Decision 7): every number is also a
-              visible label, and the image label reads the whole journey to assistive tech. */}
+          {/* A group, not an image, so its branch links reach assistive tech (SOW-0057 decision 3A); its
+              label still reads the whole journey. Stage bars and moved-on ribbons stay hover-only and
+              outside the tab order (SOW-0034 Decision 7); every number is also a visible label. */}
           <svg
-            role="img"
+            role="group"
             aria-label={journeyLabel(shapes, funnel.applied)}
             viewBox={`0 0 ${VIEW_W} ${height}`}
             width="100%"
@@ -217,8 +236,11 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
               const capX = right + Math.min(EXIT_DX, VIEW_W - LABEL_ROOM - LABEL_GAP - CAP_W - right);
               return (
                 <g key={s.stage} data-stage={s.stage}>
+                  {/* Stage text is hidden from assistive tech: the group label already reads every stage
+                      (SOW-0057 decision 11A). */}
                   <text
                     data-part="name"
+                    aria-hidden="true"
                     x={s.x + NODE_W / 2}
                     y={TOP - 24}
                     textAnchor="middle"
@@ -230,6 +252,7 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                   </text>
                   <text
                     data-part="count"
+                    aria-hidden="true"
                     x={s.x + NODE_W / 2}
                     y={TOP - 9}
                     textAnchor="middle"
@@ -252,13 +275,14 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                   {s.exits.map((e) => {
                     const offer = s.stage === 'offer' && e.exit === 'waiting';
                     const color = exitColor(s.stage, e.exit);
-                    return (
-                      <g key={e.exit} data-exit={e.exit}>
+                    const href = branchHref(s.stage, e.exit);
+                    const branch = (
+                      <>
                         <Hover tip={exitTip(s.stage, e.exit, e.count)}>
                           <path
                             d={ribbon(right, e.y, e.y + e.h, capX, e.capY, e.capY + e.h)}
                             fill={`url(#${gradient(`${s.stage}-${e.exit}`)})`}
-                            className={hoverable}
+                            className={href === null ? hoverable : BRANCH_RIBBON}
                           />
                         </Hover>
                         <rect
@@ -277,11 +301,29 @@ export function JourneyCard({ funnel, stoppedAt, saved }: JourneyCardProps) {
                           y={round(e.capY + e.h / 2 + 4)}
                           fontSize={12}
                           fontWeight={offer ? 700 : undefined}
+                          className={href === null ? undefined : BRANCH_LABEL}
                           // The offer colour is light in dark mode and dark in light mode, so it stays readable.
                           style={{ fill: offer ? STATUS_COLOR_VAR.offer : 'currentColor' }}
                         >
                           {exitLabel(s.stage, e.exit, e.count)}
                         </text>
+                      </>
+                    );
+                    return (
+                      <g key={e.exit} data-exit={e.exit}>
+                        {href === null ? (
+                          branch
+                        ) : (
+                          // Opens Applications as a one-time view, like a Dashboard tile (SOW-0054 decision 8B).
+                          <Link
+                            to={href}
+                            state={ONE_TIME_VIEW}
+                            aria-label={linkName(s.stage, e.exit, e.count)}
+                            className={BRANCH_LINK}
+                          >
+                            {branch}
+                          </Link>
+                        )}
                       </g>
                     );
                   })}
