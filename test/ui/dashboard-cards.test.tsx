@@ -113,6 +113,9 @@ describe('JourneyCard', () => {
   };
   const ONLY_APPLIED = { applied: 3, screening: 0, interview: 0, offer: 0 };
   const ONLY_APPLIED_STOPS = { applied: stops(3), screening: stops(), interview: stops(), offer: stops() };
+  // Branches without links, for the tests about the drawing itself.
+  const noLinks = () => null;
+  const toBranch = (s: FunnelStage, exit: string) => `/profiles/platform-roles/applications?reached=${s}&exit=${exit}`;
 
   const stage = (container: HTMLElement, s: FunnelStage) => container.querySelector(`[data-stage="${s}"]`)!;
   const part = (container: HTMLElement, s: FunnelStage, name: string) =>
@@ -121,19 +124,19 @@ describe('JourneyCard', () => {
     [...stage(container, s).querySelectorAll('[data-exit] text')].map((t) => t.textContent);
 
   it('titles the card and counts sent and saved applications', () => {
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={4} />);
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={4} />);
     expect(screen.getByRole('heading', { name: "Your applications' journey" })).toBeInTheDocument();
     expect(screen.getByText('30 sent · 4 saved, not applied yet')).toBeInTheDocument();
     cleanup();
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={1} />);
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={1} />);
     expect(screen.getByText('30 sent · 1 saved, not applied yet')).toBeInTheDocument();
     cleanup();
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     expect(screen.getByText('30 sent')).toBeInTheDocument();
   });
 
   it('heads each stage with its name, count and share of the stage before', () => {
-    const { container } = renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     const expected = [
       ['applied', 'Applied', '30'],
       ['screening', 'Screening', '11 · 37%'],
@@ -147,7 +150,7 @@ describe('JourneyCard', () => {
   });
 
   it('branches off each non-zero way of stopping, in a fixed order', () => {
-    const { container } = renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     expect(exitLabels(container, 'applied')).toEqual(['12 waiting', '3 rejected', '4 no response']);
     expect(exitLabels(container, 'screening')).toEqual(['3 waiting', '2 rejected', '1 withdrawn']);
     expect(exitLabels(container, 'interview')).toEqual(['2 waiting', '1 rejected', '1 no response']);
@@ -159,13 +162,13 @@ describe('JourneyCard', () => {
   });
 
   it('calls holding an offer an offer, in bold', () => {
-    const { container } = renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     expect(exitLabels(container, 'offer')).toEqual(['1 offer']);
     expect(stage(container, 'offer').querySelector('[data-exit="waiting"] text')).toHaveAttribute('font-weight', '700');
     cleanup();
     const two = { applied: 30, screening: 11, interview: 5, offer: 2 };
     const { container: c2 } = renderCard(
-      <JourneyCard
+      <JourneyCard branchHref={noLinks}
         funnel={two}
         stoppedAt={{ ...STOPPED, interview: stops(1, 1, 1, 0), offer: stops(2) }}
         saved={0}
@@ -176,7 +179,7 @@ describe('JourneyCard', () => {
 
   it('keeps Offer-stage labels clear of the right edge', () => {
     const { container } = renderCard(
-      <JourneyCard
+      <JourneyCard branchHref={noLinks}
         funnel={{ applied: 300, screening: 120, interview: 60, offer: 40 }}
         stoppedAt={{ applied: stops(180), screening: stops(60), interview: stops(20), offer: stops(10, 10, 10, 10) }}
         saved={0}
@@ -187,12 +190,12 @@ describe('JourneyCard', () => {
     // 120 units hold "1000 no response" at font size 12.
     for (const t of labels) expect(Number(t.getAttribute('x'))).toBeLessThanOrEqual(940 - 120);
     // Proportional digits: Manrope's tabular "1" stands apart from its neighbours (Decision 8).
-    expect(screen.getByRole('img').getAttribute('style') ?? '').not.toContain('tabular');
+    expect(screen.getByRole('group').getAttribute('style') ?? '').not.toContain('tabular');
   });
 
-  it('describes every stage and its exits in the image label', () => {
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={4} />);
-    expect(screen.getByRole('img')).toHaveAttribute(
+  it('describes every stage and its exits in the graph label', () => {
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={4} />);
+    expect(screen.getByRole('group')).toHaveAttribute(
       'aria-label',
       '30 sent. Applied 30: 12 waiting, 3 rejected, 4 no response. ' +
         'Screening 11: 3 waiting, 2 rejected, 1 withdrawn. ' +
@@ -201,13 +204,13 @@ describe('JourneyCard', () => {
   });
 
   it('scales bars to the Applied count, with a visible minimum', () => {
-    const { container } = renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     const height = (s: FunnelStage) => Number(part(container, s, 'node')?.getAttribute('height'));
     expect(height('applied')).toBe(200);
     expect(height('screening')).toBeCloseTo((11 / 30) * 200);
     cleanup();
     const { container: c2 } = renderCard(
-      <JourneyCard
+      <JourneyCard branchHref={noLinks}
         funnel={{ applied: 100, screening: 1, interview: 0, offer: 0 }}
         stoppedAt={{ applied: stops(99), screening: stops(1), interview: stops(), offer: stops() }}
         saved={0}
@@ -217,7 +220,7 @@ describe('JourneyCard', () => {
   });
 
   it('draws only headers after an empty stage, without NaN', () => {
-    const { container } = renderCard(<JourneyCard funnel={ONLY_APPLIED} stoppedAt={ONLY_APPLIED_STOPS} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={ONLY_APPLIED} stoppedAt={ONLY_APPLIED_STOPS} saved={0} />);
     expect(part(container, 'applied', 'node')).not.toBeNull();
     expect(part(container, 'applied', 'moved')).toBeNull();
     expect(part(container, 'screening', 'count')?.textContent).toBe('0 · 0%');
@@ -228,14 +231,14 @@ describe('JourneyCard', () => {
       expect(part(container, s, 'node')).toBeNull();
     }
     expect(exitLabels(container, 'applied')).toEqual(['3 waiting']);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '3 sent. Applied 3: 3 waiting.');
+    expect(screen.getByRole('group')).toHaveAttribute('aria-label', '3 sent. Applied 3: 3 waiting.');
     expect(container.innerHTML).not.toContain('NaN');
     expect(container.innerHTML).not.toContain('Infinity');
   });
 
   it('fits the drawing height to its content', () => {
-    const { container } = renderCard(<JourneyCard funnel={ONLY_APPLIED} stoppedAt={ONLY_APPLIED_STOPS} saved={0} />);
-    const [, , width, height] = screen.getByRole('img').getAttribute('viewBox')!.split(' ').map(Number);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={ONLY_APPLIED} stoppedAt={ONLY_APPLIED_STOPS} saved={0} />);
+    const [, , width, height] = screen.getByRole('group').getAttribute('viewBox')!.split(' ').map(Number);
     expect(width).toBe(940);
     // One exit below a 200-unit bar: well under the height a four-exit stage needs.
     const lowest = Math.max(
@@ -247,8 +250,8 @@ describe('JourneyCard', () => {
 
   // Narrow windows scroll the card instead of shrinking the labels (SOW-0052 Decision 1).
   it('keeps a minimum drawing width inside a sideways-scrolling area', () => {
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
-    const svg = screen.getByRole('img');
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const svg = screen.getByRole('group');
     expect(svg).toHaveStyle({ minWidth: `${JOURNEY_MIN_WIDTH_PX}px` });
     expect(JOURNEY_MIN_WIDTH_PX).toBe(910);
     expect(svg.closest('[data-slot="card-content"]')).toHaveClass('overflow-x-auto');
@@ -257,9 +260,9 @@ describe('JourneyCard', () => {
   // Safari gives a scroll area without focusable content no keyboard access (SOW-0052 Decision 6).
   it('makes the scroll area a labelled region that the keyboard can reach', async () => {
     const user = userEvent.setup();
-    renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     const region = screen.getByRole('region', { name: 'Journey graph' });
-    expect(region).toContainElement(screen.getByRole('img'));
+    expect(region).toContainElement(screen.getByRole('group'));
     await user.tab();
     expect(region).toHaveFocus();
   });
@@ -271,9 +274,74 @@ describe('JourneyCard', () => {
     ['the offer', (c: HTMLElement) => stage(c, 'offer').querySelector('[data-exit="waiting"] path')!, '1 with an offer'],
   ])('shows a hover-only tooltip on %s', async (_, target, tip) => {
     const user = userEvent.setup();
-    const { container } = renderCard(<JourneyCard funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+    const { container } = renderCard(<JourneyCard branchHref={noLinks} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
     await user.hover(target(container));
     expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
     expect(container.querySelectorAll('svg [tabindex]')).toHaveLength(0);
+  });
+
+  describe('branch links (SOW-0057)', () => {
+    it('makes each branch, ribbon and label, one link named like its tooltip', () => {
+      const { container } = renderCard(<JourneyCard branchHref={toBranch} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+      const rejected = screen.getByRole('link', { name: '3 rejected after applying' });
+      expect(rejected).toHaveAttribute('href', toBranch('applied', 'rejected'));
+      expect(rejected).toContainElement(stage(container, 'applied').querySelector('[data-exit="rejected"] path') as HTMLElement);
+      expect(rejected).toHaveTextContent('3 rejected');
+      expect(screen.getByRole('link', { name: '1 offer' })).toHaveAttribute('href', toBranch('offer', 'waiting'));
+      expect(screen.getAllByRole('link').map((l) => l.getAttribute('aria-label'))).toEqual([
+        '12 waiting after applying',
+        '3 rejected after applying',
+        '4 no response after applying',
+        '3 waiting after screening',
+        '2 rejected after screening',
+        '1 withdrawn after screening',
+        '2 waiting after the interview',
+        '1 rejected after the interview',
+        '1 no response after the interview',
+        '1 offer',
+      ]);
+      // Stage bars and moved-on ribbons stay hover-only (decision 2A).
+      expect(part(container, 'applied', 'node')!.closest('a')).toBeNull();
+      expect(part(container, 'applied', 'moved')!.closest('a')).toBeNull();
+    });
+
+    it('puts the branch links in the tab order after the scroll area', async () => {
+      const user = userEvent.setup();
+      renderCard(<JourneyCard branchHref={toBranch} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+      await user.tab();
+      expect(screen.getByRole('region', { name: 'Journey graph' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('link', { name: '12 waiting after applying' })).toHaveFocus();
+    });
+
+    it('leaves a branch without a link when it has nowhere to go', () => {
+      const { container } = renderCard(
+        <JourneyCard
+          branchHref={(s, exit) => (s === 'applied' && exit === 'rejected' ? null : toBranch(s, exit))}
+          funnel={FUNNEL}
+          stoppedAt={STOPPED}
+          saved={0}
+        />,
+      );
+      expect(screen.queryByRole('link', { name: '3 rejected after applying' })).toBeNull();
+      expect(exitLabels(container, 'applied')).toEqual(['12 waiting', '3 rejected', '4 no response']);
+      expect(screen.getAllByRole('link')).toHaveLength(9);
+    });
+
+    it('keeps the tooltip on a linked ribbon', async () => {
+      const user = userEvent.setup();
+      const { container } = renderCard(<JourneyCard branchHref={toBranch} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+      await user.hover(stage(container, 'applied').querySelector('[data-exit="rejected"] path')!);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('3 rejected after applying');
+    });
+
+    it('hides stage names and counts from assistive tech, since the group label reads them', () => {
+      const { container } = renderCard(<JourneyCard branchHref={toBranch} funnel={FUNNEL} stoppedAt={STOPPED} saved={0} />);
+      for (const s of ['applied', 'screening', 'interview', 'offer'] as const) {
+        expect(part(container, s, 'name')).toHaveAttribute('aria-hidden', 'true');
+        expect(part(container, s, 'count')).toHaveAttribute('aria-hidden', 'true');
+      }
+      expect(screen.getByRole('group', { name: /^30 sent\./ })).toBeInTheDocument();
+    });
   });
 });

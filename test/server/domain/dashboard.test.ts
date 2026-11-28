@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { FUNNEL_STAGES, summarizeDashboard, type HistoryRow } from '../../../src/server/domain/dashboard.js';
+import {
+  exitStatuses,
+  FUNNEL_STAGES,
+  furthestStep,
+  historyByApplication,
+  summarizeDashboard,
+  type HistoryRow,
+} from '../../../src/server/domain/dashboard.js';
 import { APPLICATION_STATUSES, type Application, type ApplicationStatus } from '../../../src/server/domain/types.js';
 
 const NOW = new Date('2026-11-09T12:00:00Z');
@@ -245,5 +252,67 @@ describe('summarizeDashboard', () => {
 
   it('passes pending proposals through', () => {
     expect(summarizeDashboard([], [], 3, NOW).pending_proposals).toBe(3);
+  });
+});
+
+// The rule the Journey and the Applications "Furthest step" filter share (SOW-0057).
+describe('furthestStep', () => {
+  it('is null for an application never sent', () => {
+    expect(furthestStep('saved', [])).toBeNull();
+    expect(furthestStep('withdrawn', [row('a', 'saved', 'withdrawn', ago(1))])).toBeNull();
+  });
+
+  it('is the furthest status held, current, created with or changed to', () => {
+    expect(furthestStep('applied', [])).toBe('applied');
+    expect(furthestStep('rejected', [])).toBe('applied');
+    expect(furthestStep('rejected', [row('a', 'interview', 'rejected', ago(1))])).toBe('interview');
+    expect(furthestStep('rejected', [row('a', 'applied', 'screening', ago(3)), row('a', 'screening', 'rejected', ago(1))])).toBe(
+      'screening',
+    );
+    expect(furthestStep('interview', [row('a', 'offer', 'interview', ago(1))])).toBe('offer');
+  });
+
+  // Decision 9A: K was created at Interview and rejected on day 2; R went Applied to Screening on day 1 and was
+  // merged into K, so K's rows interleave and its own start is no longer the earliest row's from_status.
+  it('keeps the furthest step of a merged history', () => {
+    const merged = [row('k', 'applied', 'screening', ago(3)), row('k', 'interview', 'rejected', ago(2))];
+    expect(furthestStep('rejected', merged)).toBe('interview');
+    const k = app({ status: 'rejected' });
+    const s = summarizeDashboard([k], merged.map((r) => ({ ...r, application_id: k.id })), 0, NOW);
+    expect(s.funnel).toEqual({ applied: 1, screening: 1, interview: 1, offer: 0 });
+    expect(s.stopped_at.interview.rejected).toBe(1);
+  });
+
+  it('agrees with the Journey counts for every application', () => {
+    const apps = [
+      app({ status: 'rejected' }),
+      app({ status: 'interview' }),
+      app({ status: 'saved' }),
+      app({ status: 'no_response' }),
+    ];
+    const history = [
+      row(apps[0]!.id, 'applied', 'interview', ago(5)),
+      row(apps[0]!.id, 'interview', 'rejected', ago(2)),
+      row(apps[1]!.id, 'applied', 'interview', ago(4)),
+      row(apps[3]!.id, 'applied', 'no_response', ago(1)),
+    ];
+    const s = summarizeDashboard(apps, history, 0, NOW);
+    const byApp = historyByApplication(history);
+    const reached = apps.map((a) => furthestStep(a.status, byApp.get(a.id) ?? []));
+    expect(reached).toEqual(['interview', 'interview', null, 'applied']);
+    expect(s.stopped_at.interview).toEqual({ waiting: 1, rejected: 1, no_response: 0, withdrawn: 0 });
+    expect(s.stopped_at.applied).toEqual({ waiting: 0, rejected: 0, no_response: 1, withdrawn: 0 });
+  });
+});
+
+describe('exitStatuses', () => {
+  it('maps a stop to its status and waiting to every other status', () => {
+    expect(exitStatuses('rejected')).toEqual(['rejected']);
+    expect(exitStatuses('no_response')).toEqual(['no_response']);
+    expect(exitStatuses('withdrawn')).toEqual(['withdrawn']);
+    expect(exitStatuses('waiting')).toEqual(
+      APPLICATION_STATUSES.filter((s) => s !== 'rejected' && s !== 'no_response' && s !== 'withdrawn'),
+    );
+    expect(exitStatuses('waiting')).toContain('saved');
   });
 });

@@ -23,7 +23,7 @@ export interface AcceptResult {
 }
 
 // Accepting a new-application proposal creates the application (SOW-0045). Like Add application, it writes
-// no history row: the Dashboard reads the starting status from the first row's from_status.
+// no history row: the Dashboard reads the starting status from the history rows' from_status (furthestStep).
 export function createApplicationProposalService({
   db,
   applicationProposalsRepo,
