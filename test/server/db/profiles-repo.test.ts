@@ -111,7 +111,7 @@ describe('profiles repo', () => {
   });
 });
 
-describe('profiles repo and the default profile setting (SOW-0058)', () => {
+describe('profiles repo and the default profile setting (SOW-0059)', () => {
   it('clears the default profile setting when that profile is deleted', () => {
     const { db, repo } = setup();
     const settings = createSettingsRepo(db);

@@ -191,7 +191,7 @@ export interface Settings {
   port: number;
   // Ask the npm registry for a newer version (SOW-0053); NO_UPDATE_NOTIFIER also turns it off.
   update_check: boolean;
-  // Profile the first load of `/` opens (SOW-0058); '' = none. Cleared when that profile is deleted.
+  // Profile the first load of `/` opens (SOW-0059); '' = none. Cleared when that profile is deleted.
   default_profile_id: string;
 }
 

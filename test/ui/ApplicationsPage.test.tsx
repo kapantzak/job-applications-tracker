@@ -11,6 +11,7 @@ import { ONE_TIME_VIEW } from '../../src/ui/view-storage.js';
 vi.mock('../../src/ui/api/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/ui/api/client.js')>()),
   listApplications: vi.fn(),
+  listApplicationHistory: vi.fn(),
   createApplication: vi.fn(),
   setApplicationStatus: vi.fn(),
   mergeApplications: vi.fn(),
@@ -62,6 +63,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(client.listApplications).mockResolvedValue([app] as never);
+  vi.mocked(client.listApplicationHistory).mockResolvedValue([]);
 });
 
 describe('ApplicationsPage', () => {
@@ -530,3 +532,101 @@ describe('ApplicationsPage merging (SOW-0055)', () => {
     expect(screen.getByRole('button', { name: 'Merge' })).toBeDisabled();
   });
 });
+
+describe('ApplicationsPage Furthest step (SOW-0057)', () => {
+  const apps = [
+    { ...app, id: 'a3', company: 'Initech', role: 'SRE', status: 'rejected', url: null },
+    { ...app, id: 'a2', company: 'Globex', role: 'Data Engineer', status: 'rejected', url: null },
+    { ...app, id: 'a1', company: 'Acme', role: 'Platform Engineer', status: 'applied', url: null },
+    { ...app, id: 'a4', company: 'Umbrella', role: 'Analyst', status: 'saved', url: null },
+  ];
+  // Globex was rejected after the interview; Initech straight after applying.
+  const history = [
+    { application_id: 'a2', from_status: 'applied', to_status: 'interview', changed_at: '2026-11-01T09:00:00Z' },
+    { application_id: 'a2', from_status: 'interview', to_status: 'rejected', changed_at: '2026-11-03T09:00:00Z' },
+    { application_id: 'a3', from_status: 'applied', to_status: 'rejected', changed_at: '2026-11-02T09:00:00Z' },
+  ] as const;
+  const companies = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[1]!.textContent);
+  const openFilter = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(within(screen.getByRole('group', { name: 'Filter applications' })).getByRole('button', { name: /^Filter by furthest step/ }));
+    return within(await screen.findByRole('dialog', { name: 'Filter by furthest step' }));
+  };
+
+  beforeEach(() => {
+    vi.mocked(client.listApplications).mockResolvedValue(apps as never);
+    vi.mocked(client.listApplicationHistory).mockResolvedValue([...history]);
+  });
+
+  it('lists exactly the applications of a Journey branch', async () => {
+    renderPage('?status=rejected&reached=interview', ONE_TIME_VIEW);
+    await screen.findByText('Globex');
+    expect(client.listApplicationHistory).toHaveBeenCalledWith('pf1');
+    expect(companies()).toEqual(['Globex']);
+    // Filter only: the table gains no column.
+    expect(within(screen.getByRole('table')).queryByRole('columnheader', { name: /furthest step/i })).toBeNull();
+  });
+
+  it('offers each step the rows reached and Not sent', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Globex');
+    const dialog = await openFilter(user);
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(3);
+    for (const name of ['Applied', 'Interview', 'Not sent']) expect(dialog.getByRole('checkbox', { name })).toBeInTheDocument();
+    await user.click(dialog.getByRole('checkbox', { name: 'Not sent' }));
+    expect(companies()).toEqual(['Umbrella']);
+    expect(screen.getByTestId('search')).toHaveTextContent('?reached=');
+  });
+
+  it('shows the error and no table when the history cannot be loaded', async () => {
+    vi.mocked(client.listApplicationHistory).mockRejectedValue(new Error('history failed'));
+    renderPage();
+    expect(await screen.findByText('history failed')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByText('No applications yet')).toBeNull();
+  });
+
+  it('keeps the step a row reached when its status moves back', async () => {
+    const user = userEvent.setup();
+    // Created at Interview, so no history row yet: only the change's own row says it got there.
+    vi.mocked(client.listApplications).mockResolvedValue([apps[1], { ...apps[2], status: 'interview' }] as never);
+    vi.mocked(client.setApplicationStatus).mockResolvedValue({ ...apps[2], status: 'rejected', status_changed_at: '2026-11-05T09:00:00Z' } as never);
+    renderPage('?reached=interview');
+    await screen.findByText('Acme');
+    expect(companies()).toEqual(['Globex', 'Acme']);
+    const row = screen.getByText('Acme').closest('tr')!;
+    await user.selectOptions(within(row).getByLabelText('Status'), 'rejected');
+    await vi.waitFor(() => expect(within(screen.getByText('Acme').closest('tr')!).getByLabelText('Status')).toHaveValue('rejected'));
+    expect(companies()).toEqual(['Globex', 'Acme']);
+  });
+
+  it('gives a merged application the furthest step of the history it took over', async () => {
+    const user = userEvent.setup();
+    // The server moves both of Globex's rows to Acme and returns Acme's whole history.
+    const kept = {
+      ...apps[2]!,
+      history: [history[0], history[1]].map((h, i) => ({ ...h, id: `h${i}`, application_id: 'a1', source: 'user', proposal_id: null, created_at: h.changed_at })),
+      aliases: [],
+    };
+    vi.mocked(client.mergeApplications).mockResolvedValue(kept as never);
+    renderPage('?reached=applied&reached=interview');
+    await screen.findByText('Acme');
+    expect(companies()).toEqual(['Initech', 'Globex', 'Acme']);
+    await user.click(screen.getByRole('checkbox', { name: 'Select Globex - Data Engineer' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Acme - Platform Engineer' }));
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Merge 2 applications' }));
+    await user.click(dialog.getByRole('radio', { name: /^Acme - Platform Engineer/ }));
+    await user.click(dialog.getByRole('button', { name: 'Merge applications' }));
+    await screen.findByText(/^Merged 2 applications/);
+    expect(companies()).toEqual(['Initech', 'Acme']);
+    // Acme now reached the interview through Globex's history, so it leaves the Applied step.
+    const filter = await openFilter(user);
+    // Option counts: Initech at Applied, Acme at Interview (Globex is gone), Umbrella not sent.
+    expect(filter.getByRole('checkbox', { name: 'Applied' }).parentElement).toHaveTextContent(/1$/);
+    expect(filter.getByRole('checkbox', { name: 'Interview' }).parentElement).toHaveTextContent(/1$/);
+    await user.click(filter.getByRole('checkbox', { name: 'Applied' }));
+    expect(companies()).toEqual(['Acme']);
+  });
+});
+

@@ -96,7 +96,7 @@ describe('settings', () => {
   });
 });
 
-describe('default profile setting (SOW-0058)', () => {
+describe('default profile setting (SOW-0059)', () => {
   it('PATCH stores an existing profile as the default and clears it with an empty string', async () => {
     let res = await h.app.request('/api/settings', json('PATCH', { default_profile_id: h.profile.id }));
     expect(res.status).toBe(200);

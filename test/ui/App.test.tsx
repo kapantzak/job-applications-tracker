@@ -168,7 +168,7 @@ describe('App routing', () => {
 const listItem = (id: string, name: string, slug: string) =>
   ({ id, name, slug, target_roles: [], counts: { jobs: 0, applications: 0, runs: 0 }, cv_analysis_status: null }) as never;
 
-describe('default profile on launch (SOW-0058)', () => {
+describe('default profile on launch (SOW-0059)', () => {
   it('opens the stored default profile on the first load of /, and the Profiles link then shows the list', async () => {
     const user = userEvent.setup();
     const client = await renderApp('/', (c) => {

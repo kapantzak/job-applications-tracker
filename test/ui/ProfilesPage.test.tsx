@@ -231,7 +231,7 @@ describe('NewProfilePage', () => {
   });
 });
 
-describe('ProfilesPage default profile (SOW-0058)', () => {
+describe('ProfilesPage default profile (SOW-0059)', () => {
   const card = async (name: string) => (await screen.findByRole('heading', { name })).closest('li') as HTMLElement;
 
   it('offers Set as default on every profile when none is stored, and shows no badge', async () => {

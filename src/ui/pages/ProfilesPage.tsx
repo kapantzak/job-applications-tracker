@@ -119,7 +119,7 @@ function DeleteProfileButton({ profile, onDeleted }: { profile: ProfileListItem;
 export function ProfilesPage() {
   const [profiles, setProfiles] = useState<ProfileListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The stored default profile id (SOW-0058); '' when none is stored.
+  // The stored default profile id (SOW-0059); '' when none is stored.
   const [storedDefault, setStoredDefault] = useState('');
   const [defaultBusy, setDefaultBusy] = useState(false);
   const [defaultError, setDefaultError] = useState<string | null>(null);

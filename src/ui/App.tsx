@@ -25,7 +25,7 @@ let startupChecked = false;
 
 // The root is the profiles screen, which shows the profile form itself when there is no profile yet.
 // On first load it sends the user to Setup when the chosen agent is not installed, otherwise to the
-// default profile's Dashboard when there is one and the page load began at `/` (SOW-0058, decision 5A).
+// default profile's Dashboard when there is one and the page load began at `/` (SOW-0059, decision 5A).
 // A load that began elsewhere reaches `/` only through a link back to the profiles, which must not jump.
 function StartupRedirect({ openDefault }: { openDefault: boolean }) {
   const [target, setTarget] = useState<string | null | undefined>(startupChecked ? null : undefined);

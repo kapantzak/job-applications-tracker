@@ -1,7 +1,14 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { CircleCheckIcon, CircleXIcon, InboxIcon, MailIcon, MessagesSquareIcon, TrendingUpIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { summarizeDashboard, type DashboardResponse, type HistoryRow } from '../../server/domain/dashboard.js';
+import {
+  exitStatuses,
+  summarizeDashboard,
+  type DashboardResponse,
+  type FunnelStage,
+  type HistoryRow,
+  type StageExit,
+} from '../../server/domain/dashboard.js';
 import type { Application, ApplicationStatus, Run, RunKind, Settings } from '../../server/domain/types.js';
 import {
   getSettings,
@@ -13,7 +20,14 @@ import {
   startDiscovery,
   startSync,
 } from '../api/client.js';
-import { APPLICATION_COLUMNS, applicationViewKey, tileQuery } from '../application-view.js';
+import {
+  APPLICATION_COLUMNS,
+  applicationRows,
+  applicationViewKey,
+  branchQuery,
+  type ApplicationRow,
+  tileQuery,
+} from '../application-view.js';
 import { AttentionCard } from '../components/dashboard/AttentionCard.js';
 import { JourneyCard } from '../components/dashboard/JourneyCard.js';
 import { ErrorAlert, LoadingState } from '../components/feedback.js';
@@ -44,7 +58,7 @@ interface Stats {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const NO_APPS: Application[] = [];
+const NO_ROWS: ApplicationRow[] = [];
 
 function lastSuccess(runs: Run[] | null, kind: RunKind): string {
   if (!runs) return '–';
@@ -141,9 +155,14 @@ export function DashboardPage() {
   };
 
   // The filter set the Applications page shares (SOW-0054); the tiles, Journey and quiet list follow it.
-  const view = useStoredTableView(APPLICATION_COLUMNS, stats?.apps ?? NO_APPS, applicationViewKey(profileId));
   const loaded = !!stats?.apps && !!stats.history;
   const history = stats?.history ?? null;
+  // Rows carry their furthest step, so the Furthest step filter applies here too (SOW-0057).
+  const rows = useMemo(
+    () => (stats?.apps && stats.history ? applicationRows(stats.apps, stats.history) : NO_ROWS),
+    [stats?.apps, stats?.history],
+  );
+  const view = useStoredTableView(APPLICATION_COLUMNS, rows, applicationViewKey(profileId));
   // The saved sort is for the Applications table (decision 9A): unsorted rows keep the quiet list's ties in
   // the server's newest-first order. Pending counts stay with the route; the summary's own count is unused.
   const kept = useMemo(() => applyView(view.rows, view.columns, { ...view.state, sort: null }), [view.rows, view.columns, view.state]);
@@ -160,6 +179,11 @@ export function DashboardPage() {
   const newApplications = dashboard?.pending_new_applications ?? null;
   const tileLink = (statuses: readonly ApplicationStatus[]) => {
     const query = tileQuery(view.state, statuses);
+    return query === null ? null : href(`/applications?${query}`);
+  };
+  // A Journey branch opens the applications it counts (SOW-0057), as a one-time view like a tile.
+  const branchLink = (stage: FunnelStage, exit: StageExit) => {
+    const query = branchQuery(view.state, stage, exitStatuses(exit));
     return query === null ? null : href(`/applications?${query}`);
   };
 
@@ -268,7 +292,12 @@ export function DashboardPage() {
               {summary.total === 0 ? (
                 <NoMatches onClear={view.reset} />
               ) : (
-                <JourneyCard funnel={summary.funnel} stoppedAt={summary.stopped_at} saved={summary.status_counts.saved} />
+                <JourneyCard
+                  funnel={summary.funnel}
+                  stoppedAt={summary.stopped_at}
+                  saved={summary.status_counts.saved}
+                  branchHref={branchLink}
+                />
               )}
               <AttentionCard
                 pendingProposals={pendingProposals}

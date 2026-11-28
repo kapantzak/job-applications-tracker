@@ -468,7 +468,8 @@ async function storyboard(page, d, base) {
   await nav('Applications');
   await page.getByRole('table').waitFor();
   await nav('Dashboard');
-  const graph = page.locator('svg[role="img"]').filter({ has: page.locator('g[data-stage="offer"]') });
+  // A group since its branches became links (SOW-0057).
+  const graph = page.locator('svg[role="group"]').filter({ has: page.locator('g[data-stage="offer"]') });
   await graph.waitFor();
   await page.evaluate(() => window.scrollTo(0, 0));
   const box = await graph.boundingBox();

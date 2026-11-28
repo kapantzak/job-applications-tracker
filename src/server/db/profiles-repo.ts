@@ -126,7 +126,7 @@ export function createProfilesRepo(db: Db) {
     'DELETE FROM runs WHERE profile_id = @id',
     // The profile's CV analysis (SOW-0024); the CV service stops its agent and deletes its files.
     'DELETE FROM cv_analyses WHERE profile_id = @id',
-    // The default profile setting (SOW-0058), stored as a JSON string, never outlives its profile.
+    // The default profile setting (SOW-0059), stored as a JSON string, never outlives its profile.
     "DELETE FROM settings WHERE key = 'default_profile_id' AND value = json_quote(@id)",
     'DELETE FROM profiles WHERE id = @id',
   ].map((sql) => db.prepare(sql));

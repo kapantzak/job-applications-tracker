@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApplicationsPage } from '../../src/ui/pages/ApplicationsPage.js';
 import { DashboardPage } from '../../src/ui/pages/DashboardPage.js';
 import * as client from '../../src/ui/api/client.js';
 import { InProfile } from './profile-shell.js';
@@ -419,7 +420,7 @@ describe('DashboardPage journey view', () => {
     renderPage();
     expect(await journeyHeading()).toBeInTheDocument();
     expect(screen.getByText('0 sent · 2 saved, not applied yet')).toBeInTheDocument();
-    const graph = screen.getByRole('img', { name: '0 sent.' });
+    const graph = screen.getByRole('group', { name: '0 sent.' });
     expect([...graph.querySelectorAll('[data-part="count"]')].map((t) => t.textContent)).toEqual(['0', '0', '0', '0']);
     expect(graph.querySelectorAll('[data-part="node"], [data-part="moved"], [data-exit]')).toHaveLength(0);
   });
@@ -459,7 +460,7 @@ describe('DashboardPage filters', () => {
     const tile = await screen.findByTestId('count-in-progress');
     const bar = toolbar();
     expect(bar.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    for (const name of ['Search applications', 'Filter by company', 'Filter by role', 'Filter by status', 'Filter by applied from', 'Filter by applied to']) {
+    for (const name of ['Search applications', 'Filter by company', 'Filter by role', 'Filter by status', 'Filter by furthest step', 'Filter by applied from', 'Filter by applied to']) {
       expect(within(bar).getByRole(name.startsWith('Search') ? 'searchbox' : 'button', { name })).toBeInTheDocument();
     }
     expect(screen.getByText('Showing 5 of 5 applications')).toBeInTheDocument();
@@ -480,7 +481,7 @@ describe('DashboardPage filters', () => {
     expect(screen.getByTestId('count-proposals')).toHaveTextContent('5');
     // Both Acme applications reached screening through their history.
     expect(screen.getByText('2 sent')).toBeInTheDocument();
-    const graph = screen.getByRole('img', { name: /^2 sent\./ });
+    const graph = screen.getByRole('group', { name: /^2 sent\./ });
     expect([...graph.querySelectorAll('[data-part="count"]')].map((t) => t.textContent)).toEqual(['2', '2 · 100%', '1 · 50%', '0 · 0%']);
     expect(screen.queryByText('Globex · Data Engineer')).not.toBeInTheDocument();
     expect(screen.getByText('3 status proposals waiting')).toBeInTheDocument();
@@ -523,6 +524,59 @@ describe('DashboardPage filters', () => {
     );
     // A tile click is not a filter change.
     expect(localStorage.getItem(STORAGE_KEY)).toBe('company=Acme&sort=-applied');
+  });
+
+  it('links each Journey branch to the Applications it counts, as a one-time view (SOW-0057)', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(STORAGE_KEY, 'company=Acme&sort=-applied');
+    renderPage();
+    const rejected = await screen.findByRole('link', { name: '1 rejected after screening' });
+    expect(rejected).toHaveAttribute('href', `${BASE}/applications?sort=-applied&company=Acme&status=rejected&reached=screening`);
+    expect(screen.getByRole('link', { name: '1 waiting after the interview' })).toHaveAttribute(
+      'href',
+      `${BASE}/applications?sort=-applied&company=Acme&status=saved&status=applied&status=screening&status=interview&status=offer&reached=interview`,
+    );
+    await user.click(rejected);
+    expect(await screen.findByTestId('applications')).toHaveTextContent(
+      '?sort=-applied&company=Acme&status=rejected&reached=screening {"oneTimeView":true}',
+    );
+    // Following a branch is not a filter change.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('company=Acme&sort=-applied');
+  });
+
+  it('opens every branch on Applications with as many rows as the branch says (SOW-0057)', async () => {
+    const user = userEvent.setup();
+    const renderBoth = () =>
+      render(
+        <InProfile>
+          <MemoryRouter initialEntries={['/profiles/platform-roles']}>
+            <Routes>
+              <Route path="/profiles/:profileSlug" element={<DashboardPage />} />
+              <Route path="/profiles/:profileSlug/applications" element={<ApplicationsPage />} />
+            </Routes>
+          </MemoryRouter>
+        </InProfile>,
+      );
+    renderBoth();
+    await screen.findByTestId('count-in-progress');
+    const names = screen.getAllByRole('link').map((l) => l.getAttribute('aria-label') ?? '').filter((n) => / after |^\d+ offers?$/.test(n));
+    // a3 waits after applying, a2 was rejected after screening, a1 waits after the interview, a4 holds an offer.
+    expect(names).toEqual(['1 waiting after applying', '1 rejected after screening', '1 waiting after the interview', '1 offer']);
+    const expectedRoles: Record<string, string[]> = {
+      '1 waiting after applying': ['Data Engineer'],
+      '1 rejected after screening': ['SRE'],
+      '1 waiting after the interview': ['Platform Engineer'],
+      '1 offer': ['SRE'],
+    };
+    for (const name of names) {
+      cleanup();
+      renderBoth();
+      await user.click(await screen.findByRole('link', { name }));
+      await screen.findByRole('table');
+      const roles = within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2]!.textContent);
+      expect(roles).toHaveLength(Number(name.split(' ')[0]));
+      expect(roles).toEqual(expectedRoles[name]);
+    }
   });
 
   it('narrows a tile to the statuses the status filter keeps, and shows no link when it keeps none', async () => {

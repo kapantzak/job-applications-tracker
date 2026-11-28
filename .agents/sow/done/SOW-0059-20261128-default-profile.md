@@ -1,4 +1,4 @@
-# SOW-0058 - Default profile
+# SOW-0059 - Default profile
 
 ## Status
 
@@ -154,7 +154,7 @@ User decisions after the independent review, 2026-11-28:
 
 ### 2026-11-28
 
-- SOW created after the user's decisions 1A-4A. Numbered 0058 because a parallel worktree (`Clickable-states-on-chart`) already holds an uncommitted SOW-0057 of the same date; created as 0057 here and renamed before any commit.
+- SOW created after the user's decisions 1A-4A. Numbered 0059: it was created as 0057, renamed to 0058 because a parallel worktree held an uncommitted SOW-0057, and renamed to 0059 when merging `main` into the PR branch after PR #52 landed SOW-0057 and a pending SOW-0058.
 - Server: `default_profile_id` in `Settings` (`src/server/domain/types.ts`), `DEFAULT_SETTINGS` (`src/server/db/settings-repo.ts`) and the strict `SettingsPatch` (`src/server/api/settings.ts`), with an existence check that throws `HttpError(400, 'default_profile_id: Profile not found')` before any write; a delete step in `src/server/db/profiles-repo.ts` (`DELETE FROM settings WHERE key = 'default_profile_id' AND value = json_quote(@id)`, inside the existing `remove` transaction; values are stored with `JSON.stringify`).
 - UI: `defaultProfile()` in `src/ui/default-profile.ts`; `StartupRedirect` (`src/ui/App.tsx`) looks up profiles after the Setup check; `ProfilesPage` loads the setting with the list and shows the badge and the Set/Remove buttons.
 - Real-browser check on `npm run sandbox:mock`: the "Default" badge made its title row about 6 px taller than the others; `-my-1` on the badge keeps the card heights unchanged. `docs/images/profiles.png` re-taken with Backend Engineering as default.
@@ -168,8 +168,8 @@ Acceptance criteria evidence:
 - Lone profile opens without a stored default, and several profiles without a valid default stay on the list: "opens the only profile when no default is stored", "shows the profiles screen for several profiles without a valid default"; `test/ui/default-profile.test.ts`.
 - No trap: the Profiles and "← name" links reach the list after a jump, and loads that began on `/settings` or a profile page never jump (decision 5A): the two `it.each` cases "does not jump when the page load started on …".
 - Missing agent goes to Setup and no jump follows: "sends a missing agent to Setup instead, and does not jump later in the same load".
-- Cards: badge, Set as default, Remove default, failure message, lone profile, reload after delete, settings failure, error cleared on reload: `test/ui/ProfilesPage.test.tsx` "ProfilesPage default profile (SOW-0058)" (9 tests).
-- API: `test/server/api/settings.test.ts` "default profile setting (SOW-0058)" (store and clear, unknown id 400 with nothing written, non-string 400).
+- Cards: badge, Set as default, Remove default, failure message, lone profile, reload after delete, settings failure, error cleared on reload: `test/ui/ProfilesPage.test.tsx` "ProfilesPage default profile (SOW-0059)" (9 tests).
+- API: `test/server/api/settings.test.ts` "default profile setting (SOW-0059)" (store and clear, unknown id 400 with nothing written, non-string 400).
 - Delete cleanup: `test/server/db/profiles-repo.test.ts` (clears for its own profile, keeps for another).
 
 Tests or equivalent validation:
